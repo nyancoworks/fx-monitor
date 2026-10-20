@@ -1,5 +1,32 @@
 # FX Monitor
 
-Discretionary FX analysis software. Migration is in preparation; collection is not enabled.
+16通貨ペア × スイング/デイトレードの裁量判断支援プログラムです。自動発注・ポジション管理は行いません。
 
-Market data, saved evaluations and credentials are kept in a separate private repository.
+## 移行状況
+
+公開コード用と非公開データ用への移行準備中です。収集は未有効化です。新しいGit履歴には市場データ・保存評価・過去Issue・実原本を含めていません。元の正本と全履歴は非公開リポジトリで保持しています。
+
+- プログラムと設定：この公開リポジトリ
+- 価格原本・cache・snapshot・NY17・監視履歴：所有者の非公開データリポジトリ
+- 元の指標式とシナリオ判定は維持。移行変更を含む全体653テストがローカルで成功しました。CI・自然実行の確認とは別です。
+
+## オフライン確認
+
+```bash
+python -m pip install -r requirements.txt
+python -m unittest discover -s tests -q
+```
+
+このリポジトリには合成データの移行テストだけを掲載しています。元製品の全回帰テストと実データfixtureは、非公開側で保持・検証しています。テストコマンドは市場データを取得しません。
+
+## 非公開状態を使う実行
+
+`FX_DATA_ROOT`に非公開データcheckoutの絶対パスを指定すると、保存入力・出力・原本の参照先を変更できます。未指定時は旧checkoutのレイアウトを維持します。
+
+公開Actionsは`fx_system.private_runtime`から固定された処理を起動します。子プロセスの価格を含む出力とエラーは公開ログへ流さず、非公開checkout内の一時診断へ保存し、設定済みキー/トークン値を伏せます。これら一時診断はrunner終了後の永続保管を保証しません。保存評価の原本は非公開snapshot/履歴です。
+
+収集workflowは`workflow_dispatch`のみで、所有者が`FX_COLLECTION_ENABLED=true`を設定するまでjobは実行されません。さらに非公開側の`migration/READY.json`で原本byte照合・完全NY17復元・正規32検証を確認するまで市場API呼出しへ進みません。現時点ではこの条件は満たしていません。
+
+有効化前に必要な所有者設定は`TWELVE_DATA_API_KEY`と、対象非公開データrepoだけにContents read/writeを付けた`FX_DATA_REPO_TOKEN`です。値をIssue・チャット・ログへ貼らないでください。既存時刻の起動先を置換する際は旧収集と二重実行しません。
+
+直接`python -m fx_system.main`を実行すると市場API取得と詳細出力を伴います。移行確認や公開workflowの呼出しには使わず、上記の実行経路を使用してください。

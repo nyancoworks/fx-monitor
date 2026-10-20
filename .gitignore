@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.env
+.env.*
+data/
+evidence/
+private-state/
+.private*/
+*.log
+*.zip
+*.xz

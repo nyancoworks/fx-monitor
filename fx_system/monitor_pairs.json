@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "pairs": [
+    "EUR/USD",
+    "GBP/USD",
+    "USD/JPY",
+    "AUD/USD",
+    "NZD/USD",
+    "USD/CAD",
+    "USD/CHF",
+    "EUR/JPY",
+    "GBP/JPY",
+    "AUD/JPY",
+    "EUR/GBP",
+    "EUR/AUD",
+    "AUD/NZD",
+    "NZD/JPY",
+    "CAD/JPY",
+    "CHF/JPY"
+  ]
+}

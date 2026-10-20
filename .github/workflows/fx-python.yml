@@ -1,0 +1,90 @@
+name: FX Monitor private-state collection
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: fx-monitor-collection
+  cancel-in-progress: false
+jobs:
+  collect:
+    if: github.repository == 'nyancoworks/fx-monitor' && vars.FX_COLLECTION_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: code
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          repository: nyancoworks/fx-monitor-data
+          token: ${{ secrets.FX_DATA_REPO_TOKEN }}
+          path: private-state
+          persist-credentials: true
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install declared dependencies
+        run: python -m pip install -r code/requirements.txt
+      - name: Restore private archive
+        id: restore
+        continue-on-error: true
+        env:
+          PYTHONPATH: ${{ github.workspace }}/code
+        run: python -m fx_system.private_runtime restore --state "$GITHUB_WORKSPACE/private-state"
+      - name: Collect and evaluate
+        id: refresh
+        if: steps.restore.outcome == 'success'
+        continue-on-error: true
+        env:
+          PYTHONPATH: ${{ github.workspace }}/code
+          TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
+        run: python -m fx_system.private_runtime refresh --state "$GITHUB_WORKSPACE/private-state"
+      - name: Preserve received archive
+        id: archive
+        if: always() && steps.restore.outcome == 'success' && (steps.refresh.outcome == 'success' || steps.refresh.outcome == 'failure')
+        continue-on-error: true
+        env:
+          PYTHONPATH: ${{ github.workspace }}/code
+        run: python -m fx_system.private_runtime archive --state "$GITHUB_WORKSPACE/private-state"
+      - name: Attach persistence evidence
+        id: annotate
+        if: always() && steps.refresh.outcome == 'success'
+        continue-on-error: true
+        env:
+          PYTHONPATH: ${{ github.workspace }}/code
+        run: python -m fx_system.private_runtime annotate --state "$GITHUB_WORKSPACE/private-state"
+      - name: Validate saved analysis
+        id: validate
+        if: always() && steps.refresh.outcome == 'success' && steps.annotate.outcome == 'success'
+        continue-on-error: true
+        env:
+          PYTHONPATH: ${{ github.workspace }}/code
+        run: python -m fx_system.private_runtime validate --state "$GITHUB_WORKSPACE/private-state"
+      - name: Save private snapshot
+        id: snapshot
+        if: always() && steps.refresh.outcome == 'success' && steps.annotate.outcome == 'success'
+        continue-on-error: true
+        env:
+          PYTHONPATH: ${{ github.workspace }}/code
+        run: python -m fx_system.private_runtime snapshot --state "$GITHUB_WORKSPACE/private-state"
+      - name: Save private history
+        id: history
+        if: always() && steps.snapshot.outcome == 'success' && steps.archive.outcome == 'success'
+        continue-on-error: true
+        env:
+          PYTHONPATH: ${{ github.workspace }}/code
+        run: python -m fx_system.private_runtime history --state "$GITHUB_WORKSPACE/private-state"
+      - name: Check completed stages
+        if: always()
+        env:
+          RESTORE: ${{ steps.restore.outcome }}
+          REFRESH: ${{ steps.refresh.outcome }}
+          ARCHIVE: ${{ steps.archive.outcome }}
+          ANNOTATE: ${{ steps.annotate.outcome }}
+          VALIDATE: ${{ steps.validate.outcome }}
+          SNAPSHOT: ${{ steps.snapshot.outcome }}
+          HISTORY: ${{ steps.history.outcome }}
+        run: |
+          python -c 'import os; keys=("RESTORE","REFRESH","ARCHIVE","ANNOTATE","VALIDATE","SNAPSHOT","HISTORY"); raise SystemExit(0 if all(os.environ.get(k)=="success" for k in keys) else 1)'
