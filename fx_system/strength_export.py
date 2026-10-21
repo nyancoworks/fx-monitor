@@ -66,11 +66,17 @@ def build_strength_export(snapshot_bytes, source):
     strength = snapshot.get('currency_strength')
     errors = strength_errors(strength, clock)
     blob_sha = hashlib.sha1(b'blob '+str(len(snapshot_bytes)).encode()+b'\0'+snapshot_bytes).hexdigest()
-    return {'schema': SCHEMA, 'source': {k: source[k] for k in
+    bundle = {'schema': SCHEMA, 'source': {k: source[k] for k in
             ('source_repository','source_commit','run_id','evaluated_at')},
             'snapshot_git_blob_sha': blob_sha, 'snapshot_byte_length': len(snapshot_bytes),
             'status': 'unavailable' if errors else 'saved', 'errors': errors,
             'currency_strength': None if errors else deepcopy(strength)}
+    references = snapshot.get('historical_shape_references')
+    if references is not None:
+        from .historical_shape_reference import reference_errors
+        if not reference_errors(references, clock):
+            bundle['historical_shape_references'] = deepcopy(references)
+    return bundle
 
 
 def validate_strength_export(bundle, source, snapshot_blob_sha):

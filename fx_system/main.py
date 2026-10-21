@@ -647,6 +647,8 @@ def _refresh(ny=None):
         target.write_text(json.dumps(result,separators=(",",":")))
         print("ON_DEMAND_OUTPUT",target,flush=True)
     else:
+        from .historical_shape_reference import build_references
+        result['historical_shape_references'] = build_references(cache, result['scheduled_outlook'], final_now)
         CACHE.write_text(json.dumps(cache,separators=(",",":")))
         OUTPUT.write_text(json.dumps(result,separators=(",",":")))
     print("READY_PAIRS",len(result["ready_pairs"]),"/",len(PAIRS),flush=True)
