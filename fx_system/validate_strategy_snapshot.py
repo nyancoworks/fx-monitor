@@ -1,6 +1,7 @@
 """Validate saved independent assessments without evaluating prices or fetching data."""
 from collections import Counter
 from .monitor_pairs import PAIR_KEYS
+from .scenario_conditions import validate_conditions
 
 
 def validate_strategy_snapshot(snapshot):
@@ -29,6 +30,7 @@ def validate_strategy_snapshot(snapshot):
         failures.append('scheduled strategy total mismatch')
     counts = Counter()
     for r in records:
+        failures.extend(validate_conditions(r))
         state = r.get('assessment')
         if state not in ('review', 'skip', 'evaluation_pending'):
             failures.append('scheduled strategy state invalid')

@@ -55,6 +55,13 @@ def render_strategy_report(snapshot):
                   '成立確認：'+('／'.join(r.get('formation_conditions', [])) or '未提供')+'。成立価格・成立後RRは未確定',
                   f"基準足{r['reference_timeframe'].upper()}保存終値：{_number(plan.get('reference_close'))}（{base_clock}）｜参考RR {_number(levels.get('reference_rr'))}",
                   f"構造無効化：{_number(levels.get('invalidation'))}｜構造目標：{_number(levels.get('structural_target'))}"]
+        condition_plan = r.get('scenario_conditions', {})
+        if condition_plan.get('status') in ('waiting','awaiting_breakout','awaiting_retest','retest_failed','conditions_observed'):
+            state = ('条件観測済み' if condition_plan['status']=='conditions_observed' else
+                     '再試し失敗・再評価' if condition_plan['status']=='retest_failed' else
+                     '突破後の再試し待ち' if condition_plan['status']=='awaiting_retest' else '条件待ち')
+            lines.append(f"確認状況：{state}（{_clock(condition_plan.get('evaluated_candle_closed_at'))}確定足）")
+            lines.append('条件の適用範囲：保存時の比較水準。新しい確定足では再評価。条件観測は約定・利益保証ではない')
         pivot=plan.get('target_pivot')
         reaction = r.get('price_reaction_observation', {})
         if (reaction.get('status') in ('observed_reference', 'not_observed')

@@ -7,6 +7,7 @@ family, and RCI timing is not an independent vote for direction.
 from copy import deepcopy
 import math
 from .scenario_lifecycle import describe_lifecycle
+from .scenario_conditions import describe_conditions
 
 
 def _dict(value):return value if isinstance(value,dict) else {}
@@ -66,7 +67,10 @@ def assess_strategy(pair,strategy,track,evaluated_at):
             old_wait=record['scenario_explanation'].get('waiting_condition')
             record['scenario_explanation']['waiting_condition']=wait
             record['waiting_conditions']=[wait]+[x for x in record['waiting_conditions'] if x!=old_wait]
-        # Explain the existing state. These are not new pattern rules or gates.
+        # Concrete advisory conditions never change grade, authority or the
+        # raw reference-pattern observation above.
+        condition_plan = describe_conditions(record, t.get('condition_inputs'))
+        record['scenario_conditions'] = condition_plan
         if record['expiry']['status']=='withdrawn':
             record['formation_conditions']=[f'旧シナリオは撤回済み。{base.upper()}の新しい構造・無効化・目標を再評価する。旧条件の維持を成立条件にしない']
         elif state=='evaluation_pending':
@@ -74,9 +78,31 @@ def assess_strategy(pair,strategy,track,evaluated_at):
         elif direction not in ('long','short'):
             record['formation_conditions']=[f'{base.upper()}の方向構造が未確認。維持すべき方向・成立価格を推定しない']
         else:
-            side='買い' if direction=='long' else '売り'
-            record['formation_conditions']=[f'{base.upper()}の{side}方向構造と{trigger.upper()}確定足の反応を再評価する',
-                'シナリオ成立を一意に判定する反応水準・成立価格は保存評価では未定義。参考パターンの観測だけで成立と断定しない']
+            record['formation_conditions']=[condition_plan['summary']]
+            if condition_plan['status'] in ('waiting','awaiting_breakout','awaiting_retest','retest_failed','conditions_observed'):
+                pending = list(record['waiting_conditions'])
+                old_wait = record['scenario_explanation'].get('waiting_condition')
+                # Preserve price-margin warnings appended by the assessment.
+                pending = [x for x in pending if x != old_wait]
+                observed = condition_plan['status']=='conditions_observed'
+                wait = ('条件を保存確定足で観測。反対根拠と目標までの余地を確認する' if observed else
+                        '突破は観測済み。同水準の再試しと終値の維持を待つ' if condition_plan['status']=='awaiting_retest' else
+                        condition_plan['summary'])
+                record['waiting_conditions']=[wait]+pending
+                record['scenario_explanation']['waiting_condition']=wait
+                record['scenario_explanation']['formation_evidence']=(
+                    '具体的な確認条件を保存足で観測（約定・売買指示ではない）' if observed else
+                    '再試しで終値を維持できず、反応の再評価が必要' if condition_plan['status']=='retest_failed' else
+                    '具体的な確認条件の観測待ち')
+            else:
+                record['uncertainties'].append(condition_plan['reason'])
+                if pattern and not verified_pattern:
+                    record['waiting_conditions'].append(condition_plan['summary'])
+                else:
+                    record['waiting_conditions']=[condition_plan['summary']]+record['waiting_conditions']
+                    record['scenario_explanation']['waiting_condition']=condition_plan['summary']
+        record['scenario_explanation']['formation_conditions']=deepcopy(record['formation_conditions'])
+        record['scenario_explanation']['scenario_conditions']=deepcopy(condition_plan)
         return record
     if t.get('base_verified') is not True:
         uncertainties.append(f'{base}確定足の品質・出所・評価時刻が未確認')

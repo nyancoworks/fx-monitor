@@ -12,6 +12,7 @@ from .strategy_indicator_context import strategy_indicator_context
 from .strategy_scenario_assessment import assess_strategy
 from .scenario_price_plan import saved_price_plan, trigger_price_reference
 from .price_reaction_observation import observe_saved_reaction
+from .scenario_conditions import condition_inputs
 
 def _dict(x): return x if isinstance(x,dict) else {}
 def _price(x): return x if type(x) in (int,float) and math.isfinite(x) and x>0 else None
@@ -328,6 +329,7 @@ def _one(pair, data, source_quality, evaluated_at):
         track["scenario_explanation"]=explain_strategy_track(track)
         track["rci_observation"]=rci_track_context(data, track, evaluated_at)
         track["indicator_context"]=strategy_indicator_context(data, track)
+        track['condition_inputs'] = condition_inputs(data, track, evaluated_at)
     return {
         "strategy_tracks":strategy_tracks,
         "monitoring_macro_reference":macro_reference,
@@ -423,6 +425,11 @@ def build_scheduled_outlook(pairs, quality, *, evaluated_at):
                 })
     strategy_assessments=[assess_strategy(row['pair'],strategy,row['strategy_tracks'][strategy],evaluated_at)
                           for row in rows for strategy in ('swing','daytrade')]
+    # The validated raw window is transient. History retains only the compact
+    # condition levels and observation evidence, never source candle arrays.
+    for row in rows:
+        for track in row['strategy_tracks'].values():
+            track.pop('condition_inputs', None)
     for row in rows:
         row['strategy_assessments']={r['strategy']:r for r in strategy_assessments if r['pair']==row['pair']}
     review_keys={(a['pair'],a['strategy']) for a in strategy_assessments if a['assessment']=='review'}
