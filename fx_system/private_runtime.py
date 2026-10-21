@@ -100,16 +100,25 @@ def command(stage, root, run_id, source_commit):
 
 
 def save_snapshot(root, run_id, source_commit):
-    snapshot = json.loads((root/'data/latest.json').read_bytes())
+    from .strength_export import build_strength_export
+    snapshot_bytes = (root/'data/latest.json').read_bytes()
+    snapshot = json.loads(snapshot_bytes)
     old = json.loads(git(root, 'show', 'HEAD:data/latest.json'))
     if snapshot['generated_at'] <= old.get('generated_at', 0):
         raise ValueError('snapshot did not advance; preserve existing data')
     source = {'source_repository': CODE_REPOSITORY, 'source_commit': source_commit,
               'run_id': int(run_id), 'evaluated_at': snapshot['evaluated_at']}
+    for name in ('data/source.json', 'data/currency-strength.json'):
+        path = root/name
+        if path.is_symlink() or not path.resolve().is_relative_to(root):
+            raise ValueError('private derived file path invalid')
+    compact = build_strength_export(snapshot_bytes, source)
     (root/'data/source.json').write_text(json.dumps(source, sort_keys=True) + '\n')
-    git(root, 'add', '--', 'data/cache.json', 'data/latest.json', 'data/source.json')
+    (root/'data/currency-strength.json').write_text(json.dumps(compact, ensure_ascii=False, sort_keys=True,
+                                                           allow_nan=False) + '\n')
+    git(root, 'add', '--', 'data/cache.json', 'data/latest.json', 'data/source.json', 'data/currency-strength.json')
     staged = git(root, 'diff', '--cached', '--name-only').splitlines()
-    if not set(staged) <= {'data/cache.json', 'data/latest.json', 'data/source.json'}:
+    if not set(staged) <= {'data/cache.json', 'data/latest.json', 'data/source.json', 'data/currency-strength.json'}:
         raise ValueError('unexpected staged private files')
     git(root, '-c', 'user.name=github-actions[bot]', '-c',
         'user.email=41898286+github-actions[bot]@users.noreply.github.com',

@@ -8,11 +8,13 @@ from .price_reaction_observation import reaction_description
 
 
 def report_records(outlook):
-    """Presentation order only: grade, then existing candidate order."""
+    """Up to three per strategy; grade, then existing candidate order."""
     priority = {(c['pair'], c['strategy']): i for i, c in enumerate(outlook.get('strategy_candidates', []))}
     reviews = [r for r in outlook['strategy_assessments'] if r['assessment'] == 'review']
-    return sorted(reviews, key=lambda r: ('ABC'.index(r['grade']),
-                  priority.get((r['pair'], r['strategy']), len(priority))))[:3]
+    ordered = sorted(reviews, key=lambda r: ('ABC'.index(r['grade']),
+                  priority.get((r['pair'], r['strategy']), len(priority))))
+    return [r for strategy in ('swing','daytrade')
+            for r in [x for x in ordered if x['strategy']==strategy][:3]]
 
 
 def _number(value):
