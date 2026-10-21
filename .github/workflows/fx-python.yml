@@ -76,6 +76,14 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}/code
         run: python -m fx_system.private_runtime history --state "$GITHUB_WORKSPACE/private-state"
+      - name: Accumulate private backtest observations
+        id: backtest
+        if: always() && steps.snapshot.outcome == 'success' && steps.archive.outcome == 'success' && steps.history.outcome == 'success'
+        continue-on-error: true
+        env:
+          PYTHONPATH: ${{ github.workspace }}/code
+          FX_DATA_REPO_TOKEN: ${{ secrets.FX_DATA_REPO_TOKEN }}
+        run: python -m fx_system.private_runtime backtest --state "$GITHUB_WORKSPACE/private-state"
       - name: Check completed stages
         if: always()
         env:
@@ -86,5 +94,6 @@ jobs:
           VALIDATE: ${{ steps.validate.outcome }}
           SNAPSHOT: ${{ steps.snapshot.outcome }}
           HISTORY: ${{ steps.history.outcome }}
+          BACKTEST: ${{ steps.backtest.outcome }}
         run: |
-          python -c 'import os; keys=("RESTORE","REFRESH","ARCHIVE","ANNOTATE","VALIDATE","SNAPSHOT","HISTORY"); raise SystemExit(0 if all(os.environ.get(k)=="success" for k in keys) else 1)'
+          python -c 'import os; keys=("RESTORE","REFRESH","ARCHIVE","ANNOTATE","VALIDATE","SNAPSHOT","HISTORY","BACKTEST"); raise SystemExit(0 if all(os.environ.get(k)=="success" for k in keys) else 1)'

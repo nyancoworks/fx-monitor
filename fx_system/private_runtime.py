@@ -14,7 +14,7 @@ import sys
 CODE_ROOT = Path(__file__).resolve().parents[1]
 DATA_REPOSITORY = 'nyancoworks/fx-monitor-data'
 CODE_REPOSITORY = 'nyancoworks/fx-monitor'
-STAGES = ('restore', 'refresh', 'archive', 'annotate', 'validate', 'snapshot', 'history')
+STAGES = ('restore', 'refresh', 'archive', 'annotate', 'validate', 'snapshot', 'history', 'backtest')
 MAX_LOG_BYTES = 32 * 1024 * 1024
 
 
@@ -84,6 +84,7 @@ def command(stage, root, run_id, source_commit):
         'refresh': base + ['fx_system.main'],
         'archive': base + ['fx_system.ny_archive_transport', 'publish', '--directory', str(archive), '--continuous'],
         'validate': base + ['fx_system.validate_snapshot'],
+        'backtest': base + ['fx_system.backtest_persistence', '--state', str(root)],
         'history': base + ['diagnostics.monitoring_result_git_store', '--repo', str(root),
                           '--snapshot', str(root/'data/latest.json'), '--source-run-id', run_id,
                           '--source-commit', source_commit, '--source-repository', CODE_REPOSITORY],
@@ -124,6 +125,16 @@ def save_snapshot(root, run_id, source_commit):
         'user.email=41898286+github-actions[bot]@users.noreply.github.com',
         'commit', '-m', 'Save scheduled FX observations')
     git(root, 'push', 'origin', 'HEAD:refs/heads/main')
+    # Reuse the acknowledged snapshot push; long-term storage must not add a
+    # second remote read just to establish which input was already saved.
+    receipt = root/'.private-run'/run_id/'snapshot.receipt.json'
+    if receipt.is_symlink() or not receipt.resolve().is_relative_to(root):
+        raise ValueError('snapshot receipt must remain private')
+    receipt.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    receipt.write_text(json.dumps({'data_commit':git(root,'rev-parse','HEAD'),
+                                  'cache_blob':git(root,'rev-parse','HEAD:data/cache.json'),
+                                  **source}, sort_keys=True))
+    receipt.chmod(0o600)
 
 
 def main():
@@ -161,6 +172,16 @@ def main():
                              log=logs/(args.stage+'.log'), env=env)
         logs.mkdir(parents=True, exist_ok=True, mode=0o700)
         (logs/(args.stage+'.status.json')).write_text(json.dumps({'returncode': rc}))
+        if args.stage == 'backtest' and rc == 0:
+            # Fixed, price-free operational counters are reviewable after a
+            # runner is discarded. Full inputs/results remain private.
+            summary = json.loads((logs/'backtest-result.json').read_bytes())['result']
+            counters = {key:summary[key] for key in ('requests','used_bytes','added')}
+            if any(type(value) is not int or value < 0 for value in counters.values()):
+                raise ValueError('invalid backtest counters')
+            if counters['requests'] > 64 or counters['used_bytes'] > 1024**3:
+                raise ValueError('backtest storage exceeded approved budget')
+            print('FX_BACKTEST_STORAGE ' + json.dumps(counters, sort_keys=True))
         if args.stage in ('restore', 'archive') and rc == 0:
             # Commands emit a single JSON object; stderr must not be mixed into it.
             text = (logs/(args.stage+'.log')).read_text().strip()
