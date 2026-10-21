@@ -133,6 +133,12 @@ def main():
         root = private_root(args.state)
         verify_ready(root)
         env = {**os.environ, 'FX_DATA_ROOT': str(root), 'PYTHONPATH': str(CODE_ROOT),
+               # Archive transport uses commit-tree, which needs both identities.
+               # Checkout credentials do not configure Git author/committer data.
+               'GIT_AUTHOR_NAME': 'github-actions[bot]',
+               'GIT_AUTHOR_EMAIL': '41898286+github-actions[bot]@users.noreply.github.com',
+               'GIT_COMMITTER_NAME': 'github-actions[bot]',
+               'GIT_COMMITTER_EMAIL': '41898286+github-actions[bot]@users.noreply.github.com',
                'FX_NY17_MODE': 'adopt', 'FX_NY17_EVIDENCE_PROFILE': 'custom_ny17_observed_h1_v1',
                'FX_NY17_ARCHIVE_DIR': str(root/'.private-ny17'),
                'FX_NEW_PAIR_H1_BOOTSTRAP': '1',

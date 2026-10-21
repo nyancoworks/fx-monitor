@@ -99,5 +99,39 @@ class PrivateMigrationTests(unittest.TestCase):
         self.assertNotIn('SYNTHETIC_PRIVATE_DETAIL', out.getvalue())
         self.assertIn('FX_STAGE refresh failed', out.getvalue())
 
+    def test_archive_child_has_explicit_git_identity_on_clean_runner(self):
+        # No network or market input: exercise the actual commit-tree command
+        # used by the archive writer without relying on host Git configuration.
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            env = {'GITHUB_RUN_ID': '123', 'GITHUB_SHA': 'a'*40,
+                   'GITHUB_REPOSITORY': runtime.CODE_REPOSITORY,
+                   'GITHUB_REF': 'refs/heads/main',
+                   'PATH': os.environ['PATH'], 'GIT_CONFIG_NOSYSTEM': '1',
+                   'GIT_CONFIG_GLOBAL': os.devnull}
+            subprocess.run(['git', 'init', str(root)], env=env,
+                           check=True, capture_output=True)
+            tree = subprocess.run(['git', 'mktree'], cwd=root, env=env,
+                                  input=b'', capture_output=True, check=True).stdout.decode().strip()
+            def commit_child(command, *, env, **kwargs):
+                result = subprocess.run(['git', 'commit-tree', tree, '-m', 'synthetic'],
+                                        cwd=root, env=env, capture_output=True)
+                self.assertEqual(result.returncode, 0, 'archive commit-tree needs explicit identity')
+                actor = subprocess.run(['git', 'show', '-s', '--format=%an <%ae>',
+                                        result.stdout.decode().strip()], cwd=root, env=env,
+                                       capture_output=True, check=True).stdout.decode().strip()
+                self.assertEqual(actor, 'github-actions[bot] <41898286+github-actions[bot]@users.noreply.github.com>')
+                return 0
+            with patch.dict(os.environ, env, clear=True), \
+                 patch.object(sys, 'argv', ['runner', 'archive', '--state', str(root)]), \
+                 patch.object(runtime, 'private_root', return_value=root), \
+                 patch.object(runtime, 'verify_ready'), \
+                 patch.object(runtime, 'run_private', side_effect=commit_child), \
+                 contextlib.redirect_stdout(io.StringIO()):
+                # The archive output parse is mocked separately from Git identity.
+                (root/'.private-run/123').mkdir(parents=True)
+                (root/'.private-run/123/archive.log').write_text('{"status":"persisted"}')
+                self.assertEqual(runtime.main(), 0)
+
 
 if __name__ == '__main__': unittest.main()
