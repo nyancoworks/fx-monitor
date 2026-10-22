@@ -24,5 +24,8 @@ def calendar_lines(record, format_clock):
         return ["経済指標：対象期間に確認できたイベントなし（完全性は別途確認）"]
     if len(events) > 3:
         lines.append(f"経済指標：ほか{len(events)-3}件は保存評価を参照")
+    attribution = context.get("attribution_url")
+    if attribution == "https://www.financecalendar.com":
+        lines.append("経済指標データ出典：https://www.financecalendar.com")
     lines.append("経済指標は参考情報。市場反応未評価、A/B/C・売買方向は不変更。")
     return lines
