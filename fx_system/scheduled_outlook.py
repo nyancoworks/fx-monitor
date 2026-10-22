@@ -469,5 +469,9 @@ def build_scheduled_outlook(pairs, quality, *, evaluated_at, economic_calendar=N
 
     if economic_calendar is not None:
         from .economic_calendar_context import enrich_outlook
-        return enrich_outlook(outlook, economic_calendar)
+        try:
+            return enrich_outlook(outlook, economic_calendar)
+        except (ValueError, TypeError, KeyError):
+            # Optional reference data must never interrupt scheduled decisions.
+            return outlook
     return outlook
