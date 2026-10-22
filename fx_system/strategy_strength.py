@@ -50,7 +50,9 @@ def build_contexts(pairs, evaluated_at):
                       and b['timestamp']+3600 > evaluated_at)]
             verified, _ = evaluate_pair({'decision_data': {'raw': {'h1': closed},
                 'provenance': evidence.get('provenance', {})}}, evaluated_at)
-            frames[pair] = {b['timestamp']: b['close'] for b in verified['h1']}
+            provenance = evidence.get('provenance', {})
+            frames[pair] = {b['timestamp']: b['close'] for b in verified['h1']
+                            if provenance.get('h1:'+str(b['timestamp'])) == 'Twelve Data'}
         except (ValueError, TypeError, KeyError, AttributeError, OverflowError):
             continue
     end = expected_closed_timestamp('h1', evaluated_at)

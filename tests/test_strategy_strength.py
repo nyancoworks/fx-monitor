@@ -2,6 +2,7 @@
 from copy import deepcopy
 import math
 import unittest
+from unittest.mock import patch
 
 from fx_system.core import expected_closed_timestamp
 from fx_system.monitor_pairs import PAIR_KEYS
@@ -69,6 +70,15 @@ class StrategyStrengthTests(unittest.TestCase):
     def test_single_own_edge_cannot_fabricate_strength(self):
         pairs = {'EURUSD': fixture()['EURUSD']}
         self.assertEqual(build_contexts(pairs, CLOCK)['EURUSD']['swing']['status'], 'unavailable')
+
+    def test_research_source_override_cannot_relabel_strength_as_primary(self):
+        pairs=fixture()
+        for data in pairs.values():
+            data['decision_data']['provenance']={k:'Dukascopy bid'
+                for k in data['decision_data']['provenance']}
+        with patch('fx_system.data_quality.SOURCE','Dukascopy bid'):
+            result=build_contexts(pairs,CLOCK)
+        self.assertEqual(result['EURUSD']['daytrade']['status'],'unavailable')
 
     def test_future_prices_and_input_mutation_are_excluded(self):
         pairs = fixture(); before = deepcopy(pairs); baseline = build_contexts(pairs, CLOCK)
