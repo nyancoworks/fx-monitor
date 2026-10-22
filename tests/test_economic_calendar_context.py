@@ -49,6 +49,23 @@ class CalendarContextTests(unittest.TestCase):
         self.assertIsNone(item["actual_raw"])
         self.assertEqual(item["status"], "release_unverified")
 
+    def test_history_rows_match_canonical_assessments(self):
+        source = outlook()
+        source["rows"] = [
+            {"pair": pair, "strategy_assessments": {
+                strategy: next(a.copy() for a in source["strategy_assessments"]
+                               if a["pair"] == pair and a["strategy"] == strategy)
+                for strategy in ("swing", "daytrade")}}
+            for pair in PAIR_KEYS]
+        result = enrich_outlook(source, {
+            "observed_at_utc": 1000000, "complete": True, "events": []})
+        canonical = {(a["pair"], a["strategy"]): a
+                     for a in result["strategy_assessments"]}
+        for row in result["rows"]:
+            for strategy in ("swing", "daytrade"):
+                self.assertEqual(row["strategy_assessments"][strategy],
+                                 canonical[(row["pair"], strategy)])
+
     def test_reject_duplicate(self):
         source = outlook()
         source["strategy_assessments"][2] = source["strategy_assessments"][0].copy()
