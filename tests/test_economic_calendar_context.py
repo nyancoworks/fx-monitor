@@ -1,14 +1,11 @@
 """Synthetic-only tests: no provider calls or private observations."""
 import unittest
+from fx_system.monitor_pairs import PAIR_KEYS
 from fx_system.economic_calendar_context import enrich_outlook
 
 
 def outlook():
-    pairs = ["USDJPY"] + ["EURUSD"] * 15
-    # Unique synthetic pair identifiers while preserving six-letter format.
-    pairs = ["USDJPY"] + [a + "USD" for a in (
-        "EUR", "GBP", "AUD", "NZD", "CAD", "CHF", "JPY",
-        "SEK", "NOK", "DKK", "PLN", "CZK", "HUF", "SGD", "HKD")]
+    pairs = PAIR_KEYS
     return {"evaluated_at": 1000000, "strategy_assessments": [
         {"pair": pair, "strategy": strategy, "grade": "B", "direction": "long"}
         for pair in pairs for strategy in ("swing", "daytrade")]}
