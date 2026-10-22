@@ -90,6 +90,9 @@ class StrengthExportTests(unittest.TestCase):
             git('push','origin','HEAD:main'); original=git('rev-parse','HEAD')
             snapshot=sample(); raw=json.dumps(snapshot).encode()
             (root/'data/latest.json').write_bytes(raw); (root/'data/cache.json').write_text('{}')
+            logs=root/'.private-run/123';logs.mkdir(parents=True)
+            (logs/'validate.log').write_text('SNAPSHOT_VALIDATION {"passed":false,"failures":["synthetic data unavailable"]}\n')
+            (logs/'validate.status.json').write_text('{"returncode":1}')
             public=io.StringIO()
             with contextlib.redirect_stdout(public),contextlib.redirect_stderr(public):
                 save_snapshot(root,'123','a'*40)
@@ -100,6 +103,14 @@ class StrengthExportTests(unittest.TestCase):
             source=json.loads(git('show','HEAD:data/source.json'))
             sha=git('rev-parse','HEAD:data/latest.json')
             self.assertEqual(validate_strength_export(bundle,source,sha),[])
+            diagnostic=json.loads(git('show','HEAD:data/run-diagnostics.json'))
+            self.assertEqual(diagnostic['source'],source)
+            self.assertEqual(diagnostic['snapshot_git_blob_sha'],sha)
+            self.assertFalse(diagnostic['validation']['passed'])
+            self.assertEqual(diagnostic['validation']['failures'],['synthetic data unavailable'])
+            remote_diagnostic=subprocess.run(['git','--git-dir',str(remote),'show','main:data/run-diagnostics.json'],
+                                            check=True,capture_output=True,text=True).stdout
+            self.assertEqual(json.loads(remote_diagnostic),diagnostic)
             remote_bundle=subprocess.run(['git','--git-dir',str(remote),'show','main:data/currency-strength.json'],
                                          check=True,capture_output=True,text=True).stdout
             self.assertEqual(json.loads(remote_bundle),bundle)

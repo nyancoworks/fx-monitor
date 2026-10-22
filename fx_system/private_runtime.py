@@ -102,6 +102,7 @@ def command(stage, root, run_id, source_commit):
 
 def save_snapshot(root, run_id, source_commit):
     from .strength_export import build_strength_export
+    from .run_diagnostics import build_diagnostics
     snapshot_bytes = (root/'data/latest.json').read_bytes()
     snapshot = json.loads(snapshot_bytes)
     old = json.loads(git(root, 'show', 'HEAD:data/latest.json'))
@@ -109,17 +110,33 @@ def save_snapshot(root, run_id, source_commit):
         raise ValueError('snapshot did not advance; preserve existing data')
     source = {'source_repository': CODE_REPOSITORY, 'source_commit': source_commit,
               'run_id': int(run_id), 'evaluated_at': snapshot['evaluated_at']}
-    for name in ('data/source.json', 'data/currency-strength.json'):
+    for name in ('data/source.json', 'data/currency-strength.json', 'data/run-diagnostics.json'):
         path = root/name
         if path.is_symlink() or not path.resolve().is_relative_to(root):
             raise ValueError('private derived file path invalid')
     compact = build_strength_export(snapshot_bytes, source)
+    # Save a bounded diagnostic view in the same private Git push.
+    # The public stage log and monitoring assessment stay unchanged. A new run
+    # with no report is explicitly unavailable, never a prior run's success.
+    logs = root/'.private-run'/run_id
+    report = ''; returncode = None
+    for path in (logs/'validate.log', logs/'validate.status.json'):
+        if path.is_symlink() or not path.resolve().is_relative_to(root):
+            raise ValueError('validation diagnostic must remain private')
+    if (logs/'validate.log').exists():
+        report = (logs/'validate.log').read_text(errors='replace')
+    if (logs/'validate.status.json').exists():
+        returncode = json.loads((logs/'validate.status.json').read_bytes()).get('returncode')
+    diagnostic = build_diagnostics(snapshot_bytes, source, validation_log=report,
+                                   returncode=returncode, env=os.environ)
+    (root/'data/run-diagnostics.json').write_bytes(diagnostic)
+    (root/'data/run-diagnostics.json').chmod(0o600)
     (root/'data/source.json').write_text(json.dumps(source, sort_keys=True) + '\n')
     (root/'data/currency-strength.json').write_text(json.dumps(compact, ensure_ascii=False, sort_keys=True,
                                                            allow_nan=False) + '\n')
-    git(root, 'add', '--', 'data/cache.json', 'data/latest.json', 'data/source.json', 'data/currency-strength.json')
+    git(root, 'add', '--', 'data/cache.json', 'data/latest.json', 'data/source.json', 'data/currency-strength.json', 'data/run-diagnostics.json')
     staged = git(root, 'diff', '--cached', '--name-only').splitlines()
-    if not set(staged) <= {'data/cache.json', 'data/latest.json', 'data/source.json', 'data/currency-strength.json'}:
+    if not set(staged) <= {'data/cache.json', 'data/latest.json', 'data/source.json', 'data/currency-strength.json', 'data/run-diagnostics.json'}:
         raise ValueError('unexpected staged private files')
     git(root, '-c', 'user.name=github-actions[bot]', '-c',
         'user.email=41898286+github-actions[bot]@users.noreply.github.com',
