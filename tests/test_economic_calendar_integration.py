@@ -68,3 +68,31 @@ class CalendarIntegrationTests(unittest.TestCase):
         lines = calendar_lines({'economic_calendar_context': {'status': 'available', 'events': [
             {'currency': 'USD', 'scheduled_at_utc': 10**100, 'title': 'Synthetic'}]}}, _clock)
         self.assertIn('保存形式未確認', '\n'.join(lines))
+
+    def test_provider_adapter_uncertain_events_and_credits_survive_full_pipeline(self):
+        from fx_system.financecalendar_adapter import normalize_calendar
+        from datetime import datetime, timezone
+        date = datetime.fromtimestamp(CLOCK, timezone.utc).date().isoformat()
+        payload = {'events': [
+            {'id':'synthetic-date-only', 'country':'US', 'category':'economic-indicators',
+             'status':'estimated', 'date':date, 'time_precision':'date',
+             'title':'Synthetic undated hour', 'source_license':{
+                 'attribution':'Synthetic source credit', 'notice':'Synthetic full notice'}}],
+            'count':1, 'total':2, 'attribution':{'source':'financecalendar.com'}}
+        normalized = normalize_calendar(payload, observed_at_utc=CLOCK)
+        baseline = self.build()
+        result = self.build(normalized)
+        snapshot = json.loads(json.dumps({'evaluated_at':CLOCK, 'scheduled_outlook':result}, allow_nan=False))
+        self.assertEqual(validate_strategy_snapshot(snapshot), [])
+        restored = restore_generation(pack_generation(result['rows'], evaluated_at=CLOCK))
+        self.assertEqual(restored['rows'], result['rows'])
+        report = render_strategy_report(snapshot)
+        self.assertIn('Synthetic undated hour', report)
+        self.assertIn('JST換算未確定', report)
+        self.assertIn('Synthetic full notice', report)
+        self.assertIn('部分的', report)
+        self.assertEqual(len(result['strategy_assessments']), 32)
+        for old, new in zip(baseline['strategy_assessments'], result['strategy_assessments']):
+            stripped = deepcopy(new)
+            stripped.pop('economic_calendar_context')
+            self.assertEqual(old, stripped)
