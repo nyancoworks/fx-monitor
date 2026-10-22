@@ -62,7 +62,7 @@ def enrich_outlook(outlook, calendar):
             "status": ("available" if calendar.get("complete") is True else "partial")
                       if valid else "unavailable",
             "events": selected,
-            "attribution_url": "https://www.financecalendar.com" if valid else None,
+            "attribution_url": calendar.get("attribution_url") if valid else None,
             "advisory_only": True, "changes_grade": False,
             "market_reaction": "unassessed",
             "policy_interpretation": "unassessed",
