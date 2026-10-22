@@ -367,7 +367,7 @@ def _one(pair, data, source_quality, evaluated_at):
                        "正式A/B判定・entry許可は変更しない"]
     }
 
-def build_scheduled_outlook(pairs, quality, *, evaluated_at):
+def build_scheduled_outlook(pairs, quality, *, evaluated_at, economic_calendar=None):
     pairs,quality=_dict(pairs),_dict(quality)
     rows=[]
     for pair in PAIR_KEYS:
@@ -448,7 +448,7 @@ def build_scheduled_outlook(pairs, quality, *, evaluated_at):
     strategy_candidates.sort(key=lambda c:({"pattern_observed":0,"directional_watch":1,"counter_rebound_wait":2}[c["priority"]],
                                            c['currency_strength_context']['comparison_priority'],
                                            PAIR_KEYS.index(c["pair"]),c["strategy"]))
-    return {"schema":"scheduled_outlook_v1","evaluated_at":evaluated_at,
+    outlook = {"schema":"scheduled_outlook_v1","evaluated_at":evaluated_at,
             "grade_counts":grade_counts,"candidate_count":len(candidates),
             "candidates":candidates,"strategy_candidates":strategy_candidates,
             "strategy_candidate_count":len(strategy_candidates),
@@ -466,3 +466,8 @@ def build_scheduled_outlook(pairs, quality, *, evaluated_at):
                 for state in ("directional_watch","conditional_watch","skip","unassessed")},
             "note":"Saved H4/H1 directional research, not current M15/M5 entry or execution clearance"}
 
+
+    if economic_calendar is not None:
+        from .economic_calendar_context import enrich_outlook
+        return enrich_outlook(outlook, economic_calendar)
+    return outlook
