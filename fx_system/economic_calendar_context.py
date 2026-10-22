@@ -4,6 +4,7 @@ Input is a separately verified snapshot, never a live network request.
 No entry permission, trading action, grade, or direction is derived here.
 """
 from copy import deepcopy
+from .monitor_pairs import PAIR_KEYS
 
 WINDOWS = {"swing": (86400, 7 * 86400), "daytrade": (6 * 3600, 36 * 3600)}
 
@@ -31,7 +32,7 @@ def enrich_outlook(outlook, calendar):
             raise ValueError("invalid assessment")
         pair, strategy = assessment.get("pair"), assessment.get("strategy")
         if (not isinstance(pair, str) or len(pair) != 6 or not pair.isalpha()
-                or strategy not in WINDOWS or (pair, strategy) in seen):
+                or pair not in PAIR_KEYS or strategy not in WINDOWS or (pair, strategy) in seen):
             raise ValueError("invalid or duplicate assessment")
         seen.add((pair, strategy))
         before, after = WINDOWS[strategy]
@@ -66,6 +67,8 @@ def enrich_outlook(outlook, calendar):
             "market_reaction": "unassessed",
             "policy_interpretation": "unassessed",
         }
+    if seen != {(p, s) for p in PAIR_KEYS for s in WINDOWS}:
+        raise ValueError("missing canonical assessments")
     result["economic_calendar_context"] = {
         "status": ("available" if calendar.get("complete") is True else "partial")
                   if valid else "unavailable",
