@@ -19,9 +19,14 @@ def calendar_lines(record, format_clock):
             continue
         title = " ".join(str(event.get("title") or "指標名未確認").split())[:64]
         timing = "発表予定" if event.get("timing") == "upcoming" else "発表時間帯"
-        lines.append(f"経済指標（参考）：{currency} {title}｜{format_clock(timestamp)}｜{timing}")
+        try:
+            display_clock = format_clock(timestamp)
+        except (OverflowError, OSError, ValueError):
+            lines.append("経済指標：イベント時刻の保存形式未確認")
+            continue
+        lines.append(f"経済指標（参考）：{currency} {title}｜{display_clock}｜{timing}")
     if not lines:
-        return ["経済指標：対象期間に確認できたイベントなし（完全性は別途確認）"]
+        lines.append("経済指標：対象期間に確認できたイベントなし（完全性は別途確認）")
     if len(events) > 3:
         lines.append(f"経済指標：ほか{len(events)-3}件は保存評価を参照")
     attribution = context.get("attribution_url")

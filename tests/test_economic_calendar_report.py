@@ -35,6 +35,12 @@ class CalendarReportTests(unittest.TestCase):
         self.assertIn("完全性", lines[0])
         self.assertNotIn("見送り", lines[0])
 
+    def test_empty_provider_result_keeps_attribution(self):
+        lines = calendar_lines({"economic_calendar_context": {
+            "status": "available", "events": [],
+            "attribution_url": "https://www.financecalendar.com"}}, str)
+        self.assertTrue(any("https://www.financecalendar.com" in line for line in lines))
+
     def test_grade_is_untouched(self):
         source = {"evaluated_at": 1000000, "strategy_assessments": [
             {"pair": pair, "strategy": strategy, "grade": "A", "direction": "long"}

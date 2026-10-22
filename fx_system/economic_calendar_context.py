@@ -43,7 +43,7 @@ def enrich_outlook(outlook, calendar):
             observed = event.get("observed_at_utc")
             when = event.get("scheduled_at_utc")
             currency = event.get("currency")
-            if (type(observed) is not int or observed > clock
+            if (type(observed) is not int or observed > calendar["observed_at_utc"]
                     or type(when) is not int or event.get("reference_only") is not True
                     or currency not in (pair[:3], pair[3:])
                     or not clock - before <= when <= clock + after):
