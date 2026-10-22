@@ -8,6 +8,7 @@ from copy import deepcopy
 import math
 from .scenario_lifecycle import describe_lifecycle
 from .scenario_conditions import describe_conditions
+from .strategy_strength import interpret as interpret_strength
 
 
 def _dict(value):return value if isinstance(value,dict) else {}
@@ -22,7 +23,7 @@ def assess_strategy(pair,strategy,track,evaluated_at):
     record={'pair':pair,'strategy':strategy,'direction':direction,'state':t.get('state'),
         'assessment':'evaluation_pending','grade':None,'grade_reason':None,
         'grade_scope':'provisional_scenario_quality_not_permission',
-        'method_version':'contextual_scenario_review_v2_saved_price_timing','method_validated_for_profitability':False,
+        'method_version':'contextual_scenario_review_v3_currency_strength','method_validated_for_profitability':False,
         'evaluated_at':evaluated_at,'price_basis':'saved_completed_candles_not_current_quote',
         'reference_timeframe':base,'trigger_timeframe':trigger,
         'execution_authority':'none','reasons':reasons,'opposing_evidence':opposition,
@@ -37,6 +38,9 @@ def assess_strategy(pair,strategy,track,evaluated_at):
         'reference_projection':deepcopy(plan.get('reference_projection',{'status':'unavailable','reason':'投影の確定アンカー未提供'})),
         'invalidation':deepcopy(explain.get('invalidation',{})),
         'expiry':deepcopy(explain.get('expiry',{'status':'not_defined'}))}
+    strength=interpret_strength(t.get('currency_strength_context'),pair,strategy,direction,evaluated_at)
+    record['currency_strength_context']=strength
+    strength_only_opposition=[]
     def finish(state,grade,reason):
         record.update(assessment=state,grade=grade,grade_reason=reason)
         record['expiry'],record['invalidation']=describe_lifecycle(record)
@@ -124,6 +128,17 @@ def assess_strategy(pair,strategy,track,evaluated_at):
     if direction not in ('long','short'):
         return finish('skip',None,'基準足に方向構造なし。未実装のレンジ戦略を捏造しない')
     reasons.append(f'{base}の確認済み高値安値構造={t.get("base_structure")}が{direction}を示す')
+    if strength.get('relation') == 'aligned':
+        reasons.append(strength['summary'])
+        if strength.get('movement') == 'weakening':
+            note='通貨強弱差は方向と整合するが前の同期間より支持が弱まる。価格の押し戻り・転換と併せて確認'
+            opposition.append(note);strength_only_opposition.append(note)
+    elif strength.get('relation') == 'opposed':
+        opposition.append(strength['summary'])
+        strength_only_opposition.append(strength['summary'])
+        record['waiting_conditions'].append('通貨強弱の逆行を押し戻り・転換の価格反応と併せて確認。逆行だけで一律除外しない')
+    elif strength.get('status') != 'available':
+        uncertainties.append(strength['summary'])
     macro=_dict(t.get('macro_context'))
     for tf,item in macro.items():
         item=_dict(item)
@@ -248,7 +263,8 @@ def assess_strategy(pair,strategy,track,evaluated_at):
     record['evidence_dependencies']={'structure':'confirmed_price_pivots',
         'trend_context':'Super Bollinger is price-derived trend context; no independent votes',
         'rci':'9 timing versus 26/52 persistence, same price input, not three votes',
-        'price_action':'confirmed trigger reaction, not current executable quote'}
+        'price_action':'confirmed trigger reaction, not current executable quote',
+        'currency_strength':'other configured pairs; assessed pair excluded, correlated price context, not independent votes'}
     stop=_number(levels.get('invalidation'));target=_number(levels.get('structural_target'))
     rr=_number(levels.get('reference_rr'))
     close=_number(plan.get('reference_close')) or _number(t.get('saved_reference_close'))
@@ -322,7 +338,9 @@ def assess_strategy(pair,strategy,track,evaluated_at):
         return finish('review','B','価格構造と帯の解釈が競合する移行局面。票数で決めず再確認')
     if reaction:
         reasons.append(f'{trigger}で方向に沿う参考プライスアクションを観測')
-        if opposition:
+        # Correlated cross-pair context informs comparison/waits but must not
+        # become a new single-indicator A/B gate. Preserve existing grading.
+        if any(note not in strength_only_opposition for note in opposition):
             return finish('review','B','反応と価格計画はあるが逆行背景または採算上の反対根拠が残る')
         return finish('review','A','保存時点で構造・価格計画に沿う反応まで説明できる成熟シナリオ。優位性未実証')
     return finish('review','B','方向と価格計画の監視を継続。ただし反対根拠・確認足価格での余地を再確認' if opposition else '構造と参考価格計画は説明でき、確認足の反応待ち')

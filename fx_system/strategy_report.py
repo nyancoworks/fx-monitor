@@ -58,6 +58,9 @@ def render_strategy_report(snapshot):
                   f"基準足{r['reference_timeframe'].upper()}保存終値：{_number(plan.get('reference_close'))}（{base_clock}）｜参考RR {_number(levels.get('reference_rr'))}",
                   f"構造無効化：{_number(levels.get('invalidation'))}｜構造目標：{_number(levels.get('structural_target'))}"]
         condition_plan = r.get('scenario_conditions', {})
+        strength=r.get('currency_strength_context', {})
+        if strength.get('evaluated_at') == snapshot['evaluated_at'] and strength.get('summary'):
+            lines.append('通貨強弱：'+strength['summary'])
         if condition_plan.get('status') in ('waiting','awaiting_breakout','awaiting_retest','retest_failed','conditions_observed'):
             state = ('条件観測済み' if condition_plan['status']=='conditions_observed' else
                      '再試し失敗・再評価' if condition_plan['status']=='retest_failed' else

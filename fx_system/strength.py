@@ -24,12 +24,13 @@ def _connected(edges):
         reached |= added
 
 
-def _fit(contributions):
-    # Fix CHF temporarily to zero, solve the connected graph, then center all8.
-    n = len(CURRENCIES) - 1
+def _fit(contributions, currencies=CURRENCIES):
+    # Fix the last currency temporarily to zero, then center this component.
+    # The default remains the existing all-eight display calculation.
+    n = len(currencies) - 1
     matrix = [[0.0] * (n + 1) for _ in range(n)]
     for pair, row in contributions.items():
-        a, b = CURRENCIES.index(pair[:3]), CURRENCIES.index(pair[3:])
+        a, b = currencies.index(pair[:3]), currencies.index(pair[3:])
         r = row["_return"]
         for i, sign in ((a, 1), (b, -1)):
             if i == n:
@@ -52,7 +53,7 @@ def _fit(contributions):
                 matrix[i] = [v - factor * p for v, p in zip(matrix[i], matrix[column])]
     raw = [row[-1] for row in matrix] + [0.0]
     mean = sum(raw) / len(raw)
-    return dict(zip(CURRENCIES, (v - mean for v in raw)))
+    return dict(zip(currencies, (v - mean for v in raw)))
 
 
 def compute_strength(snapshot, lookback=LOOKBACK, now=None):

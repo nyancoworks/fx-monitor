@@ -41,6 +41,19 @@ def validate_strategy_snapshot(snapshot):
             failures.append('scheduled strategy grade/state mismatch')
         if r.get('evaluated_at') != clock:
             failures.append('scheduled strategy record clock mismatch')
+        strength=r.get('currency_strength_context')
+        if strength is not None:
+            from .strategy_strength import interpret
+            if (not isinstance(strength,dict) or strength.get('evaluated_at') != clock
+                    or strength.get('pair') != r.get('pair') or strength.get('strategy') != r.get('strategy')
+                    or strength.get('status') not in ('available','unavailable')):
+                failures.append('scheduled strategy strength identity mismatch')
+            elif strength.get('status') == 'available' and interpret(
+                    strength,r['pair'],r['strategy'],r.get('direction'),clock) != strength:
+                failures.append('scheduled strategy strength context invalid')
+            elif strength.get('status') == 'unavailable' and (
+                    strength.get('relation') != 'unverified' or strength.get('comparison_priority') != 1):
+                failures.append('unavailable strategy strength contains a preference')
         if r.get('execution_authority') != 'none' or 'entry_permission' in r:
             failures.append('scheduled strategy execution contract invalid')
         base, trigger = ('h4', 'm15') if r.get('strategy') == 'swing' else ('h1', 'm5')

@@ -13,6 +13,7 @@ from .strategy_scenario_assessment import assess_strategy
 from .scenario_price_plan import saved_price_plan, trigger_price_reference
 from .price_reaction_observation import observe_saved_reaction
 from .scenario_conditions import condition_inputs
+from .strategy_strength import build_contexts
 
 def _dict(x): return x if isinstance(x,dict) else {}
 def _price(x): return x if type(x) in (int,float) and math.isfinite(x) and x>0 else None
@@ -371,6 +372,10 @@ def build_scheduled_outlook(pairs, quality, *, evaluated_at):
         try: rows.append(_one(pair,pairs.get(pair),quality.get(pair),evaluated_at))
         except (ValueError,KeyError,TypeError,AttributeError,OverflowError):
             rows.append(_one(pair,{}, {},evaluated_at))
+    strength = build_contexts(pairs, evaluated_at) if type(evaluated_at) is int and evaluated_at > 0 else {}
+    for row in rows:
+        for strategy, track in row['strategy_tracks'].items():
+            track['currency_strength_context'] = strength.get(row['pair'], {}).get(strategy)
     grade_counts={grade:sum(row["scheduled_grade"]==grade for row in rows)
                   for grade in ("A","B","C","D")}
     candidates=sorted(
@@ -434,7 +439,12 @@ def build_scheduled_outlook(pairs, quality, *, evaluated_at):
         row['strategy_assessments']={r['strategy']:r for r in strategy_assessments if r['pair']==row['pair']}
     review_keys={(a['pair'],a['strategy']) for a in strategy_assessments if a['assessment']=='review'}
     strategy_candidates=[c for c in strategy_candidates if (c['pair'],c['strategy']) in review_keys]
+    assessed={(a['pair'],a['strategy']):a for a in strategy_assessments}
+    for candidate in strategy_candidates:
+        context=assessed[(candidate['pair'],candidate['strategy'])]['currency_strength_context']
+        candidate['currency_strength_context']=context
     strategy_candidates.sort(key=lambda c:({"pattern_observed":0,"directional_watch":1,"counter_rebound_wait":2}[c["priority"]],
+                                           c['currency_strength_context']['comparison_priority'],
                                            PAIR_KEYS.index(c["pair"]),c["strategy"]))
     return {"schema":"scheduled_outlook_v1","evaluated_at":evaluated_at,
             "grade_counts":grade_counts,"candidate_count":len(candidates),
