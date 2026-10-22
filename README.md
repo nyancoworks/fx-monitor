@@ -4,11 +4,11 @@
 
 ## 移行状況
 
-公開コード用と非公開データ用への移行準備中です。収集は未有効化です。新しいGit履歴には市場データ・保存評価・過去Issue・実原本を含めていません。元の正本と全履歴は非公開リポジトリで保持しています。
+公開コードと非公開データの分離移行は実施済みです。コード・Actionsは [fx-monitor](https://github.com/nyancoworks/fx-monitor)、価格原本・cache・snapshot・NY17・監視履歴は非公開の `fx-monitor-data` に保管します。旧 `fx-trading-system` はアーカイブ済みの履歴参照用です。
 
-- プログラムと設定：この公開リポジトリ
-- 価格原本・cache・snapshot・NY17・監視履歴：所有者の非公開データリポジトリ
-- 元の指標式とシナリオ判定は維持。移行変更を含む全体653テストがローカルで成功しました。CI・自然実行の確認とは別です。
+非公開側の `migration/READY.json` は原本照合・NY17復元・32シナリオ検証をすべて `true` と記録し、`collection_enabled=true` です。現行コード `ccc1269` による自然実行 `39743302462` はActionsのcollectジョブが成功し、保存診断でも16通貨ペアが判断準備完了、品質検証失敗0件でした。ただし08:50の過去の品質検証失敗の根本原因、通知到達、レンジ候補の自然出力、移行の最終受入は未確認です。移行受入マーカーの `natural_operation_verified` は `false` のままです。
+
+新しいGit履歴には市場データ・保存評価・過去Issue・実原本を含めていません。移行変更を含む全体653テストは移行時のローカル実施記録であり、現行コミットでの再実行結果ではありません。
 
 ## オフライン確認
 
@@ -25,8 +25,8 @@ python -m unittest discover -s tests -q
 
 公開Actionsは`fx_system.private_runtime`から固定された処理を起動します。子プロセスの価格を含む出力とエラーは公開ログへ流さず、非公開checkout内の一時診断へ保存し、設定済みキー/トークン値を伏せます。これら一時診断はrunner終了後の永続保管を保証しません。保存評価の原本は非公開snapshot/履歴です。
 
-収集workflowは`workflow_dispatch`のみで、所有者が`FX_COLLECTION_ENABLED=true`を設定するまでjobは実行されません。さらに非公開側の`migration/READY.json`で原本byte照合・完全NY17復元・正規32検証を確認するまで市場API呼出しへ進みません。現時点ではこの条件は満たしていません。
+収集workflowは`workflow_dispatch`のみで、所有者が`FX_COLLECTION_ENABLED=true`を設定するまでjobは実行されません。さらに非公開側の`migration/READY.json`で原本byte照合・完全NY17復元・正規32検証を確認するまで市場API呼出しへ進みません。非公開側の移行判定条件は記録上満たされていますが、最終的な自然実行受入は未完了です。
 
-有効化前に必要な所有者設定は`TWELVE_DATA_API_KEY`と、対象非公開データrepoだけにContents read/writeを付けた`FX_DATA_REPO_TOKEN`です。値をIssue・チャット・ログへ貼らないでください。既存時刻の起動先を置換する際は旧収集と二重実行しません。
+運用で使用する所有者設定は`TWELVE_DATA_API_KEY`と、対象非公開データrepoだけにContents read/writeを付けた`FX_DATA_REPO_TOKEN`です。値をIssue・チャット・ログへ貼らないでください。既存時刻の起動先を置換する際は旧収集と二重実行しません。
 
 直接`python -m fx_system.main`を実行すると市場API取得と詳細出力を伴います。移行確認や公開workflowの呼出しには使わず、上記の実行経路を使用してください。
