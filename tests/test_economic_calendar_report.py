@@ -21,6 +21,14 @@ class CalendarReportTests(unittest.TestCase):
         self.assertIn("Employment", lines[0])
         self.assertIn("不変更", lines[-1])
 
+    def test_source_attribution(self):
+        row = {"economic_calendar_context": {"status": "available",
+            "attribution_url": "https://www.financecalendar.com", "events": [
+                {"currency": "USD", "title": "Employment",
+                 "scheduled_at_utc": 100, "timing": "upcoming"}]}}
+        lines = calendar_lines(row, str)
+        self.assertTrue(any("https://www.financecalendar.com" in line for line in lines))
+
     def test_no_events_not_market_skip(self):
         lines = calendar_lines({"economic_calendar_context": {
             "status": "partial", "events": []}}, str)
