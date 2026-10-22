@@ -38,6 +38,17 @@ class CalendarContextTests(unittest.TestCase):
                                            "complete": False, "events": [event]})
         self.assertEqual(result["strategy_assessments"][0]["economic_calendar_context"]["events"], [])
 
+    def test_release_observation_precedes_release(self):
+        event = {"currency": "USD", "scheduled_at_utc": 999900,
+                 "observed_at_utc": 999800, "reference_only": True,
+                 "actual": 5.0, "actual_raw": "5%", "surprise": 2.0}
+        result = enrich_outlook(outlook(), {"observed_at_utc": 1000000,
+                                           "complete": True, "events": [event]})
+        item = result["strategy_assessments"][0]["economic_calendar_context"]["events"][0]
+        self.assertIsNone(item["actual"])
+        self.assertIsNone(item["actual_raw"])
+        self.assertEqual(item["status"], "release_unverified")
+
     def test_reject_duplicate(self):
         source = outlook()
         source["strategy_assessments"][2] = source["strategy_assessments"][0].copy()
