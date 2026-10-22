@@ -49,10 +49,10 @@ def enrich_outlook(outlook, calendar):
                     or not clock - before <= when <= clock + after):
                 continue
             item = deepcopy(event)
-            if when > clock:
+            if when > clock or observed < when:
                 for key in ("actual", "actual_raw", "surprise"):
                     item[key] = None
-                item["status"] = "scheduled"
+                item["status"] = "scheduled" if when > clock else "release_unverified"
                 item["numeric_comparison_verified"] = False
             item["relation"] = "base" if currency == pair[:3] else "quote"
             item["timing"] = "upcoming" if when > clock else "past_release_window"
