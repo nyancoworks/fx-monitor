@@ -69,6 +69,21 @@ def enrich_outlook(outlook, calendar):
         }
     if seen != {(p, s) for p in PAIR_KEYS for s in WINDOWS}:
         raise ValueError("missing canonical assessments")
+    # Snapshot validator requires row copies to match canonical assessments.
+    canonical = {(a["pair"], a["strategy"]): a for a in assessments}
+    rows = result.get("rows")
+    if isinstance(rows, list):
+        for row in rows:
+            if not isinstance(row, dict):
+                raise ValueError("invalid outlook row")
+            saved = row.get("strategy_assessments")
+            if not isinstance(saved, dict) or set(saved) != set(WINDOWS):
+                raise ValueError("invalid row strategy assessments")
+            for strategy in WINDOWS:
+                key = (row.get("pair"), strategy)
+                if key not in canonical:
+                    raise ValueError("unknown row strategy")
+                row["strategy_assessments"][strategy] = deepcopy(canonical[key])
     result["economic_calendar_context"] = {
         "status": ("available" if calendar.get("complete") is True else "partial")
                   if valid else "unavailable",
