@@ -39,6 +39,12 @@ def assess_strategy(pair,strategy,track,evaluated_at):
         'invalidation':deepcopy(explain.get('invalidation',{})),
         'expiry':deepcopy(explain.get('expiry',{'status':'not_defined'}))}
     strength=interpret_strength(t.get('currency_strength_context'),pair,strategy,direction,evaluated_at)
+    is_range = t.get('scenario_type') == 'range_reversal'
+    if 'range_context' in t:
+        record['range_context'] = deepcopy(t['range_context'])
+    if is_range:
+        record['scenario_type'] = 'range_reversal'
+        record['method_version'] = 'contextual_scenario_review_v4_range'
     record['currency_strength_context']=strength
     strength_only_opposition=[]
     def finish(state,grade,reason):
@@ -126,8 +132,13 @@ def assess_strategy(pair,strategy,track,evaluated_at):
         opposition.append('当該戦略の確認足で無効化を観測')
         return finish('skip',None,'保存時点でシナリオが無効化。再形成待ち')
     if direction not in ('long','short'):
-        return finish('skip',None,'基準足に方向構造なし。未実装のレンジ戦略を捏造しない')
-    reasons.append(f'{base}の確認済み高値安値構造={t.get("base_structure")}が{direction}を示す')
+        if _dict(t.get('range_context')).get('status') == 'broken':
+            record['skip_reason'] = 'confirmed_range_break'
+        return finish('skip',None,_dict(t.get('range_context')).get('reason', '基準足の方向構造・反復水平帯を確認できず、再形成待ち'))
+    reasons.append(t['range_context']['reason'] if is_range else
+                   f'{base}の確認済み高値安値構造={t.get("base_structure")}が{direction}を示す')
+    if is_range:
+        uncertainties.append('レンジ解釈は暫定。反発条件を観測しても優位性は未検証でA評価にはしない')
     if strength.get('relation') == 'aligned':
         reasons.append(strength['summary'])
         if strength.get('movement') == 'weakening':
@@ -258,7 +269,7 @@ def assess_strategy(pair,strategy,track,evaluated_at):
         uncertainties.append(f'{trigger}の品質・鮮度が未確認。基準足の方向シナリオは保持')
     if not reaction_clock:uncertainties.append('反応足の確定時刻・鮮度は未確認。過去のパターンを現在の反応にしない')
     record['reaction_timestamp']=stamp if type(stamp) is int and reaction_clock else None
-    record['market_phase']=('pullback_wait' if counter else 'transition_context' if contextual_conflict else
+    record['market_phase']=('range_edge_reversal' if is_range else 'pullback_wait' if counter else 'transition_context' if contextual_conflict else
                             'directional_structure_with_reaction' if reaction else 'directional_structure_wait')
     record['evidence_dependencies']={'structure':'confirmed_price_pivots',
         'trend_context':'Super Bollinger is price-derived trend context; no independent votes',
@@ -332,6 +343,8 @@ def assess_strategy(pair,strategy,track,evaluated_at):
         uncertainties.append('後の確認足保存終値を検証できない。基準足価格の参考RRだけを保持')
     if not plan_coherent:
         return finish('review','C','方向は説明できるが価格計画が未完成または不整合。欠落値は補完しない')
+    if is_range:
+        return finish('review','B','確認済み水平帯の端を監視する暫定レンジ候補。反発・反落と反対側までの余地を確認し、終値の範囲外到達で撤回')
     if counter:
         return finish('review','B','価格計画は説明可能だが短期逆行中。押し戻り終了待ち')
     if contextual_conflict:

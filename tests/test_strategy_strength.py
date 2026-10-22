@@ -145,7 +145,7 @@ class StrategyStrengthTests(unittest.TestCase):
         track = mature_track(); track.update(direction=None, base_structure='mixed')
         result = assess_strategy('EURUSD','daytrade',track,CLOCK)
         self.assertEqual(result['assessment'], 'skip')
-        self.assertIn('レンジ戦略', result['grade_reason'])
+        self.assertIn('反復水平帯', result['grade_reason'])
 
     def test_all32_contexts_roundtrip_and_tampered_clock_is_rejected(self):
         from fx_system.scheduled_outlook import build_scheduled_outlook

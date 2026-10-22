@@ -2,6 +2,7 @@
 from collections import Counter
 from .monitor_pairs import PAIR_KEYS
 from .scenario_conditions import validate_conditions
+from .range_scenario import validate_range
 
 
 def validate_strategy_snapshot(snapshot):
@@ -31,6 +32,7 @@ def validate_strategy_snapshot(snapshot):
     counts = Counter()
     for r in records:
         failures.extend(validate_conditions(r))
+        failures.extend(validate_range(r))
         state = r.get('assessment')
         if state not in ('review', 'skip', 'evaluation_pending'):
             failures.append('scheduled strategy state invalid')

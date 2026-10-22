@@ -117,7 +117,26 @@ def describe_conditions(record, inputs):
                '既存評価で構造とトレンド背景が競合' if phase == 'transition_context' else
                '基準足の方向構造を軸に継続反応を確認')
     conditions = []; observed = False; breakout_at = None
-    if phase == 'pullback_wait' or local_pullback:
+    if record.get('scenario_type') == 'range_reversal':
+        route = 'range_edge_rejection'
+        rc = _dict(record.get('range_context'))
+        level = rc.get('reaction_level')
+        formed = rc.get('formed_at')
+        anchors = rc.get('anchors', [])
+        if (rc.get('status') != 'bounded' or rc.get('direction') != record['direction']
+                or not _price(level) or type(formed) is not int or formed > last['timestamp']
+                or len(anchors) != 4):
+            return unavailable('レンジ水平帯の確定・方向・反応順序を再照合できない')
+        anchor_bars = [{'timestamp': anchors[0]['timestamp']}, {'timestamp': formed-seconds}]
+        observed = (last['low'] <= level < last['close'] and last['close'] > last['open'] if long else
+                    last['high'] >= level > last['close'] and last['close'] < last['open'])
+        context = '確認済み水平帯の端で反発・反落を確認。レンジ解釈・収益性は未検証'
+        text = (f"{LABELS[tf]}でレンジ{'下側' if long else '上側'}水平帯の内縁{_fmt(level)}を試し、"
+                f"終値が同水準を{above}、始値より{close_side}引けることを確認する。外縁への終値到達で撤回")
+        conditions = [{'kind': 'range_touch_reclaim_directional_close', 'level': level,
+                       'touch_relation': '<=' if long else '>=', 'close_relation': '>' if long else '<',
+                       'body_relation': 'close>open' if long else 'close<open'}]
+    elif phase == 'pullback_wait' or local_pullback:
         route = 'pullback_rejection'
         anchor_bars = bars[-3:-1]
         level = (min if long else max)(b[support_key] for b in anchor_bars)
@@ -170,7 +189,8 @@ def describe_conditions(record, inputs):
     status = ('conditions_observed' if observed else stage if route == 'breakout_retest' else 'waiting')
     observed_at = checked['closed_at'] if observed else None
     result.update(status=status, route=route, reason=context, summary=text, conditions=conditions,
-                  level=level, level_basis='local_saved_extreme_not_confirmed_structural_pivot',
+                  level=level, level_basis=('confirmed_range_wick_zone_inner_edge' if route == 'range_edge_rejection'
+                                           else 'local_saved_extreme_not_confirmed_structural_pivot'),
                   anchor_started_at=anchor_bars[0]['timestamp'],
                   anchor_closed_at=anchor_bars[-1]['timestamp'] + seconds,
                   evaluated_candle_closed_at=checked['closed_at'],
@@ -231,7 +251,13 @@ def validate_conditions(record):
         if route == 'continuation_breakout':
             observed = c>level if long else c<level
             expected = 'conditions_observed' if observed else 'waiting'
-        elif route == 'pullback_rejection':
+        elif route in ('pullback_rejection', 'range_edge_rejection'):
+            if route == 'range_edge_rejection':
+                rc = _dict(record.get('range_context'))
+                if (record.get('scenario_type') != 'range_reversal' or rc.get('status') != 'bounded'
+                        or rc.get('direction') != record.get('direction')
+                        or rc.get('reaction_level') != level or rc.get('formed_at') != anchor_end):
+                    return ['scenario range condition context mismatch']
             observed = l<=level<c and c>o if long else h>=level>c and c<o
             expected = 'conditions_observed' if observed else 'waiting'
         elif route == 'breakout_retest':

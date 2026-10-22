@@ -58,6 +58,9 @@ def render_strategy_report(snapshot):
                   f"基準足{r['reference_timeframe'].upper()}保存終値：{_number(plan.get('reference_close'))}（{base_clock}）｜参考RR {_number(levels.get('reference_rr'))}",
                   f"構造無効化：{_number(levels.get('invalidation'))}｜構造目標：{_number(levels.get('structural_target'))}"]
         condition_plan = r.get('scenario_conditions', {})
+        if r.get('scenario_type') == 'range_reversal':
+            rc = r['range_context']
+            lines.append(f"レンジ候補（暫定）：下側帯 {rc['lower_zone']}｜上側帯 {rc['upper_zone']}。外縁への終値到達で撤回、中央は待機")
         strength=r.get('currency_strength_context', {})
         if strength.get('evaluated_at') == snapshot['evaluated_at'] and strength.get('summary'):
             lines.append('通貨強弱：'+strength['summary'])

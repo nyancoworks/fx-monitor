@@ -38,6 +38,10 @@ def explain_strategy_track(track):
         wait = f"{trigger}参考パターンを観測済み。次の確定足で継続・無効化を再確認する"
     else:
         wait = f"{trigger}確定足で監視方向の価格反応を待つ。足の鮮度だけでは成立としない"
+    if track.get('scenario_type') == 'range_reversal':
+        wait = f"{trigger}確定足でレンジ端への接触後、内側へ戻る方向の実体を確認する。外縁への終値到達で撤回"
+    elif track.get('range_context'):
+        wait = track['range_context']['reason']
     return {
         "basis": f"{base}構造={track.get('base_structure', 'unconfirmed')}、方向={direction or '未確認'}。{trigger}で反応を確認する監視用の説明",
         "waiting_condition": wait,

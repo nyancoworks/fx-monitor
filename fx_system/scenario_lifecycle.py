@@ -17,12 +17,14 @@ def describe_lifecycle(record):
                                'confirmation': 'verified_saved_closed_candle_not_live_quote'})
     reason = record.get('skip_reason')
     invalidation = reason in ('confirmed_trigger_invalidation', 'saved_base_invalidation_crossed',
-                              'saved_trigger_invalidation_crossed')
+                              'saved_trigger_invalidation_crossed', 'confirmed_range_break')
     withdrawn = invalidation or reason == 'saved_trigger_target_reached'
     recent = record.get('trigger_price_review', {})
     observation = None
     if withdrawn:
-        if reason.startswith('saved_trigger_'):
+        if reason == 'confirmed_range_break':
+            observation = deepcopy(record.get('range_context', {}).get('break_observation'))
+        elif reason.startswith('saved_trigger_'):
             observation = {'timeframe': record.get('trigger_timeframe'),
                            'closed_at': recent.get('closed_at'), 'saved_close': recent.get('saved_close')}
         elif reason == 'confirmed_trigger_invalidation':
