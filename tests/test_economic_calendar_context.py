@@ -1,5 +1,6 @@
 """Synthetic-only tests: no provider calls or private observations."""
 import unittest
+from unittest.mock import patch
 from fx_system.monitor_pairs import PAIR_KEYS
 from fx_system.economic_calendar_context import enrich_outlook
 
@@ -65,6 +66,15 @@ class CalendarContextTests(unittest.TestCase):
             for strategy in ("swing", "daytrade"):
                 self.assertEqual(row["strategy_assessments"][strategy],
                                  canonical[(row["pair"], strategy)])
+
+    def test_invalid_optional_calendar_cannot_block_scheduled_outlook(self):
+        from fx_system.scheduled_outlook import build_scheduled_outlook
+        baseline = build_scheduled_outlook({}, {}, evaluated_at=1000000)
+        with patch("fx_system.economic_calendar_context.enrich_outlook",
+                   side_effect=ValueError("invalid optional calendar")):
+            actual = build_scheduled_outlook({}, {}, evaluated_at=1000000,
+                                             economic_calendar={"events": []})
+        self.assertEqual(actual, baseline)
 
     def test_reject_duplicate(self):
         source = outlook()
