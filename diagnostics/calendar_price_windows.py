@@ -23,7 +23,7 @@ def _measure(event, feed, since, through, seconds):
     if when % 300:
         return {'status': 'unavailable', 'reason': 'event_not_aligned_to_saved_m5_boundary'}
     if when+seconds > through:
-        return {'status': 'unavailable', 'reason': 'horizon_not_yet_saved'}
+        return {'status': 'unavailable', 'reason': 'horizon_beyond_this_saved_window'}
     if (not isinstance(feed, dict) or feed.get('status') != 'saved_reference'
             or feed.get('provider') != 'Twelve Data'
             or type(feed.get('unverified_source_count')) is not int

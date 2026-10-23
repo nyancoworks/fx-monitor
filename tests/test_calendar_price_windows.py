@@ -54,7 +54,7 @@ class CalendarPriceWindowTests(unittest.TestCase):
             self.assertEqual(case['overlapping_scheduled_event_ids'], ['synthetic-overlap'])
             self.assertFalse(case['release_time_verified'])
             self.assertEqual(case['causal_attribution'], 'unassessed')
-        self.assertEqual(cases[2]['observation']['reason'], 'horizon_not_yet_saved')
+        self.assertEqual(cases[2]['observation']['reason'], 'horizon_beyond_this_saved_window')
         self.assertEqual((bundle, followup), original)
 
     def test_gap_and_unknown_source_cannot_be_filled_or_given_measured_counts(self):
