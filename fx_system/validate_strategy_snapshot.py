@@ -38,6 +38,8 @@ def validate_strategy_snapshot(snapshot):
             failures.append('scheduled strategy state invalid')
         else:
             counts[state] += 1
+        if state == 'review' and r.get('direction') not in ('long', 'short'):
+            failures.append('scheduled strategy review direction invalid')
         if ((state == 'review' and r.get('grade') not in ('A', 'B', 'C')) or
                 (state != 'review' and r.get('grade') is not None)):
             failures.append('scheduled strategy grade/state mismatch')
