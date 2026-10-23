@@ -72,6 +72,7 @@ def build_strategy_report_export(snapshot_bytes, source):
         saved = {**bundle, 'status': 'saved', 'error': None,
             'assessment_summaries': _summaries(view),
             'assessment_counts': deepcopy(projected['assessment_counts']),
+            'selection_version': 2,
             'report_text': render_strategy_report(view), 'encoding': 'gzip_base64_json',
             'review_context_version': 2,
             'review_context_text': render_strategy_report(view, include_all_reviews=True,
@@ -109,10 +110,14 @@ def restore_strategy_report_export(bundle, source, snapshot_blob_sha):
                 or hashlib.sha256(raw).hexdigest() != bundle.get('payload_sha256')):
             raise ValueError
         view = json.loads(raw)
+        selection_version = bundle.get('selection_version', 1)
+        if type(selection_version) is not int or selection_version not in (1, 2):
+            raise ValueError
         if (view.get('evaluated_at') != source['evaluated_at'] or validate_strategy_snapshot(view)
                 or bundle.get('assessment_summaries') != _summaries(view)
                 or bundle.get('assessment_counts') != view['scheduled_outlook']['assessment_counts']
-                or bundle.get('report_text') != render_strategy_report(view)):
+                or bundle.get('report_text') != render_strategy_report(
+                    view, selection_version=selection_version)):
             raise ValueError
         # Legacy text truncated evidence to two entries even in all-review
         # mode. Keep its exact verification while version 2 retains every
@@ -123,7 +128,8 @@ def restore_strategy_report_export(bundle, source, snapshot_blob_sha):
             raise ValueError
         if ('review_context_text' in bundle and bundle['review_context_text'] !=
                 render_strategy_report(view, include_all_reviews=True,
-                                       complete_evidence=context_version == 2)):
+                                       complete_evidence=context_version == 2,
+                                       selection_version=selection_version)):
             raise ValueError
         return view
     except Exception:

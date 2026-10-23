@@ -101,7 +101,8 @@ def review_saved_followup(bundle, source, snapshot_blob_sha, followup):
         raise ValueError('saved followup does not match frozen scenarios and observations') from None
 
     outlook = view['scheduled_outlook']
-    shown = {_identity(r) for r in report_records(outlook)}
+    shown = {_identity(r) for r in report_records(
+        outlook, selection_version=bundle.get('selection_version', 1))}
     groups = { _identity(r): saved_plan_comparison(r)[0] for r in reviews }
     selection = []
     for record in reviews:
