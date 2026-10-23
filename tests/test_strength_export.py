@@ -12,7 +12,8 @@ from unittest.mock import patch
 
 from fx_system.strength import compute_strength
 from fx_system.monitor_pairs import PAIR_KEYS
-from fx_system.strength_export import build_strength_export, validate_strength_export
+from fx_system.strength_export import (build_strength_export, validate_strength_export,
+                                       render_strength_summary)
 from fx_system.private_runtime import save_snapshot
 from fx_system.strategy_report import report_records
 
@@ -35,6 +36,40 @@ def sample(missing=()):
 
 
 class StrengthExportTests(unittest.TestCase):
+    def test_summary_uses_saved_ranking_and_preserves_equal_scores(self):
+        strength = sample()['currency_strength']
+        text = render_strength_summary(strength, CLOCK)
+        self.assertIn('差なし', text)
+        self.assertNotIn(' ＞ ', text)
+        strength['scores'] = dict(zip(strength['ranking'], (4, 3, 2, 1, -1, -2, -3, -4)))
+        before = deepcopy(strength)
+        text = render_strength_summary(strength, CLOCK)
+        self.assertIn('強い順 ' + ' ＞ '.join(strength['ranking']), text)
+        self.assertIn('16/16ペア', text)
+        self.assertIn('6時間強弱とは期間が異なり', text)
+        self.assertEqual(strength, before)
+
+    def test_summary_distinguishes_partial_disconnected_and_stale_inputs(self):
+        partial = sample(('CADJPY',))['currency_strength']
+        self.assertIn('15/16ペア・一部データによる暫定順位', render_strength_summary(partial, CLOCK))
+        disconnected = sample(tuple(p for p in PAIR_KEYS if 'CHF' in p))['currency_strength']
+        self.assertIn('データ不足で8通貨を比較できません', render_strength_summary(disconnected, CLOCK))
+        self.assertEqual(render_strength_summary(partial, CLOCK+3600), '通貨強弱（24時間）：確認できません。')
+
+    def test_summary_is_verified_but_legacy_export_remains_readable(self):
+        bundle = build_strength_export(json.dumps(sample()).encode(), SOURCE)
+        blob = bundle['snapshot_git_blob_sha']
+        self.assertEqual(bundle['summary_version'], 1)
+        self.assertEqual(validate_strength_export(bundle, SOURCE, blob), [])
+        legacy = deepcopy(bundle)
+        del legacy['summary_version']; del legacy['summary_text']
+        self.assertEqual(validate_strength_export(legacy, SOURCE, blob), [])
+        for change in ({'summary_text': 'invented ranking'}, {'summary_version': True},
+                       {'summary_version': 2}):
+            self.assertTrue(validate_strength_export({**bundle, **change}, SOURCE, blob))
+        del bundle['summary_version']
+        self.assertTrue(validate_strength_export(bundle, SOURCE, blob))
+
     def test_exact_saved_payload_and_snapshot_blob_identity_without_recalculation(self):
         snapshot = sample(); raw = json.dumps(snapshot).encode(); before = deepcopy(snapshot)
         with patch('fx_system.strength.compute_strength', side_effect=AssertionError('no recalculation')):

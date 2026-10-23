@@ -25,6 +25,16 @@ source history, assessment formulas and collection schedule are unchanged.
 Synthetic tests exercise copying, source mismatch, unsupported payloads,
 symlink rejection and one-commit publication to a local Git remote.
 
+The optional `summary_version=1` / `summary_text` fields provide a short Japanese
+24-hour overview for the report opening, after its conclusion. They render the
+saved ranking and completed-window end in JST, preserve equal saved scores as
+ties, and show coverage and provisional/unavailable states. The text distinguishes
+this eight-currency overview from each daytrade candidate's six-hour context;
+neither is a direction vote. No new price calculation or request is introduced.
+The reader validates source/blob and strength first, and checks summary equality
+when present. Old exports without both fields remain valid; readers can format
+their verified saved ranking without implying that an absent summary was saved.
+
 Scheduled reports select up to three swing and three daytrade candidates
 independently, rather than sharing a three-candidate limit. Fewer candidates
 are not filled with skips or with candidates from the other strategy.
