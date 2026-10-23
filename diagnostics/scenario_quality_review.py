@@ -78,6 +78,19 @@ def review_saved_followup(bundle, source, snapshot_blob_sha, followup):
                         and unknown == 0 and observation['status'] == 'descriptive_observation_only'
                         and observation['missing_start'] is False and observation['missing_end'] is False
                         and not observation['internal_gaps'])
+            since = source['evaluated_at']
+            expected_seconds = max(0, through//300*300 - (since+299)//300*300)
+            coverage = {
+                'basis': 'whole_m5_intervals_after_saved_evaluation',
+                'saved_evaluation_window_seconds': through-since,
+                'expected_whole_m5_seconds': expected_seconds,
+                'excluded_clock_boundary_seconds': through-since-expected_seconds,
+                'observed_whole_m5_seconds': observation['observed_bar_count']*300
+                    if observation['status'] == 'descriptive_observation_only' else None,
+                'whole_m5_grid_complete': complete,
+                'continuous_saved_evaluation_window': complete and expected_seconds == through-since,
+                'notification_to_notification_coverage': 'unverified',
+            }
             levels = record.get('reference_levels', {})
             next_record = next_by_identity[_identity(record)]
             cases.append({'pair': record['pair'], 'strategy': record['strategy'],
@@ -86,6 +99,7 @@ def review_saved_followup(bundle, source, snapshot_blob_sha, followup):
                 'market_phase_at_save': record.get('market_phase'),
                 'scenario_type': record.get('scenario_type', 'trend'),
                 'complete_saved_m5_window': complete,
+                'saved_m5_coverage': coverage,
                 'target_touch_observable': complete and positive(levels.get('structural_target')),
                 'invalidation_touch_observable': complete and positive(levels.get('invalidation')),
                 'next_saved_evaluation': {
@@ -124,10 +138,13 @@ def review_saved_followup(bundle, source, snapshot_blob_sha, followup):
         'canonical_count': len(records), 'review_count': len(cases),
         'condition_status_counts': dict(Counter(c['condition_status_at_save'] for c in cases)),
         'complete_saved_window_count': sum(c['complete_saved_m5_window'] for c in cases),
+        'continuous_saved_evaluation_window_count': sum(
+            c['saved_m5_coverage']['continuous_saved_evaluation_window'] for c in cases),
         'target_touch_observable_count': sum(c['target_touch_observable'] for c in cases),
         'invalidation_touch_observable_count': sum(c['invalidation_touch_observable'] for c in cases),
         'cases': cases, 'selection_review': selection,
         'limitations': ['No verified notification publication clock or execution price.',
+            'Complete whole-M5 grids can exclude partial intervals at saved evaluation boundaries.',
             'Wick touches do not prove scenario formation, withdrawal, fills or profit.',
             'No pooled unequal-horizon returns, win rates or hindsight ranking changes.',
             'Input identity and agreement are not independent market-source verification.']}
