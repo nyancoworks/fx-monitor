@@ -56,7 +56,9 @@ class StrategyReportExportTests(unittest.TestCase):
         self.assertIn('32戦略', bundle['report_text'])
         self.assertIn('Synthetic calendar reference', bundle['report_text'])
         self.assertEqual(bundle['report_text'], render_strategy_report(saved))
-        self.assertEqual(bundle['review_context_text'], render_strategy_report(saved, include_all_reviews=True))
+        self.assertEqual(bundle['review_context_version'], 2)
+        self.assertEqual(bundle['review_context_text'], render_strategy_report(
+            saved, include_all_reviews=True, complete_evidence=True))
         self.assertNotIn('raw_unrelated_price_input', json.dumps(restored))
         self.assertLess(len(json.dumps(bundle).encode()), 900000)
         self.assertEqual(saved, original)
@@ -137,10 +139,55 @@ class StrategyReportExportTests(unittest.TestCase):
             self.assertNotIn(_label(record)+'｜', bundle['report_text'])
         self.assertIn('非掲載の検討候補：0', bundle['review_context_text'])
         restore_strategy_report_export(bundle, SOURCE, bundle['snapshot_git_blob_sha'])
-        legacy = deepcopy(bundle); legacy.pop('review_context_text')
+        legacy = deepcopy(bundle); legacy.pop('review_context_text'); legacy.pop('review_context_version')
         self.assertEqual(restore_strategy_report_export(legacy, SOURCE, bundle['snapshot_git_blob_sha']),
                          restore_strategy_report_export(bundle, SOURCE, bundle['snapshot_git_blob_sha']))
         self.assertEqual(saved, before)
+
+    def test_complete_comparison_keeps_late_evidence_for_shown_and_omitted_reviews(self):
+        from fx_system.monitor_pairs import PAIR_KEYS
+        from fx_system.strategy_report import report_records, _label
+        data, _ = sample()
+        quality = {'timeframes': {'h1': {'ok': True, 'count': 20},
+                                 'm5': {'ok': True, 'count': 5, 'age_minutes': 0}}}
+        data['decision_quality'] = {**deepcopy(quality), 'evaluated_at': CLOCK}
+        data['technical'] = {'h1': {'status': 'ok', 'structure': 'mixed'}}
+        outlook = build_scheduled_outlook({p: deepcopy(data) for p in PAIR_KEYS},
+                                          {p: deepcopy(quality) for p in PAIR_KEYS}, evaluated_at=CLOCK)
+        reviews = [r for r in outlook['strategy_assessments'] if r['assessment'] == 'review']
+        for index, record in enumerate(reviews):
+            record['reasons'] = [f'synthetic reason {index}/{n}' for n in range(4)]
+            record['opposing_evidence'] = [f'synthetic opposition {index}/{n}' for n in range(4)]
+            row = next(r for r in outlook['rows'] if r['pair'] == record['pair'])
+            row['strategy_assessments'][record['strategy']] = deepcopy(record)
+        saved = {'evaluated_at': CLOCK, 'scheduled_outlook': outlook}; before = deepcopy(saved)
+        bundle = build_strategy_report_export(json.dumps(saved).encode(), SOURCE)
+        self.assertEqual(bundle['status'], 'saved')
+        shown = report_records(outlook)
+        self.assertTrue(shown and len(reviews) > len(shown))
+        for record in reviews:
+            block = bundle['review_context_text'].split(_label(record)+'｜', 1)[1].split('\n\n', 1)[0]
+            for evidence in record['reasons'] + record['opposing_evidence']:
+                self.assertIn(evidence, block)
+            for evidence in record['reasons'][2:] + record['opposing_evidence'][2:]:
+                self.assertNotIn(evidence, bundle['report_text'])
+        self.assertEqual(saved, before)
+        self.assertEqual(restore_strategy_report_export(bundle, SOURCE, bundle['snapshot_git_blob_sha'])
+                         ['scheduled_outlook']['strategy_assessments'], outlook['strategy_assessments'])
+
+    def test_legacy_partial_context_restores_without_claiming_complete_evidence(self):
+        saved = snapshot()
+        bundle = build_strategy_report_export(json.dumps(saved).encode(), SOURCE)
+        legacy = deepcopy(bundle); legacy.pop('review_context_version')
+        legacy['review_context_text'] = render_strategy_report(saved, include_all_reviews=True)
+        restore_strategy_report_export(legacy, SOURCE, bundle['snapshot_git_blob_sha'])
+        for version in (True, 0, 3, '2'):
+            with self.assertRaises(ValueError):
+                restore_strategy_report_export({**bundle, 'review_context_version': version},
+                                               SOURCE, bundle['snapshot_git_blob_sha'])
+        missing = deepcopy(bundle); missing.pop('review_context_text')
+        with self.assertRaises(ValueError):
+            restore_strategy_report_export(missing, SOURCE, bundle['snapshot_git_blob_sha'])
 
     def test_private_atomic_save_shares_push_with_original_and_failed_projection_advances(self):
         with tempfile.TemporaryDirectory() as folder:

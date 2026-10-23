@@ -48,7 +48,7 @@ def _label(r):
     return f"{r['pair'][:3]}/{r['pair'][3:]} {'スイング' if r['strategy']=='swing' else 'デイトレード'}"
 
 
-def render_strategy_report(snapshot, *, include_all_reviews=False):
+def render_strategy_report(snapshot, *, include_all_reviews=False, complete_evidence=False):
     failures = validate_strategy_snapshot(snapshot)
     if failures:
         raise ValueError('; '.join(failures))
@@ -72,8 +72,8 @@ def render_strategy_report(snapshot, *, include_all_reviews=False):
         base_clock=f'{_clock(base_closed)}確定' if base_closed is not None else '確定時刻未確認'
         lines += ['', f"{_label(r)}｜{'買い方向' if r['direction']=='long' else '売り方向'}｜{r['grade']}",
                   '評価理由：'+r['grade_reason'],
-                  '主根拠：'+'／'.join(r.get('reasons', [])[:2]),
-                  '反対根拠：'+('／'.join(r.get('opposing_evidence', [])[:2]) or '保存評価では具体的な反対根拠の記載なし'),
+                  '主根拠：'+'／'.join(r.get('reasons', []) if complete_evidence else r.get('reasons', [])[:2]),
+                  '反対根拠：'+('／'.join(r.get('opposing_evidence', []) if complete_evidence else r.get('opposing_evidence', [])[:2]) or '保存評価では具体的な反対根拠の記載なし'),
                   '待ち条件：'+('／'.join(r.get('waiting_conditions', [])) or '未提供'),
                   '成立確認：'+('／'.join(r.get('formation_conditions', [])) or '未提供')+'。成立価格・成立後RRは未確定',
                   f"基準足{r['reference_timeframe'].upper()}保存終値：{_number(plan.get('reference_close'))}（{base_clock}）｜参考RR {_number(levels.get('reference_rr'))}",
