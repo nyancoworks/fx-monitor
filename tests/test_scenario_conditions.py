@@ -63,6 +63,7 @@ class ScenarioConditionsTests(unittest.TestCase):
         r = compute(bars, t)
         self.assertEqual((r['route'], r['status'], r['level']), ('pullback_rejection', 'conditions_observed', 99))
         self.assertIn('始値より高く', r['summary'])
+        self.assertIn('反発を確認', r['summary'])
         bars[-1].update(open=101)
         self.assertEqual(compute(bars, t)['status'], 'waiting')
 
@@ -78,6 +79,7 @@ class ScenarioConditionsTests(unittest.TestCase):
         bars[-1].update(open=102, high=103, close=101)
         r = compute(bars, t)
         self.assertEqual((r['route'], r['status'], r['level']), ('pullback_rejection', 'conditions_observed', 102))
+        self.assertIn('始値より安く引ける反落を確認', r['summary'])
 
     def test_transition_does_not_treat_breakout_as_completed_retest(self):
         bars, t = sample(phase='transition_context'); bars[-1].update(high=104, close=103)

@@ -147,7 +147,7 @@ def describe_conditions(record, inputs):
         body = last['close'] > last['open'] if long else last['close'] < last['open']
         observed = touch and reclaimed and body
         text = (f"{LABELS[tf]}で直前2本の{'安値' if long else '高値'}{_fmt(level)}を試し、"
-                f"終値が同水準を{above}、始値より{close_side}引ける反発を確認する")
+                f"終値が同水準を{above}、始値より{close_side}引ける{'反発' if long else '反落'}を確認する")
         conditions = [{'kind': 'touch_reclaim_directional_close', 'level': level,
                        'touch_relation': '<=' if long else '>=',
                        'close_relation': '>' if long else '<',
