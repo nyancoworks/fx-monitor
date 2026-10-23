@@ -17,7 +17,7 @@ from .catchup import needs_m5_catchup
 from .minute_quota import MinuteQuota
 from .watchlist import build_watchlist
 from .monitoring_scenarios import build_monitoring_scenarios
-from .scheduled_outlook import build_scheduled_outlook
+from .saved_economic_calendar import build_outlook_with_saved_calendar
 from .indicator_inputs import contiguous_indicator_frames
 from .monitoring_macro import build_reference, unavailable as unavailable_macro_reference
 from .h4_setup import h4_setup_diagnostic
@@ -558,7 +558,7 @@ def _refresh(ny=None):
     result["signal_eligible_count"]=len(result["signal_eligible_pairs"])
     result["watchlist"]=build_watchlist(result["pairs"],result["quality"])
     # Independent H4/H1 saved-candle research; does not reuse M5 gate.
-    result["scheduled_outlook"]=build_scheduled_outlook(
+    result["scheduled_outlook"]=build_outlook_with_saved_calendar(
         result["pairs"],result["quality"],evaluated_at=final_now)
     from .strategy_report import render_strategy_report, report_records
     report_keys={(r['pair'],r['strategy']) for r in report_records(result['scheduled_outlook'])}

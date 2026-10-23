@@ -1,6 +1,6 @@
 """Normalize a caller-supplied Finance Calendar /calendar page; never fetch data.
 
-Documentation contract only: live responses remain unverified. Preserve originals
+One bounded live sample was verified; ongoing freshness is unverified. Preserve originals
 in private storage separately. No forecast inference, numeric conversion or score.
 """
 from collections import Counter
@@ -49,7 +49,7 @@ def _metadata(value, fields):
             and (value[k] is None or isinstance(value[k], str) or type(value[k]) is bool)}
 
 
-def normalize_calendar(payload, *, observed_at_utc):
+def normalize_calendar(payload, *, observed_at_utc, source_status=None, status_observed_at_utc=None):
     """Return reference-only input for build_scheduled_outlook.
 
     observed_at_utc is a trusted caller acquisition time, not a provider build
@@ -70,6 +70,9 @@ def normalize_calendar(payload, *, observed_at_utc):
                                      ('source', 'terms', 'docs', 'source_licenses', 'source_rights'))
     if not result['attribution']:
         result['warnings'].append('provider_attribution_missing')
+    from .economic_calendar_health import source_health_index
+    health = source_health_index(source_status, observed_at_utc=status_observed_at_utc,
+                                 calendar_observed_at_utc=observed_at_utc)
     rows = payload['events']
     count, total = payload.get('count'), payload.get('total')
     result['page_complete'] = (type(count) is int and type(total) is int
@@ -146,6 +149,8 @@ def normalize_calendar(payload, *, observed_at_utc):
                         'source_license': _metadata(observation.get('source_license'), OBSERVATION_LICENSE_FIELDS),
                         'source_rights': _metadata(observation.get('source_rights'), OBSERVATION_LICENSE_FIELDS),
                     })
+        event['source_health'] = deepcopy(health.get(event.get('source_id'), {
+            'status': 'unverified', 'generation_match': 'unverified', 'current_freshness': 'unverified'}))
         event['status'] = row['status']
         result['events'].append(event)
     if result['omitted_count']:

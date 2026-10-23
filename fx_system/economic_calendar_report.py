@@ -32,13 +32,26 @@ def calendar_lines(record, format_clock):
     if not isinstance(context, dict):
         return []
     if context.get('status') not in ('available', 'partial'):
-        return ['経済指標：検証済み情報なし']
+        reasons = {'private_location_required': '非公開の保存先が未設定または使用不可',
+                   'invalid_private_input': '保存入力の形式・配置を確認できない',
+                   'oversized_private_input': '保存入力が読み込み上限を超過',
+                   'unusable_acquisition_clock': '取得時刻が未確認または評価時点より未来',
+                   'unreadable_private_input': '保存入力が未配置または読み取り不可'}
+        reason = context.get('load_reason')
+        detail = reasons.get(reason) if isinstance(reason, str) else None
+        return ['経済指標：検証済み情報なし' + ('（'+detail+'）' if detail else '')]
     events = context.get('events')
     if not isinstance(events, list):
         return ['経済指標：保存形式未確認']
     lines = []
     if type(context.get('observed_at_utc')) is int:
         lines.append(f"経済指標取得：{_clock(context['observed_at_utc'], format_clock)}｜鮮度・網羅性は未検証（取得時刻は出典確認時刻と別）")
+    health_labels = {'degraded': '出典の取得状態が劣化', 'failed': '出典の取得失敗', 'disabled': '出典の取得停止'}
+    for state, label in health_labels.items():
+        affected = sum(isinstance(e, dict) and isinstance(e.get('source_health'), dict)
+                       and e['source_health'].get('status') == state for e in events)
+        if affected:
+            lines.append(f'経済指標の注意：{label}と記録された関連指標{affected}件（非掲載分も含む）。最新情報・同一世代性は未確認')
     for event in events[:3]:
         if not isinstance(event, dict) or not isinstance(event.get('currency'), str):
             continue
@@ -60,6 +73,14 @@ def calendar_lines(record, format_clock):
             lines.append('時刻の意味（提供元）：'+role)
         if event.get('freshness') == 'stale':
             lines.append('出典状態：古い保存情報。最新日程・実績は未確認')
+        health = event.get('source_health')
+        if isinstance(health, dict):
+            state = health.get('status')
+            label = (health_labels.get(state, '取得成功の記録（現在の正常性保証ではない）' if state == 'success' else '未確認')
+                     if isinstance(state, str) else '未確認')
+            lines.append(f"出典の取得状態：{label}｜状態取得 {_clock(health.get('observed_at_utc'), format_clock)}（カレンダーと同一世代か未確認）")
+            if health.get('mode'):
+                lines.append('出典確認方式（提供元記録）：'+_text(health['mode'])+'｜成功した出典取得 '+_clock(health.get('fetched_at_utc'), format_clock))
         if type(event.get('last_verified_at_utc')) is int:
             lines.append('提供元記録の出典確認：'+_clock(event['last_verified_at_utc'], format_clock)+'（現在の鮮度保証ではない）')
         if 'actual_raw' in event:

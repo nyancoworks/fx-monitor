@@ -98,6 +98,7 @@ def enrich_outlook(outlook, calendar):
             "page_complete": calendar.get("page_complete") if valid else None,
             "omitted_count": calendar.get("omitted_count", 0) if valid else 0,
             "warnings": deepcopy(calendar.get("warnings", [])) if valid else [],
+            "load_reason": calendar.get("load_reason") if isinstance(calendar, dict) else None,
             "advisory_only": True, "changes_grade": False,
             "market_reaction": "unassessed",
             "policy_interpretation": "unassessed",
