@@ -9,7 +9,12 @@ from fx_system.monitor_pairs import PAIR_KEYS
 
 SCHEMA = 'monitoring_result_generation_v1'
 KEEP = 3
-MAX_PLAIN_BYTES = 2 * 1024 * 1024
+# Full canonical32 includes advisory calendar provenance. Retain it losslessly;
+# the former 2 MiB decoded limit was crossed by valid production rows.
+MAX_PLAIN_BYTES = 4 * 1024 * 1024
+# Preserve the previous encoded-input bound independently of decoded size.
+# Three generations remain below the publisher's 13 MiB Git-output bound.
+MAX_ENCODED_BYTES = 4 * 1024 * 1024
 FORBIDDEN = {'raw', 'receipt', 'receipts', 'api_key', 'authorization', 'secrets'}
 
 
@@ -50,14 +55,17 @@ def pack_generation(rows, *, evaluated_at):
     if len(plain) > MAX_PLAIN_BYTES:
         raise ValueError('generation exceeds size limit')
     compressed = gzip.compress(plain, compresslevel=6, mtime=0)
+    encoded = base64.b64encode(compressed).decode('ascii')
+    if len(encoded) > MAX_ENCODED_BYTES:
+        raise ValueError('compressed generation exceeds size limit')
     return {'evaluated_at': evaluated_at,
             'sha256': hashlib.sha256(compressed).hexdigest(),
-            'gzip_base64': base64.b64encode(compressed).decode('ascii')}
+            'gzip_base64': encoded}
 
 
 def restore_generation(generation):
     encoded = generation.get('gzip_base64')
-    if not isinstance(encoded, str) or len(encoded) > MAX_PLAIN_BYTES * 2:
+    if not isinstance(encoded, str) or len(encoded) > MAX_ENCODED_BYTES:
         raise ValueError('invalid compressed generation')
     try:
         compressed = base64.b64decode(encoded, validate=True)
