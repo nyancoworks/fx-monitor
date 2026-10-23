@@ -11,7 +11,7 @@ from fx_system.strategy_report_export import build_strategy_report_export
 from test_strategy_report_export import snapshot, SOURCE, CLOCK
 
 
-def inputs(*, missing=False, unknown=False):
+def inputs(*, missing=False, unknown=False, extra_seconds=0):
     saved = snapshot()
     bundle = build_strategy_report_export(json.dumps(saved).encode(), SOURCE)
     bars = [{'timestamp': CLOCK+i*300, 'open': 96, 'high': 115, 'low': 85, 'close': 97}
@@ -19,8 +19,9 @@ def inputs(*, missing=False, unknown=False):
     pair = {'decision_data': {'raw': {'m5': bars}, 'provenance': {
         'm5:'+str(b['timestamp']): 'unverified' if unknown and i == 5 else 'Twelve Data'
         for i, b in enumerate(bars)}}}
-    current = {'evaluated_at': CLOCK+3600, 'pairs': {'EURUSD': pair},
-               'scheduled_outlook': build_scheduled_outlook({}, {}, evaluated_at=CLOCK+3600)}
+    through = CLOCK+3600+extra_seconds
+    current = {'evaluated_at': through, 'pairs': {'EURUSD': pair},
+               'scheduled_outlook': build_scheduled_outlook({}, {}, evaluated_at=through)}
     prior_source = {k: SOURCE[k] for k in ('source_repository', 'source_commit', 'run_id')}
     previous = {'history': [pack_generation(saved['scheduled_outlook']['rows'], evaluated_at=CLOCK)],
                 'provenance': {str(CLOCK): prior_source}}
@@ -41,6 +42,7 @@ class SavedScenarioQualityTests(unittest.TestCase):
         self.assertEqual(result['condition_status_counts'], {'conditions_observed': 1})
         self.assertEqual(result['review_count'], 1)
         self.assertEqual(result['complete_saved_window_count'], 1)
+        self.assertEqual(result['continuous_saved_evaluation_window_count'], 1)
         self.assertEqual(result['target_touch_observable_count'], 1)
         case = result['cases'][0]
         self.assertTrue(case['observation']['same_bar_touch_order_unknown'])
@@ -52,12 +54,27 @@ class SavedScenarioQualityTests(unittest.TestCase):
         self.assertEqual(result['selection_review'][0]['ordering_basis'], 'saved_order_no_matching_peer')
         self.assertEqual((bundle, followup), before)
 
+    def test_complete_grid_does_not_claim_partial_clock_boundaries_were_observed(self):
+        bundle, followup = inputs(extra_seconds=62)
+        result = review(bundle, followup)
+        self.assertEqual(result['complete_saved_window_count'], 1)
+        self.assertEqual(result['continuous_saved_evaluation_window_count'], 0)
+        coverage = result['cases'][0]['saved_m5_coverage']
+        self.assertEqual(coverage['saved_evaluation_window_seconds'], 3662)
+        self.assertEqual(coverage['expected_whole_m5_seconds'], 3600)
+        self.assertEqual(coverage['observed_whole_m5_seconds'], 3600)
+        self.assertEqual(coverage['excluded_clock_boundary_seconds'], 62)
+        self.assertTrue(coverage['whole_m5_grid_complete'])
+        self.assertFalse(coverage['continuous_saved_evaluation_window'])
+        self.assertEqual(coverage['notification_to_notification_coverage'], 'unverified')
+
     def test_gap_or_unknown_source_keeps_case_but_excludes_complete_window_counts(self):
         for options in ({'missing': True}, {'unknown': True}):
             bundle, followup = inputs(**options)
             result = review(bundle, followup)
             self.assertEqual(result['review_count'], 1)
             self.assertEqual(result['complete_saved_window_count'], 0)
+            self.assertEqual(result['continuous_saved_evaluation_window_count'], 0)
             self.assertEqual(result['target_touch_observable_count'], 0)
             self.assertEqual(result['invalidation_touch_observable_count'], 0)
 
