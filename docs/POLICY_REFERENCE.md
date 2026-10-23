@@ -8,13 +8,19 @@ Policy-file failure cannot suppress core FX assessments or usable calendar input
 usable policy references can also survive unavailable calendar input.
 
 The envelope is `{"schema":"saved_policy_reference_v1","facts":[...]}`.
-Each fact supplies currency, instrument, rate_text, decision (raised/lowered/held),
-published_date and effective_date (publisher ISO dates, not invented instants),
+Each fact supplies currency, instrument, rate_text, decision
+(raised/lowered/held/changed), published_date and effective_date (publisher ISO
+dates, not invented instants),
 observed_at_utc (when this system recorded document review, not an HTTP receipt
 or publisher update timestamp), source_name, source_url and
 source_credit. Rate strings retain ranges and instrument distinctions. There is
 no arithmetic across different central-bank instruments, parsing, surprise,
 hawkish/dovish score, or automatic FX grade/direction/condition change.
+
+An explicit `effective_date: null` means the reviewed document does not specify
+an implementation date; display it as unspecified, never substitute publication
+or meeting date. A missing key or malformed date remains invalid. `changed`
+records a documented change without inferring its direction from a new level.
 
 The file is bounded to64KiB and128input records; each currency retains at most
 four latest known instrument records. Duplicate currency/instrument/publication
