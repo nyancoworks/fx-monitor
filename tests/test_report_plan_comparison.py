@@ -44,8 +44,9 @@ def row(pair, ratio, *, strategy='daytrade', direction='long', trigger_ratio=Non
     return result
 
 
-def selected(*rows):
-    return [r['pair'] for r in report_records({'strategy_assessments': list(rows)})]
+def selected(*rows, selection_version=2):
+    return [r['pair'] for r in report_records({'strategy_assessments': list(rows)},
+                                            selection_version=selection_version)]
 
 
 class PlanComparisonTests(unittest.TestCase):
@@ -68,7 +69,22 @@ class PlanComparisonTests(unittest.TestCase):
             self.assertEqual(selected(low, changed, good), ['AUDUSD', 'GBPUSD', 'EURUSD'])
         for field, value in (('status', 'retest_failed'), ('route', 'breakout_retest')):
             changed = deepcopy(weak); changed['scenario_conditions'][field] = value
-            self.assertEqual(selected(low, changed, good), ['AUDUSD', 'GBPUSD', 'EURUSD'])
+            self.assertEqual(selected(low, changed, good, selection_version=1), ['AUDUSD', 'GBPUSD', 'EURUSD'])
+            expected = ['AUDUSD', 'EURUSD', 'GBPUSD'] if value == 'retest_failed' else ['AUDUSD', 'GBPUSD', 'EURUSD']
+            self.assertEqual(selected(low, changed, good), expected)
+
+    def test_same_grade_usable_conditions_precede_reassessment_without_deleting_records(self):
+        rows = [row(p, n) for p, n in [('EURUSD', 4), ('GBPUSD', .1), ('AUDUSD', 10),
+                                      ('NZDUSD', 2), ('USDJPY', 1)]]
+        for record, status in zip(rows, ('unavailable', 'waiting', 'retest_failed',
+                                        'conditions_observed', 'awaiting_retest')):
+            record['scenario_conditions']['status'] = status
+        original = deepcopy(rows)
+        self.assertEqual(selected(*rows), ['GBPUSD', 'NZDUSD', 'USDJPY'])
+        self.assertEqual(rows, original)
+        self.assertEqual(selected(*rows, selection_version=1), ['EURUSD', 'GBPUSD', 'AUDUSD'])
+        rows[0]['grade'] = 'A'
+        self.assertEqual(selected(*rows)[0], 'EURUSD')
 
     def test_grade_priority_and_three_each_are_preserved(self):
         rows = [row(str(i), i/5+.1, strategy=s) for s in ('swing', 'daytrade') for i in range(5)]

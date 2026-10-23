@@ -9,11 +9,20 @@ from .economic_calendar_report import calendar_lines
 from .report_plan_comparison import saved_plan_comparison
 
 
-def _ordered_reviews(outlook):
+def _ordered_reviews(outlook, *, selection_version=2):
     """All reviews; grade first, then headroom in matching contexts."""
+    if type(selection_version) is not int or selection_version not in (1, 2):
+        raise ValueError('unsupported saved report selection version')
     priority = {(c['pair'], c['strategy']): i for i, c in enumerate(outlook.get('strategy_candidates', []))}
     reviews = [r for r in outlook['strategy_assessments'] if r['assessment'] == 'review']
-    ordered = sorted(reviews, key=lambda r: ('ABC'.index(r['grade']),
+    def presentation_pending(record):
+        if selection_version == 1:
+            return 0
+        conditions = record.get('scenario_conditions', {})
+        return int(conditions.get('status') not in (
+            'waiting', 'awaiting_breakout', 'awaiting_retest', 'conditions_observed')
+            or record.get('expiry', {}).get('status') == 'withdrawn')
+    ordered = sorted(reviews, key=lambda r: ('ABC'.index(r['grade']), presentation_pending(r),
                   priority.get((r['pair'], r['strategy']), len(priority))))
     groups = {}
     for index, record in enumerate(ordered):
@@ -29,9 +38,9 @@ def _ordered_reviews(outlook):
     return ordered
 
 
-def report_records(outlook):
+def report_records(outlook, *, selection_version=2):
     """Up to three per strategy; do not change any saved assessment."""
-    ordered = _ordered_reviews(outlook)
+    ordered = _ordered_reviews(outlook, selection_version=selection_version)
     return [r for strategy in ('swing','daytrade')
             for r in [x for x in ordered if x['strategy']==strategy][:3]]
 
@@ -48,19 +57,24 @@ def _label(r):
     return f"{r['pair'][:3]}/{r['pair'][3:]} {'スイング' if r['strategy']=='swing' else 'デイトレード'}"
 
 
-def render_strategy_report(snapshot, *, include_all_reviews=False, complete_evidence=False):
+def render_strategy_report(snapshot, *, include_all_reviews=False, complete_evidence=False,
+                           selection_version=2):
     failures = validate_strategy_snapshot(snapshot)
     if failures:
         raise ValueError('; '.join(failures))
     outlook = snapshot['scheduled_outlook']; rows = outlook['strategy_assessments']
-    shown = ([r for strategy in ('swing', 'daytrade') for r in _ordered_reviews(outlook)
-              if r['strategy'] == strategy] if include_all_reviews else report_records(outlook))
+    shown = ([r for strategy in ('swing', 'daytrade') for r in _ordered_reviews(
+                outlook, selection_version=selection_version)
+              if r['strategy'] == strategy] if include_all_reviews else report_records(
+                  outlook, selection_version=selection_version))
     grades = Counter(r['grade'] for r in rows if r['assessment']=='review')
     omitted = Counter(r['grade'] for r in rows if r['assessment']=='review' and r not in shown)
     counts = outlook['assessment_counts']
     lines = [f"保存評価：{_clock(snapshot['evaluated_at'])}（保存値に基づく判断）",
              f"{len(rows)}戦略：検討{counts['review']}（A{grades['A']}/B{grades['B']}/C{grades['C']}）｜見送り{counts['skip']}｜評価保留{counts['evaluation_pending']}",
-             'A/B/Cはシナリオの優位性・完成度。同評価・同じ確認段階と反対根拠の候補間で保存価格の余地を比較し、比較条件が異なる候補の掲載枠は維持する。',
+             ('A/B/Cはシナリオの優位性・完成度。同評価では具体的な待つ条件を示せる候補を先に掲載。条件の組み直し・再試し失敗・確認状況不明の候補も評価を維持する。同じ確認段階と反対根拠の候補間で保存価格の余地を比較する。'
+              if selection_version == 2 else
+              'A/B/Cはシナリオの優位性・完成度。同評価・同じ確認段階と反対根拠の候補間で保存価格の余地を比較し、比較条件が異なる候補の掲載枠は維持する。'),
              '参考RRは保存価格基準で、スプレッド・手数料・滑りを含まない。']
     if not shown: lines.append('掲載する検討候補なし。見送りと評価保留の内訳は上記。')
     for r in shown:
@@ -93,6 +107,9 @@ def render_strategy_report(snapshot, *, include_all_reviews=False, complete_evid
                      '突破後の再試し待ち' if condition_plan['status']=='awaiting_retest' else '条件待ち')
             lines.append(f"確認状況：{state}（{_clock(condition_plan.get('evaluated_candle_closed_at'))}確定足）")
             lines.append('条件の適用範囲：保存時の比較水準。新しい確定足では再評価。条件観測は約定・利益保証ではない')
+        elif selection_version == 2:
+            lines.append('確認状況：条件の組み直し・確認状況の再評価が必要。'+
+                         (condition_plan.get('reason') or '具体的な成立条件は保存されていない'))
         pivot=plan.get('target_pivot')
         reaction = r.get('price_reaction_observation', {})
         if (reaction.get('status') in ('observed_reference', 'not_observed')
