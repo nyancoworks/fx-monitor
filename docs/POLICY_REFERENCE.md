@@ -10,7 +10,8 @@ usable policy references can also survive unavailable calendar input.
 The envelope is `{"schema":"saved_policy_reference_v1","facts":[...]}`.
 Each fact supplies currency, instrument, rate_text, decision (raised/lowered/held),
 published_date and effective_date (publisher ISO dates, not invented instants),
-observed_at_utc (actual acquisition instant), source_name, source_url and
+observed_at_utc (when this system recorded document review, not an HTTP receipt
+or publisher update timestamp), source_name, source_url and
 source_credit. Rate strings retain ranges and instrument distinctions. There is
 no arithmetic across different central-bank instruments, parsing, surprise,
 hawkish/dovish score, or automatic FX grade/direction/condition change.

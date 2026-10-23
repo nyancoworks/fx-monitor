@@ -50,7 +50,8 @@ def normalize_policy_reference(value, *, evaluated_at):
                 continue
             published = date.fromisoformat(item['published_date'])
             effective = date.fromisoformat(item['effective_date'])
-            # Acquisition is when this system learned the dated document.
+            # This bounds knowledge by the recorded document-review time.
+            # It is not an HTTP receipt or a publisher update timestamp.
             # A future effective date is allowed, but never called effective now.
             if (published.isoformat() != item['published_date']
                     or effective.isoformat() != item['effective_date']
@@ -129,7 +130,7 @@ def policy_lines(reference, currencies, format_clock):
             decision = {'raised': '引上げ', 'lowered': '引下げ', 'held': '据置き'}[fact['decision']]
             lines.append(f"政策資料 {currency}：{fact['instrument']} {fact['rate_text']}（{decision}）"
                          f"｜公表日 {fact['published_date']}｜資料の適用日 {fact['effective_date']}"
-                         f"｜取得 {format_clock(fact['observed_at_utc'])}"
+                         f"｜資料確認 {format_clock(fact['observed_at_utc'])}"
                          f"｜出典 {fact['source_name']} {fact['source_url']}｜{fact['source_credit']}")
     lines.append('政策資料は公表時の記録。最新性・適用済みかは未検証。政策見通し・市場予想・市場反応や通貨方向を推定しない。')
     if reference.get('rejected_count') or reference.get('omitted_count'):
