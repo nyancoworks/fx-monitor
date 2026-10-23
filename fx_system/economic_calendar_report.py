@@ -28,6 +28,18 @@ def _event_clock(event, format_clock):
     return f"出典の日付 {_text(event.get('date'))}（時刻・JST換算未確定）"
 
 
+def _value_evidence_lines(event):
+    def saved(field):
+        value = event.get(field)
+        return _text(value) if isinstance(value, str) and value.strip() else '未記録'
+
+    missing = [label for field, label in (('actual_raw', '実績'), ('consensus_raw', '予想'))
+               if not isinstance(event.get(field), str) or not event[field].strip()]
+    reason = '・'.join(missing)+'が未記録' if missing else '同じ期間・単位の比較根拠が未検証'
+    return [f"値の対象：{saved('period')}｜単位：{saved('unit')}",
+            f"予想との差：未評価（{reason}）。前回値は予想値とは別で、改定の有無は未確認。"]
+
+
 def _background_lines(context, format_clock):
     background = context.get('background')
     # Absence keeps frozen legacy reports byte-for-byte reproducible.
@@ -130,6 +142,8 @@ def calendar_lines(record, format_clock):
             lines.append('提供元記録の出典確認：'+_clock(event['last_verified_at_utc'], format_clock)+'（現在の鮮度保証ではない）')
         if 'actual_raw' in event:
             lines.append(f"実績（保存文字列）：{_text(event.get('actual_raw'))}｜市場予想：{_text(event.get('consensus_raw'))}｜前回：{_text(event.get('prior_raw'))}。単位変換・サプライズ計算なし。保存時点の値で、過去公表時の初報再現ではない")
+            if type(context.get('value_evidence_version')) is int and context['value_evidence_version'] == 1:
+                lines.extend(_value_evidence_lines(event))
         if event.get('source_name') or event.get('source_url'):
             lines.append('元出典：'+_text(event.get('source_name'))+' '+_text(event.get('source_url')))
         for key in ('source_license', 'source_rights'):
