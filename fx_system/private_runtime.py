@@ -75,6 +75,24 @@ def run_private(command, *, root, log, env, timeout=720):
     return result.returncode
 
 
+def prepare_optional_calendar(root, run_id, env):
+    """Optional provider failure must not stop the existing FX refresh."""
+    from .economic_calendar_collection import collection_enabled, prepare_calendar
+    try:
+        enabled = collection_enabled(root)
+    except Exception:
+        return env
+    if not enabled:
+        return env
+    env = {**env, 'FX_ECONOMIC_CALENDAR_SAVED_ENABLED': 'true'}
+    try:
+        outcome = prepare_calendar(root, run_id=run_id)
+        env['FX_ECONOMIC_CALENDAR_COLLECTION_STATUS'] = outcome['status']
+    except Exception:
+        env['FX_ECONOMIC_CALENDAR_COLLECTION_STATUS'] = 'unavailable'
+    return env
+
+
 def command(stage, root, run_id, source_commit):
     base = [sys.executable, '-m']
     archive = root / '.private-ny17'
@@ -181,6 +199,8 @@ def main():
                'FX_NEW_PAIR_H1_BOOTSTRAP': '1',
                'FX_H1_EVIDENCE_DIR': str(root/'.private-run'/run_id/'h1-evidence')}
         logs = root/'.private-run'/run_id
+        if args.stage == 'refresh':
+            env = prepare_optional_calendar(root, run_id, env)
         if args.stage == 'snapshot':
             save_snapshot(root, run_id, commit)
             rc = 0

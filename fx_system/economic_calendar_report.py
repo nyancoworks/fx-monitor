@@ -44,6 +44,8 @@ def calendar_lines(record, format_clock):
     if not isinstance(events, list):
         return ['経済指標：保存形式未確認']
     lines = []
+    if context.get('collection_status') == 'unavailable':
+        lines.append('経済指標：直近の取得・保存を確認できない。保存参考情報は元の取得時刻のまま使用')
     if type(context.get('observed_at_utc')) is int:
         lines.append(f"経済指標取得：{_clock(context['observed_at_utc'], format_clock)}｜鮮度・網羅性は未検証（取得時刻は出典確認時刻と別）")
     health_labels = {'degraded': '出典の取得状態が劣化', 'failed': '出典の取得失敗', 'disabled': '出典の取得停止'}

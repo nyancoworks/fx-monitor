@@ -64,7 +64,10 @@ def configured_calendar(*, evaluated_at):
     root = os.environ.get('FX_DATA_ROOT')
     if not root:
         return _unavailable('private_location_required')
-    return load_saved_calendar(root, evaluated_at=evaluated_at)
+    result = load_saved_calendar(root, evaluated_at=evaluated_at)
+    status = os.environ.get('FX_ECONOMIC_CALENDAR_COLLECTION_STATUS')
+    result['collection_status'] = status if status in ('saved', 'unavailable', 'already_attempted') else 'unverified'
+    return result
 
 
 def build_outlook_with_saved_calendar(pairs, quality, *, evaluated_at):
