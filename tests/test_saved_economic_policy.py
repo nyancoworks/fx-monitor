@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from fx_system.saved_economic_policy import load_saved_policy, normalize_policy_reference, RELATIVE_PATH
+from fx_system.saved_economic_policy import load_saved_policy, normalize_policy_reference, policy_lines, RELATIVE_PATH
 from fx_system.saved_economic_calendar import configured_calendar
 from fx_system.strategy_report_export import build_strategy_report_export, restore_strategy_report_export
 from diagnostics.monitoring_result_history import pack_generation, restore_generation
@@ -32,6 +32,16 @@ def envelope(*facts):
 
 
 class SavedPolicyTests(unittest.TestCase):
+    def test_unspecified_effective_date_and_change_direction_are_not_invented(self):
+        reference = normalize_policy_reference(envelope(fact(effective_date=None, decision='changed')),
+                                                evaluated_at=CLOCK)
+        self.assertIsNone(reference['facts'][0]['effective_date'])
+        text = '\n'.join(policy_lines(reference, ('USD',), str))
+        self.assertIn('資料の適用日 資料に明記なし', text)
+        self.assertIn('（変更・方向は未評価）', text)
+        missing = fact(); missing.pop('effective_date')
+        self.assertEqual(normalize_policy_reference(envelope(missing), evaluated_at=CLOCK)['facts'], [])
+
     def test_malformed_policy_context_cannot_break_core_assessments(self):
         builder = integration.CalendarIntegrationTests()
         baseline = builder.build()
@@ -92,7 +102,10 @@ class SavedPolicyTests(unittest.TestCase):
             self.assertEqual(load_saved_policy(root, evaluated_at=CLOCK)['reason'], 'invalid_policy_input')
 
     def test_32_decisions_history_export_and_missing_currency_remain_honest(self):
-        reference = normalize_policy_reference(envelope(fact()), evaluated_at=CLOCK)
+        reference = normalize_policy_reference(envelope(fact(), fact(
+            currency='EUR', effective_date=None, decision='changed',
+            source_url='https://www.ecb.europa.eu/synthetic-policy-document.html')),
+            evaluated_at=CLOCK)
         calendar = dict(events=[], observed_at_utc=CLOCK, complete=False, policy_reference=reference)
         original = deepcopy(calendar)
         builder = integration.CalendarIntegrationTests()
@@ -111,5 +124,7 @@ class SavedPolicyTests(unittest.TestCase):
         restore_strategy_report_export(bundle, source, bundle['snapshot_git_blob_sha'])
         self.assertIn('Synthetic target range', bundle['report_text'])
         self.assertIn('Synthetic reference credit', bundle['report_text'])
-        self.assertIn('未収録（政策変更なしを意味しない）', bundle['report_text'])
+        self.assertIn('資料の適用日 資料に明記なし', bundle['report_text'])
+        self.assertIn('未収録（政策変更なしを意味しない）',
+                      '\n'.join(policy_lines(reference, ('JPY',), str)))
         self.assertIn('最新性・適用済みかは未検証', bundle['report_text'])
