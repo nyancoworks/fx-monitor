@@ -73,7 +73,9 @@ def build_strategy_report_export(snapshot_bytes, source):
             'assessment_summaries': _summaries(view),
             'assessment_counts': deepcopy(projected['assessment_counts']),
             'report_text': render_strategy_report(view), 'encoding': 'gzip_base64_json',
-            'review_context_text': render_strategy_report(view, include_all_reviews=True),
+            'review_context_version': 2,
+            'review_context_text': render_strategy_report(view, include_all_reviews=True,
+                                                        complete_evidence=True),
             'payload_sha256': hashlib.sha256(raw).hexdigest(), 'payload_byte_length': len(raw),
             'payload_base64': base64.b64encode(gzip.compress(raw, mtime=0)).decode('ascii')}
         return saved if len(_json(saved)) <= MAX_EXPORT_BYTES else bundle
@@ -112,10 +114,16 @@ def restore_strategy_report_export(bundle, source, snapshot_blob_sha):
                 or bundle.get('assessment_counts') != view['scheduled_outlook']['assessment_counts']
                 or bundle.get('report_text') != render_strategy_report(view)):
             raise ValueError
-        # Additive v1 field. Older envelopes without comparison text still
-        # restore, but cannot claim to provide context for omitted reviews.
+        # Legacy text truncated evidence to two entries even in all-review
+        # mode. Keep its exact verification while version 2 retains every
+        # saved reason/opposition for candidate comparison.
+        context_version = bundle.get('review_context_version', 1)
+        if (type(context_version) is not int or context_version not in (1, 2)
+                or ('review_context_version' in bundle and 'review_context_text' not in bundle)):
+            raise ValueError
         if ('review_context_text' in bundle and bundle['review_context_text'] !=
-                render_strategy_report(view, include_all_reviews=True)):
+                render_strategy_report(view, include_all_reviews=True,
+                                       complete_evidence=context_version == 2)):
             raise ValueError
         return view
     except Exception:
