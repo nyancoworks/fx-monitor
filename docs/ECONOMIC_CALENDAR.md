@@ -51,7 +51,24 @@ The scheduled builder now has an explicitly disabled-by-default private-file rea
 - https://github.com/awarenessdays/financecalendar-api/blob/main/openapi.json — reviewed blob `4d2f06deedc7733596015133675aec80d61b9182`
 - https://github.com/awarenessdays/financecalendar-api/blob/main/DATA-TERMS.md — reviewed blob `d29faa3f10eaf671bf5695bc993ab6570a7e34c4`
 
-These references were first reviewed as documentation/schema, then one owner-approved two-request live sample was checked privately on 2026-10-23 JST. That bounded sample is not ongoing provider or production acceptance. Current documentation says consensus is not collected. Do not promise forecasts or timely actuals from this provider.
+These references were first reviewed as documentation/schema, then one owner-approved two-request live sample was checked privately on 2026-10-23 JST. That bounded sample is not ongoing provider or production acceptance. The economic-calendar and coverage documentation was reviewed again on 2026-10-23 JST: actual, prior and consensus can be unavailable, with no guaranteed consensus coverage or result-delivery time. Do not infer that consensus is always supplied or never collected. Official schedule sources generally do not supply market forecasts. A released status, a source URL or a new dataset build does not verify an actual result or recent publisher verification.
+
+## Evidence acceptance and remaining research
+
+| Evidence | Supported saved behavior | Further evidence needed for a stronger claim |
+| --- | --- | --- |
+| Release schedules | Preserve exact/uncertain times, status, source health and acquisition clocks. | Actual first-publication time and coverage of all relevant events. |
+| Policy documents | Preserve dated instrument/rate strings, decision, effective date or explicit unknown, source and review clock. | Latest-decision coverage, implementation and a separately evidenced policy outlook. |
+| Actual/prior strings | Preserve original strings, period/unit and credits; suppress future knowledge. | Matching measure, initial vintage and revision history; prior is not a forecast. |
+| Consensus | Preserve a supplied string or explicit absence; no substitution or surprise calculation. | A sourced forecast recorded before the release, with comparable period/unit/definition. |
+| Price observations | Observe bounded, provider-labelled saved candles without interpolation. | Actual release timing, overlapping news and a causal study; price change alone is not causation. |
+
+Reader/display/history acceptance is distinct from completeness of economic
+analysis. Missing forecasts or unverified policy latestness do not require
+loosening validation, increasing requests or blocking unrelated development.
+Retain them as explicit research gaps. Any proposed new source must establish
+coverage, timestamps, revision policy, rights and usage before collection is
+enabled; new market requests, frequency or budget still require owner approval.
 
 ## Projection and limitations
 
