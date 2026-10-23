@@ -75,6 +75,46 @@ class StrategyReportExportTests(unittest.TestCase):
             self.assertEqual(bundle['status'], 'unavailable')
             self.assertIsNone(bundle['payload_base64']); self.assertIsNone(bundle['report_text'])
 
+    def test_legacy_review_without_valid_direction_is_not_rendered_as_sell(self):
+        for direction in (None, '', 'sideways', False, ['long']):
+            with self.subTest(direction=direction):
+                saved = snapshot()
+                record = next(r for r in saved['scheduled_outlook']['strategy_assessments']
+                              if r['assessment'] == 'review')
+                # Older supported records can omit these optional contexts;
+                # core direction validity must not depend on their validators.
+                for key in ('scenario_conditions', 'range_context', 'scenario_type',
+                            'currency_strength_context'):
+                    record.pop(key, None)
+                record['direction'] = direction
+                row = next(r for r in saved['scheduled_outlook']['rows'] if r['pair'] == record['pair'])
+                row['strategy_assessments'][record['strategy']] = deepcopy(record)
+                before = deepcopy(saved)
+                self.assertIn('scheduled strategy review direction invalid', validate_strategy_snapshot(saved))
+                with self.assertRaises(ValueError):
+                    render_strategy_report(saved)
+                bundle = build_strategy_report_export(json.dumps(saved).encode(), SOURCE)
+                self.assertEqual(bundle['status'], 'unavailable')
+                self.assertIsNone(bundle['report_text'])
+                self.assertEqual(saved, before)
+
+    def test_legacy_buy_and_sell_reviews_remain_readable(self):
+        for direction in ('long', 'short'):
+            saved = snapshot()
+            record = next(r for r in saved['scheduled_outlook']['strategy_assessments']
+                          if r['assessment'] == 'review')
+            for key in ('scenario_conditions', 'range_context', 'scenario_type',
+                        'currency_strength_context'):
+                record.pop(key, None)
+            record['direction'] = direction
+            row = next(r for r in saved['scheduled_outlook']['rows'] if r['pair'] == record['pair'])
+            row['strategy_assessments'][record['strategy']] = deepcopy(record)
+            self.assertEqual(validate_strategy_snapshot(saved), [])
+            bundle = build_strategy_report_export(json.dumps(saved).encode(), SOURCE)
+            self.assertEqual(bundle['status'], 'saved')
+            self.assertIn('買い方向' if direction == 'long' else '売り方向', bundle['report_text'])
+            restore_strategy_report_export(bundle, SOURCE, bundle['snapshot_git_blob_sha'])
+
     def test_unavailable_current_run_does_not_reuse_prior_report(self):
         for raw in (b'{}', b'{invalid', json.dumps({'evaluated_at': CLOCK-1}).encode()):
             bundle = build_strategy_report_export(raw, SOURCE)
