@@ -7,6 +7,7 @@ from copy import deepcopy
 from datetime import date, datetime, timedelta, timezone
 from .monitor_pairs import PAIR_KEYS
 from .economic_background import summarize_background
+from .saved_economic_policy import normalize_policy_reference
 
 WINDOWS = {"swing": (86400, 7 * 86400), "daytrade": (6 * 3600, 36 * 3600)}
 
@@ -106,6 +107,19 @@ def enrich_outlook(outlook, calendar):
             "policy_interpretation": "unassessed",
             "background": summarize_background(selected, (pair[:3], pair[3:])),
         }
+        if isinstance(calendar, dict) and isinstance(calendar.get('policy_reference'), dict):
+            reference = calendar['policy_reference']
+            # Keep only the two relevant currencies, even if calendar loading failed.
+            normalized = normalize_policy_reference({
+                'schema': 'saved_policy_reference_v1', 'facts': reference.get('facts')},
+                evaluated_at=clock) if reference.get('status') == 'saved_reference' else {
+                    'status': 'unavailable', 'facts': [], 'freshness': 'unverified', 'complete': False}
+            normalized['facts'] = [f for f in normalized.get('facts', [])
+                                   if f['currency'] in (pair[:3], pair[3:])]
+            for key in ('rejected_count', 'omitted_count', 'superseded_count'):
+                count = reference.get(key, 0)
+                normalized[key] = normalized.get(key, 0) + (count if type(count) is int and count >= 0 else 0)
+            assessment['economic_calendar_context']['policy_reference'] = normalized
     if seen != {(p, s) for p in PAIR_KEYS for s in WINDOWS}:
         raise ValueError("missing canonical assessments")
     # Snapshot validator requires row copies to match canonical assessments.
