@@ -1,5 +1,6 @@
 """Synthetic-only economic calendar report tests."""
 import unittest
+from copy import deepcopy
 from fx_system.economic_calendar_report import calendar_lines
 from fx_system.economic_calendar_context import enrich_outlook
 from fx_system.monitor_pairs import PAIR_KEYS
@@ -50,6 +51,42 @@ class CalendarReportTests(unittest.TestCase):
         for assessment in result["strategy_assessments"]:
             calendar_lines(assessment, str)
             self.assertEqual(assessment["grade"], "A")
+
+    def test_versioned_value_evidence_distinguishes_forecast_from_prior(self):
+        event = dict(currency='USD', title='Synthetic release', scheduled_at_utc=100,
+                     timing='past_release_window', actual_raw='1.2', consensus_raw=None,
+                     prior_raw='1.1', period='Synthetic month', unit='% m/m')
+        row = {'economic_calendar_context': {'status': 'available',
+               'value_evidence_version': 1, 'events': [event]}}
+        original = deepcopy(row)
+        text = '\n'.join(calendar_lines(row, str))
+        self.assertIn('値の対象：Synthetic month｜単位：% m/m', text)
+        self.assertIn('予想との差：未評価（予想が未記録）', text)
+        self.assertIn('前回値は予想値とは別', text)
+        self.assertEqual(row, original)
+
+    def test_nonblank_values_and_provider_flag_do_not_verify_comparison(self):
+        row = {'economic_calendar_context': {'status': 'available',
+               'value_evidence_version': 1, 'events': [dict(currency='USD',
+               scheduled_at_utc=100, actual_raw='0', consensus_raw='0', prior_raw='0',
+               numeric_comparison_verified=True)]}}
+        text = '\n'.join(calendar_lines(row, str))
+        self.assertIn('同じ期間・単位の比較根拠が未検証', text)
+        self.assertIn('値の対象：未記録｜単位：未記録', text)
+        self.assertIn('改定の有無は未確認', text)
+        event = row['economic_calendar_context']['events'][0]
+        event.update(actual_raw=' ', consensus_raw='\t')
+        self.assertIn('実績・予想が未記録', '\n'.join(calendar_lines(row, str)))
+
+    def test_absent_unknown_or_boolean_version_keeps_legacy_rendering(self):
+        event = dict(currency='USD', scheduled_at_utc=100, actual_raw='synthetic',
+                     consensus_raw=None, prior_raw=None)
+        row = {'economic_calendar_context': {'status': 'available', 'events': [event]}}
+        legacy = calendar_lines(row, str)
+        self.assertFalse(any('値の対象' in line for line in legacy))
+        for version in (None, 2, True, '1'):
+            row['economic_calendar_context']['value_evidence_version'] = version
+            self.assertEqual(calendar_lines(row, str), legacy)
 
 
 if __name__ == "__main__":

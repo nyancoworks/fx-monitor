@@ -29,6 +29,16 @@ current deployment and natural-operation acceptance are tracked in Issue #1.
 
 ## Scope and activation
 
+New calendar contexts carry `value_evidence_version=1`. For displayed events with
+saved value fields, the full report shows the original period and unit, missing
+actual/forecast strings, and an explicit unassessed forecast comparison. Even
+two nonblank strings do not establish matching definitions, a pre-release
+forecast, first-print values, or an observed publication clock. Prior values are
+not forecasts and their revision status is not inferred. No values are parsed or
+subtracted, and an upstream comparison flag does not enable a numeric claim.
+Contexts without this version keep their exact historical rendering. This only
+adds context to the existing full saved report; task instructions stay unchanged.
+
 `financecalendar_adapter.normalize_calendar(payload, observed_at_utc=...)` is a pure offline adapter for a separately acquired Finance Calendar `/calendar` JSON page. Pass its return value explicitly as `economic_calendar` to `build_scheduled_outlook`. It neither fetches nor saves a provider response. Preserve the original response and its real acquisition clock in private storage; never commit it here. Do not substitute a provider build time or backdated evaluation time for acquisition.
 
 The scheduled builder now has an explicitly disabled-by-default private-file reader. No workflow, frequency, dependencies or default output are changed. Missing calendar input keeps the existing path. Calendar fields do not change any grade, direction, scenario condition, target, RR, expiry or authority. Source actual/consensus/prior strings are not parsed, scored or compared. Policy/rate interpretation and market reaction remain unassessed.

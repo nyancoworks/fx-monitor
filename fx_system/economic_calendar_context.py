@@ -106,6 +106,7 @@ def enrich_outlook(outlook, calendar):
             "market_reaction": "unassessed",
             "policy_interpretation": "unassessed",
             "background": summarize_background(selected, (pair[:3], pair[3:])),
+            "value_evidence_version": 1,
         }
         if isinstance(calendar, dict) and isinstance(calendar.get('policy_reference'), dict):
             reference = calendar['policy_reference']
