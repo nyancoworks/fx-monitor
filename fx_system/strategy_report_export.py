@@ -49,7 +49,7 @@ def build_strategy_report_export(snapshot_bytes, source):
     bundle = {'schema': SCHEMA, 'source': deepcopy(source), 'snapshot_git_blob_sha': blob,
               'snapshot_byte_length': len(snapshot_bytes), 'status': 'unavailable',
               'error': 'saved_strategy_report_unavailable', 'report_text': None,
-              'assessment_summaries': [], 'payload_base64': None}
+              'review_context_text': None, 'assessment_summaries': [], 'payload_base64': None}
     try:
         snapshot = json.loads(snapshot_bytes)
         if snapshot.get('evaluated_at') != source['evaluated_at'] or validate_strategy_snapshot(snapshot):
@@ -73,6 +73,7 @@ def build_strategy_report_export(snapshot_bytes, source):
             'assessment_summaries': _summaries(view),
             'assessment_counts': deepcopy(projected['assessment_counts']),
             'report_text': render_strategy_report(view), 'encoding': 'gzip_base64_json',
+            'review_context_text': render_strategy_report(view, include_all_reviews=True),
             'payload_sha256': hashlib.sha256(raw).hexdigest(), 'payload_byte_length': len(raw),
             'payload_base64': base64.b64encode(gzip.compress(raw, mtime=0)).decode('ascii')}
         return saved if len(_json(saved)) <= MAX_EXPORT_BYTES else bundle
@@ -110,6 +111,11 @@ def restore_strategy_report_export(bundle, source, snapshot_blob_sha):
                 or bundle.get('assessment_summaries') != _summaries(view)
                 or bundle.get('assessment_counts') != view['scheduled_outlook']['assessment_counts']
                 or bundle.get('report_text') != render_strategy_report(view)):
+            raise ValueError
+        # Additive v1 field. Older envelopes without comparison text still
+        # restore, but cannot claim to provide context for omitted reviews.
+        if ('review_context_text' in bundle and bundle['review_context_text'] !=
+                render_strategy_report(view, include_all_reviews=True)):
             raise ValueError
         return view
     except Exception:

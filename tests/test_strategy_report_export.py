@@ -56,6 +56,7 @@ class StrategyReportExportTests(unittest.TestCase):
         self.assertIn('32戦略', bundle['report_text'])
         self.assertIn('Synthetic calendar reference', bundle['report_text'])
         self.assertEqual(bundle['report_text'], render_strategy_report(saved))
+        self.assertEqual(bundle['review_context_text'], render_strategy_report(saved, include_all_reviews=True))
         self.assertNotIn('raw_unrelated_price_input', json.dumps(restored))
         self.assertLess(len(json.dumps(bundle).encode()), 900000)
         self.assertEqual(saved, original)
@@ -96,7 +97,7 @@ class StrategyReportExportTests(unittest.TestCase):
     def test_wrong_source_blob_clock_and_readable_report_tampering_are_rejected(self):
         bundle = build_strategy_report_export(json.dumps(snapshot()).encode(), SOURCE)
         for change in ({'source': {**SOURCE, 'run_id': 124}}, {'snapshot_git_blob_sha': 'b'*40},
-                       {'report_text': 'changed'}, {'assessment_summaries': []},
+                       {'report_text': 'changed'}, {'review_context_text': 'changed'}, {'assessment_summaries': []},
                        {'assessment_counts': {'review': 32}}, {'payload_sha256': '0'*64},
                        {'payload_byte_length': 1}, {'payload_base64': '%%%'}):
             with self.assertRaises(ValueError):
@@ -112,6 +113,34 @@ class StrategyReportExportTests(unittest.TestCase):
             bad = {**bundle, 'payload_base64': base64.b64encode(value).decode()}
             with self.assertRaises(ValueError):
                 restore_strategy_report_export(bad, SOURCE, bundle['snapshot_git_blob_sha'])
+
+    def test_all_review_context_is_available_without_expanding_default_report(self):
+        from fx_system.monitor_pairs import PAIR_KEYS
+        from fx_system.strategy_report import report_records, _label
+        from collections import Counter
+        data, _ = sample()
+        quality = {'timeframes': {'h1': {'ok': True, 'count': 20},
+                                 'm5': {'ok': True, 'count': 5, 'age_minutes': 0}}}
+        data['decision_quality'] = {**deepcopy(quality), 'evaluated_at': CLOCK}
+        data['technical'] = {'h1': {'status': 'ok', 'structure': 'mixed'}}
+        outlook = build_scheduled_outlook({p: deepcopy(data) for p in PAIR_KEYS},
+                                          {p: deepcopy(quality) for p in PAIR_KEYS}, evaluated_at=CLOCK)
+        saved = {'evaluated_at': CLOCK, 'scheduled_outlook': outlook}; before = deepcopy(saved)
+        bundle = build_strategy_report_export(json.dumps(saved).encode(), SOURCE)
+        reviews = [r for r in outlook['strategy_assessments'] if r['assessment'] == 'review']
+        shown = report_records(outlook)
+        self.assertGreater(len(reviews), len(shown))
+        self.assertTrue(all(count <= 3 for count in Counter(r['strategy'] for r in shown).values()))
+        for record in reviews:
+            self.assertIn(_label(record)+'｜', bundle['review_context_text'])
+        for record in [r for r in reviews if r not in shown]:
+            self.assertNotIn(_label(record)+'｜', bundle['report_text'])
+        self.assertIn('非掲載の検討候補：0', bundle['review_context_text'])
+        restore_strategy_report_export(bundle, SOURCE, bundle['snapshot_git_blob_sha'])
+        legacy = deepcopy(bundle); legacy.pop('review_context_text')
+        self.assertEqual(restore_strategy_report_export(legacy, SOURCE, bundle['snapshot_git_blob_sha']),
+                         restore_strategy_report_export(bundle, SOURCE, bundle['snapshot_git_blob_sha']))
+        self.assertEqual(saved, before)
 
     def test_private_atomic_save_shares_push_with_original_and_failed_projection_advances(self):
         with tempfile.TemporaryDirectory() as folder:
