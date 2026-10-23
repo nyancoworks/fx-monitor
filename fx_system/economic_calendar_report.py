@@ -27,6 +27,42 @@ def _event_clock(event, format_clock):
     return f"出典の日付 {_text(event.get('date'))}（時刻・JST換算未確定）"
 
 
+def _background_lines(context, format_clock):
+    background = context.get('background')
+    # Absence keeps frozen legacy reports byte-for-byte reproducible.
+    if not isinstance(background, dict) or background.get('version') != 1:
+        return []
+    rows = background.get('currencies')
+    if not isinstance(rows, list):
+        return []
+    lines = []
+    for row in rows[:2]:
+        if not isinstance(row, dict):
+            continue
+        parts = []
+        for key, label in (('policy', '政策関連'), ('indicators', '経済指標')):
+            evidence = row.get(key)
+            if not isinstance(evidence, dict):
+                continue
+            if evidence.get('upcoming_count'):
+                detail = '次の予定 '+_clock(evidence.get('next_scheduled_at_utc'), format_clock)
+            else:
+                detail = '今後の時刻付き予定は保存なし'
+            if evidence.get('uncertain_count'):
+                detail += f"、日時未確定{evidence['uncertain_count']}件"
+            if evidence.get('cancelled_count'):
+                detail += f"、中止の記録{evidence['cancelled_count']}件"
+            parts.append(label+'：'+detail)
+        values = row.get('saved_values')
+        if isinstance(values, dict):
+            parts.append('保存値：'+'・'.join(label+('あり' if values.get(key) else 'なし')
+                         for key, label in (('actual', '実績'), ('consensus', '予想'), ('prior', '前回'))))
+        lines.append('経済背景（保存範囲） '+_text(row.get('currency'))+'｜'+'｜'.join(parts))
+    if lines:
+        lines.append('金利水準・政策方針・市場反応は未評価。予定や保存値だけで通貨の強弱を判断しない。')
+    return lines
+
+
 def calendar_lines(record, format_clock):
     context = record.get('economic_calendar_context')
     if not isinstance(context, dict):
@@ -48,6 +84,7 @@ def calendar_lines(record, format_clock):
         lines.append('経済指標：直近の取得・保存を確認できない。保存参考情報は元の取得時刻のまま使用')
     if type(context.get('observed_at_utc')) is int:
         lines.append(f"経済指標取得：{_clock(context['observed_at_utc'], format_clock)}｜鮮度・網羅性は未検証（取得時刻は出典確認時刻と別）")
+    lines.extend(_background_lines(context, format_clock))
     health_labels = {'degraded': '出典の取得状態が劣化', 'failed': '出典の取得失敗', 'disabled': '出典の取得停止'}
     for state, label in health_labels.items():
         affected = sum(isinstance(e, dict) and isinstance(e.get('source_health'), dict)

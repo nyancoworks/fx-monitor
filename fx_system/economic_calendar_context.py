@@ -6,6 +6,7 @@ No entry permission, trading action, grade, or direction is derived here.
 from copy import deepcopy
 from datetime import date, datetime, timedelta, timezone
 from .monitor_pairs import PAIR_KEYS
+from .economic_background import summarize_background
 
 WINDOWS = {"swing": (86400, 7 * 86400), "daytrade": (6 * 3600, 36 * 3600)}
 
@@ -103,6 +104,7 @@ def enrich_outlook(outlook, calendar):
             "advisory_only": True, "changes_grade": False,
             "market_reaction": "unassessed",
             "policy_interpretation": "unassessed",
+            "background": summarize_background(selected, (pair[:3], pair[3:])),
         }
     if seen != {(p, s) for p in PAIR_KEYS for s in WINDOWS}:
         raise ValueError("missing canonical assessments")

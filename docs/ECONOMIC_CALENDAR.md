@@ -1,5 +1,29 @@
 # Optional economic calendar context
 
+## Saved economic background overview
+
+New assessments include a versioned `background` inside their calendar context.
+For each currency, it separates policy-related events from economic indicators,
+retains the next saved scheduled time, and counts uncertain and cancelled events.
+This scans all relevant saved events, including those outside the three-event
+display limit. A scheduled time, including a provisional one, is not proof of a
+release. Missing schedules mean no record in this assessment's reference window,
+not no event or safety.
+
+The overview distinguishes availability of saved actual, forecast and prior
+strings. Blank, explicitly stale, estimated and cancelled observations are not
+counted; actuals also require the past-release window. Availability does not
+verify the number, comparable units, a first print, or a forecast surprise.
+Policy rate, policy stance and market reaction remain explicitly unassessed:
+an event category does not establish any of them. Completing that research needs
+separately sourced, dated policy facts and appropriately bounded price evidence.
+
+This is an offline addition using the existing saved input. It adds no provider
+request, collection schedule, dependency, task instruction, grade or direction
+rule. Old frozen assessments without `background` retain their exact old report
+rendering. Historical activation statements below describe implementation stages;
+current deployment and natural-operation acceptance are tracked in Issue #1.
+
 ## Scope and activation
 
 `financecalendar_adapter.normalize_calendar(payload, observed_at_utc=...)` is a pure offline adapter for a separately acquired Finance Calendar `/calendar` JSON page. Pass its return value explicitly as `economic_calendar` to `build_scheduled_outlook`. It neither fetches nor saves a provider response. Preserve the original response and its real acquisition clock in private storage; never commit it here. Do not substitute a provider build time or backdated evaluation time for acquisition.
