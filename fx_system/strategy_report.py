@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 import math
 from .validate_strategy_snapshot import validate_strategy_snapshot
 from .price_reaction_observation import reaction_description
+from .economic_calendar_report import calendar_lines
 
 
 def report_records(outlook):
@@ -64,6 +65,7 @@ def render_strategy_report(snapshot):
         strength=r.get('currency_strength_context', {})
         if strength.get('evaluated_at') == snapshot['evaluated_at'] and strength.get('summary'):
             lines.append('通貨強弱：'+strength['summary'])
+        lines.extend(calendar_lines(r, _clock))
         if condition_plan.get('status') in ('waiting','awaiting_breakout','awaiting_retest','retest_failed','conditions_observed'):
             state = ('条件観測済み' if condition_plan['status']=='conditions_observed' else
                      '再試し失敗・再評価' if condition_plan['status']=='retest_failed' else
