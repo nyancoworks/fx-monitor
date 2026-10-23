@@ -1,9 +1,10 @@
 """Synthetic event times and immutable saved-price follow-ups only."""
 from copy import deepcopy
 import json
+import hashlib
 import unittest
 
-from diagnostics.calendar_price_windows import review_calendar_price_windows
+from diagnostics.calendar_price_windows import review_calendar_price_windows, review_calendar_windows_from_cache
 from diagnostics.candidate_followup_archive import build_followup
 from diagnostics.monitoring_result_history import pack_generation
 from fx_system.scheduled_outlook import build_scheduled_outlook
@@ -11,7 +12,7 @@ from fx_system.strategy_report_export import build_strategy_report_export
 from test_strategy_report_export import snapshot, SOURCE, CLOCK
 
 
-def inputs(*, gap=False, unknown=False, event_changes=None, overlap=False):
+def inputs(*, gap=False, unknown=False, event_changes=None, overlap=False, later_event=False):
     saved = snapshot()
     all_records = saved['scheduled_outlook']['strategy_assessments'] + [
         r for row in saved['scheduled_outlook']['rows'] for r in row['strategy_assessments'].values()]
@@ -22,6 +23,10 @@ def inputs(*, gap=False, unknown=False, event_changes=None, overlap=False):
             event.update(event_changes or {})
         if overlap and record['economic_calendar_context']['events']:
             other = deepcopy(record['economic_calendar_context']['events'][0]); other['id'] = 'synthetic-overlap'
+            record['economic_calendar_context']['events'].append(other)
+        if later_event and record['economic_calendar_context']['events']:
+            other = deepcopy(record['economic_calendar_context']['events'][0])
+            other.update(id='synthetic-later-event', scheduled_at_utc=CLOCK+5400)
             record['economic_calendar_context']['events'].append(other)
     bundle = build_strategy_report_export(json.dumps(saved).encode(), SOURCE)
     bars = [dict(timestamp=CLOCK+i*300, open=1+i*.0001, high=1+i*.0001+.0002,
@@ -43,6 +48,50 @@ def review(bundle, followup):
 
 
 class CalendarPriceWindowTests(unittest.TestCase):
+    def cache_inputs(self, *, missing_boundary=False):
+        bundle, _ = inputs(later_event=True)
+        later_source = {**SOURCE, 'run_id': 125, 'evaluated_at': CLOCK+7200}
+        later = {'evaluated_at': CLOCK+7200, 'scheduled_outlook':
+                 build_scheduled_outlook({}, {}, evaluated_at=CLOCK+7200)}
+        later_bundle = build_strategy_report_export(json.dumps(later).encode(), later_source)
+        bars = [dict(timestamp=CLOCK+i*300, open=1+i*.0001, high=1+i*.0001+.0002,
+                     low=1+i*.0001-.0002, close=1+i*.0001+.000025)
+                for i in range(24) if not (missing_boundary and i == 12)]
+        raw = json.dumps({'EURUSD': {'m5': bars, 'bar_provenance': {
+            'm5:'+str(b['timestamp']): 'Twelve Data' for b in bars}}}).encode()
+        sha = hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()
+        return (bundle, SOURCE, bundle['snapshot_git_blob_sha'], later_bundle,
+                later_source, later_bundle['snapshot_git_blob_sha'], raw, sha)
+
+    def test_broader_cache_measures_60_minutes_without_changing_event_cohort(self):
+        args = self.cache_inputs(); before = deepcopy(args)
+        result = review_calendar_windows_from_cache(*args, private_commit='b'*40,
+                                                    event_window_through=CLOCK+3600)
+        cases = [x for x in result['cases'] if x['pair'] == 'EURUSD']
+        self.assertEqual([c['observation']['status'] for c in cases], ['saved_price_observation']*3)
+        self.assertAlmostEqual(cases[-1]['observation']['pair_quote_change']/.0001, 12)
+        self.assertEqual(result['scheduled_event_window_through'], CLOCK+3600)
+        self.assertEqual(result['through_saved_evaluation'], CLOCK+7200)
+        self.assertTrue(all(c['event_id'] != 'synthetic-later-event' for c in result['cases']))
+        self.assertGreater(result['outside_observation_window_event_count'], 0)
+        self.assertEqual(result['price_evidence']['kind'], 'saved_private_cache')
+        self.assertEqual(args, before)
+
+    def test_cache_bytes_origin_clocks_and_boundary_gaps_cannot_be_faked(self):
+        args = self.cache_inputs(missing_boundary=True)
+        result = review_calendar_windows_from_cache(*args, private_commit='b'*40,
+                                                    event_window_through=CLOCK+3600)
+        case = next(c for c in result['cases'] if c['pair'] == 'EURUSD' and c['horizon_seconds'] == 3600)
+        self.assertEqual(case['observation']['reason'], 'missing_baseline_endpoint_or_internal_bar')
+        for options in ({'private_commit': 'bad', 'event_window_through': CLOCK+3600},
+                        {'private_commit': 'b'*40, 'event_window_through': CLOCK+9000}):
+            with self.assertRaises(ValueError):
+                review_calendar_windows_from_cache(*args, **options)
+        corrupt = (*args[:6], args[6]+b' ', args[7])
+        with self.assertRaises(ValueError):
+            review_calendar_windows_from_cache(*corrupt, private_commit='b'*40,
+                                               event_window_through=CLOCK+3600)
+
     def test_exact_closed_bar_windows_deduplicate_strategies_and_preserve_inputs(self):
         bundle, followup = inputs(overlap=True); original = deepcopy((bundle, followup))
         result = review(bundle, followup)
