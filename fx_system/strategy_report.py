@@ -9,8 +9,8 @@ from .economic_calendar_report import calendar_lines
 from .report_plan_comparison import saved_plan_comparison
 
 
-def report_records(outlook):
-    """Three per strategy; grade first, then headroom in matching contexts."""
+def _ordered_reviews(outlook):
+    """All reviews; grade first, then headroom in matching contexts."""
     priority = {(c['pair'], c['strategy']): i for i, c in enumerate(outlook.get('strategy_candidates', []))}
     reviews = [r for r in outlook['strategy_assessments'] if r['assessment'] == 'review']
     ordered = sorted(reviews, key=lambda r: ('ABC'.index(r['grade']),
@@ -26,6 +26,12 @@ def report_records(outlook):
         ranked = sorted(members, key=lambda item: -item[2])
         for (index, _, _), (_, record, _) in zip(members, ranked):
             ordered[index] = record
+    return ordered
+
+
+def report_records(outlook):
+    """Up to three per strategy; do not change any saved assessment."""
+    ordered = _ordered_reviews(outlook)
     return [r for strategy in ('swing','daytrade')
             for r in [x for x in ordered if x['strategy']==strategy][:3]]
 
@@ -42,12 +48,14 @@ def _label(r):
     return f"{r['pair'][:3]}/{r['pair'][3:]} {'スイング' if r['strategy']=='swing' else 'デイトレード'}"
 
 
-def render_strategy_report(snapshot):
+def render_strategy_report(snapshot, *, include_all_reviews=False):
     failures = validate_strategy_snapshot(snapshot)
     if failures:
         raise ValueError('; '.join(failures))
     outlook = snapshot['scheduled_outlook']; rows = outlook['strategy_assessments']
-    shown = report_records(outlook); grades = Counter(r['grade'] for r in rows if r['assessment']=='review')
+    shown = ([r for strategy in ('swing', 'daytrade') for r in _ordered_reviews(outlook)
+              if r['strategy'] == strategy] if include_all_reviews else report_records(outlook))
+    grades = Counter(r['grade'] for r in rows if r['assessment']=='review')
     omitted = Counter(r['grade'] for r in rows if r['assessment']=='review' and r not in shown)
     counts = outlook['assessment_counts']
     lines = [f"保存評価：{_clock(snapshot['evaluated_at'])}（保存値に基づく判断）",
