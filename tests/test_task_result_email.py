@@ -4,7 +4,8 @@ from datetime import datetime, timezone
 import hashlib
 import unittest
 
-from diagnostics.task_result_email import prepare_task_result_email, MAX_RESULT_BYTES
+from diagnostics.task_result_email import (
+    prepare_task_result_email, reconcile_task_result_email, MAX_RESULT_BYTES)
 
 NOW = datetime(2026, 1, 2, 3, 5, tzinfo=timezone.utc)
 SLOT = '2026-01-02T03:00:00Z'
@@ -26,6 +27,18 @@ def task():
 def prepare(value, **kwargs):
     return prepare_task_result_email(value, expected_task_id='synthetic-task',
         expected_run_id='synthetic-run', expected_scheduled_for=SLOT, now=NOW, **kwargs)
+
+
+def sent_copy(prepared, mid='synthetic-message'):
+    payload = deepcopy(prepared['payload'])
+    payload['headers'] = [{'name': 'To', 'value': 'Synthetic <owner@example.com>'},
+        {'name': 'Subject', 'value': prepared['subject']}]
+    return {'id': mid, 'label_ids': ['SENT'], 'payload': payload}
+
+
+def reconcile(prepared, messages, **kwargs):
+    return reconcile_task_result_email(prepared, messages,
+        expected_recipient='owner@example.com', expected_subject=prepared['subject'], **kwargs)
 
 
 class TaskResultEmailTests(unittest.TestCase):
@@ -73,6 +86,65 @@ class TaskResultEmailTests(unittest.TestCase):
                      'urlSourcehttps://user:pass@example.com/', ' ', 'x'*(MAX_RESULT_BYTES+1)):
             value['run_details']['latest_result']['content_text'] = text
             with self.assertRaises(ValueError): prepare(value)
+
+    def test_empty_search_never_proves_non_delivery_or_allows_retry(self):
+        result = reconcile(prepare(task()), [])
+        self.assertEqual(result['status'], 'outcome_unknown')
+        self.assertFalse(result['automatic_retry_allowed'])
+        self.assertFalse(result['recipient_arrival_verified'])
+
+    def test_exact_sent_copy_requires_provider_id_to_bind_send_operation(self):
+        prepared = prepare(task()); message = sent_copy(prepared)
+        before = deepcopy((prepared, message))
+        unbound = reconcile(prepared, [message])
+        self.assertEqual(unbound['status'], 'matching_sent_copy_unbound')
+        self.assertFalse(unbound['provider_operation_verified'])
+        bound = reconcile(prepared, [message], provider_message_id=message['id'])
+        self.assertEqual(bound['status'], 'provider_sent_copy_verified')
+        self.assertTrue(bound['provider_operation_verified'])
+        self.assertFalse(bound['recipient_arrival_verified'])
+        self.assertFalse(bound['automatic_retry_allowed'])
+        self.assertEqual((prepared, message), before)
+
+    def test_wrong_recipient_subject_draft_and_partial_or_changed_mime_not_proof(self):
+        prepared = prepare(task())
+        changes = [lambda m: m.update(label_ids=['DRAFT']),
+            lambda m: m.update(label_ids=['SENT', 'DRAFT']),
+            lambda m: m['payload']['headers'][0].update(value='other@example.com'),
+            lambda m: m['payload']['headers'][0].update(value='owner@example.com, other@example.com'),
+            lambda m: m['payload']['headers'].append({'name': 'To', 'value': 'owner@example.com'}),
+            lambda m: m['payload']['headers'][1].update(value='other slot'),
+            lambda m: m['payload']['parts'].pop(),
+            lambda m: m['payload']['parts'][0]['body'].update(content='shortened'),
+            lambda m: m['payload']['parts'][1]['body'].update(content='different HTML'),
+            lambda m: m['payload']['parts'][0].update(filename='attachment.txt')]
+        for index, change in enumerate(changes):
+            with self.subTest(case=index):
+                message = sent_copy(prepared); change(message)
+                result = reconcile(prepared, [message], provider_message_id=message['id'])
+                self.assertEqual(result['status'], 'provider_copy_mismatch')
+                self.assertFalse(result['provider_operation_verified'])
+                self.assertFalse(result['automatic_retry_allowed'])
+
+    def test_duplicate_matches_and_missing_provider_id_stay_distinct(self):
+        prepared = prepare(task())
+        messages = [sent_copy(prepared, 'synthetic-a'), sent_copy(prepared, 'synthetic-b')]
+        result = reconcile(prepared, messages)
+        self.assertEqual(result['status'], 'multiple_matching_sent_copies')
+        self.assertFalse(result['provider_operation_verified'])
+        result = reconcile(prepared, messages, provider_message_id='synthetic-missing')
+        self.assertEqual(result['status'], 'outcome_unknown')
+        with self.assertRaises(ValueError): reconcile(prepared, [messages[0], messages[0]])
+
+    def test_tampered_prepared_identity_or_payload_is_rejected(self):
+        changes = [lambda p: p.update(source_text='other run body'),
+            lambda p: p.update(delivery_key='0'*64),
+            lambda p: p.update(run_id='other-run'),
+            lambda p: p['payload']['parts'][1]['body'].update(content='changed')]
+        for index, change in enumerate(changes):
+            with self.subTest(case=index):
+                prepared = prepare(task()); change(prepared)
+                with self.assertRaises(ValueError): reconcile(prepared, [])
 
 
 if __name__ == '__main__':

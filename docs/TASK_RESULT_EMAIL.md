@@ -25,3 +25,23 @@ webhook. An end-to-end automatic delivery route remains a separate acceptance st
 Draft creation, send API success and actual recipient arrival are separate states.
 Confirm the mailbox/recipient and ongoing sending scope before enabling delivery.
 Do not publish source results, generated MIME, addresses or delivery state here.
+
+`reconcile_task_result_email` inspects private Gmail `full` readbacks after a send
+attempt. It checks the prepared source hash/key/MIME, exact recipient and subject,
+SENT (excluding DRAFT), and both complete plain/HTML bodies. Pass the actual test
+subject when a test prefix was used. The helper is conservative: modified or
+restructured MIME is not accepted as proof, even if it might display similarly.
+
+An empty search stays `outcome_unknown` and never permits an automatic retry.
+Even an exact sent-copy search match is `matching_sent_copy_unbound` without the
+immutable message ID recorded from the send response: body/subject alone cannot
+prove which send operation or task run created it. Several matching IDs are
+reported separately, not silently selected. With a returned provider ID and an
+exact sent-copy readback, `provider_sent_copy_verified` confirms that provider
+operation only. It does not confirm actual arrival, notifications or reading.
+The helper makes no provider calls and never changes a reservation or sends mail.
+
+Automatic forwarding additionally needs an exact notification-to-run binding.
+A shared conversation link or close timestamps are insufficient for delayed or
+combined notification events. Latest-result lookup must not be treated as a
+historical-run lookup. No automatic route is enabled by these offline helpers.
