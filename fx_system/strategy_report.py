@@ -6,14 +6,26 @@ import math
 from .validate_strategy_snapshot import validate_strategy_snapshot
 from .price_reaction_observation import reaction_description
 from .economic_calendar_report import calendar_lines
+from .report_plan_comparison import saved_plan_comparison
 
 
 def report_records(outlook):
-    """Up to three per strategy; grade, then existing candidate order."""
+    """Three per strategy; grade first, then headroom in matching contexts."""
     priority = {(c['pair'], c['strategy']): i for i, c in enumerate(outlook.get('strategy_candidates', []))}
     reviews = [r for r in outlook['strategy_assessments'] if r['assessment'] == 'review']
     ordered = sorted(reviews, key=lambda r: ('ABC'.index(r['grade']),
                   priority.get((r['pair'], r['strategy']), len(priority))))
+    groups = {}
+    for index, record in enumerate(ordered):
+        group, ratio, _ = saved_plan_comparison(record)
+        if group is not None:
+            groups.setdefault(group, []).append((index, record, ratio))
+    # Preserve each context's existing slots. Larger RR cannot move a weak or
+    # differently formed scenario into another context's earlier slot.
+    for members in groups.values():
+        ranked = sorted(members, key=lambda item: -item[2])
+        for (index, _, _), (_, record, _) in zip(members, ranked):
+            ordered[index] = record
     return [r for strategy in ('swing','daytrade')
             for r in [x for x in ordered if x['strategy']==strategy][:3]]
 
@@ -40,7 +52,7 @@ def render_strategy_report(snapshot):
     counts = outlook['assessment_counts']
     lines = [f"保存評価：{_clock(snapshot['evaluated_at'])}（保存値に基づく判断）",
              f"{len(rows)}戦略：検討{counts['review']}（A{grades['A']}/B{grades['B']}/C{grades['C']}）｜見送り{counts['skip']}｜評価保留{counts['evaluation_pending']}",
-             'A/B/Cはシナリオの優位性・完成度。掲載順は評価と保存済み候補順による。',
+             'A/B/Cはシナリオの優位性・完成度。同評価・同じ確認段階と反対根拠の候補間で保存価格の余地を比較し、比較条件が異なる候補の掲載枠は維持する。',
              '参考RRは保存価格基準で、スプレッド・手数料・滑りを含まない。']
     if not shown: lines.append('掲載する検討候補なし。見送りと評価保留の内訳は上記。')
     for r in shown:
@@ -58,6 +70,7 @@ def render_strategy_report(snapshot):
                   '成立確認：'+('／'.join(r.get('formation_conditions', [])) or '未提供')+'。成立価格・成立後RRは未確定',
                   f"基準足{r['reference_timeframe'].upper()}保存終値：{_number(plan.get('reference_close'))}（{base_clock}）｜参考RR {_number(levels.get('reference_rr'))}",
                   f"構造無効化：{_number(levels.get('invalidation'))}｜構造目標：{_number(levels.get('structural_target'))}"]
+        lines.append(saved_plan_comparison(r)[2])
         condition_plan = r.get('scenario_conditions', {})
         if r.get('scenario_type') == 'range_reversal':
             rc = r['range_context']
