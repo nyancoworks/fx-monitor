@@ -30,3 +30,19 @@ surprise, an economic judgment or direct event-currency strength. There are no
 orders, fills, profits, pooled unequal-horizon averages, grading changes or
 hindsight candidate selection. Actuals/forecasts and simultaneous news need
 separate evidence before interpreting a response.
+
+## Broader existing cache evidence
+
+`review_calendar_windows_from_cache` can use a later private `data/cache.json`
+without joining hourly followups. Those followups omit M5 intervals crossing an
+evaluation clock; concatenating them would leave gaps. Pin the cache bytes and
+later report/source to the same immutable private commit, pass their identities,
+and set `event_window_through` to the original event cohort's cutoff. The original
+calendar selects events; the later report only binds the price observation clock.
+Both report exports and the exact cache Git blob hash are checked, the input is
+bounded to4MiB, and each observed M5 interval retains its existing provider label.
+Remote commit membership still depends on the caller's pinned GitHub reads; a
+passed hash and source label are not independent source authenticity verification.
+Missing/unknown bars remain unavailable. No price is reconstructed or fetched.
+Output records the cohort clock separately from the broader price clock and
+identifies the saved cache evidence explicitly, rather than calling it a followup.

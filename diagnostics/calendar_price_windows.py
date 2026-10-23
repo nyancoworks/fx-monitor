@@ -4,9 +4,14 @@ No fetch, save, decision change, causal attribution or trading performance.
 """
 from collections import Counter
 from copy import deepcopy
+import hashlib
+import json
+import re
 
 from .scenario_quality_review import review_saved_followup
+from .candidate_followup_archive import observed_bars
 from fx_system.candidate_followup import positive
+from fx_system.monitor_pairs import PAIR_KEYS
 from fx_system.strategy_report_export import restore_strategy_report_export
 
 
@@ -63,15 +68,67 @@ def review_calendar_price_windows(bundle, source, snapshot_blob_sha, followup,
     Exact endpoints are required. These durations are observation windows only,
     not entry/exit horizons or a grading rule. Output belongs in private storage.
     """
-    if (not isinstance(horizons, tuple) or not horizons or len(horizons) > 12
-            or any(type(h) is not int or h <= 0 or h > 86400 or h % 300 for h in horizons)
-            or len(set(horizons)) != len(horizons)):
-        raise ValueError('invalid calendar observation horizons')
+    _validate_horizons(horizons)
     # Reuse the established identity/history/observation verification, not just
     # a matching source label on an unrelated next generation.
     bound = review_saved_followup(bundle, source, snapshot_blob_sha, followup)
     view = restore_strategy_report_export(bundle, source, snapshot_blob_sha)
-    since, through = source['evaluated_at'], followup['evaluated_at']
+    return _review_view(view, source, snapshot_blob_sha, followup['m5_observations'],
+                        followup['evaluated_at'], followup['evaluated_at'], horizons,
+                        {'kind': 'matched_followup', 'source': bound['followup_source']})
+
+
+def _validate_horizons(horizons):
+    if (not isinstance(horizons, tuple) or not horizons or len(horizons) > 12
+            or any(type(h) is not int or h <= 0 or h > 86400 or h % 300 for h in horizons)
+            or len(set(horizons)) != len(horizons)):
+        raise ValueError('invalid calendar observation horizons')
+
+
+def review_calendar_windows_from_cache(bundle, source, snapshot_blob_sha,
+                                      price_bundle, price_source, price_snapshot_blob_sha,
+                                      cache_bytes, cache_blob_sha, *, private_commit,
+                                      event_window_through, horizons=(300, 900, 3600)):
+    """Use a broader saved cache, never fill gaps between hourly follow-ups.
+
+    Caller pins cache AND price report/source to private_commit. Git blob bytes
+    are verified here; membership in that remote commit remains caller evidence.
+    Event selection stays on the original calendar and explicit cohort clock.
+    """
+    _validate_horizons(horizons)
+    view = restore_strategy_report_export(bundle, source, snapshot_blob_sha)
+    restore_strategy_report_export(price_bundle, price_source, price_snapshot_blob_sha)
+    if (not isinstance(cache_bytes, bytes) or len(cache_bytes) > 4*1024*1024
+            or not isinstance(private_commit, str) or re.fullmatch('[0-9a-f]{40}', private_commit) is None
+            or hashlib.sha1(b'blob '+str(len(cache_bytes)).encode()+b'\0'+cache_bytes).hexdigest() != cache_blob_sha
+            or price_source['source_repository'] != source['source_repository']
+            or type(event_window_through) is not int
+            or not source['evaluated_at'] < event_window_through <= price_source['evaluated_at']):
+        raise ValueError('saved cache origin, bytes or observation clocks invalid')
+    try:
+        cache = json.loads(cache_bytes)
+        if not isinstance(cache, dict):
+            raise ValueError
+        feeds = {}
+        for pair in PAIR_KEYS:
+            saved = cache.get(pair, {})
+            if not isinstance(saved, dict):
+                raise ValueError
+            feeds[pair] = observed_bars({'decision_data': {
+                'raw': {'m5': saved.get('m5', [])}, 'provenance': saved.get('bar_provenance', {})}},
+                source['evaluated_at'], price_source['evaluated_at'])
+    except (ValueError, TypeError, KeyError, RecursionError):
+        raise ValueError('saved cache shape invalid') from None
+    return _review_view(view, source, snapshot_blob_sha, feeds, price_source['evaluated_at'],
+                        event_window_through, horizons, {
+                            'kind': 'saved_private_cache', 'private_commit': private_commit,
+                            'cache_git_blob_sha': cache_blob_sha, 'source': deepcopy(price_source),
+                            'snapshot_git_blob_sha': price_snapshot_blob_sha,
+                            'remote_commit_membership': 'caller_pinned_not_independently_verified'})
+
+
+def _review_view(view, source, snapshot_blob_sha, feeds, through, event_window_through, horizons, price_evidence):
+    since = source['evaluated_at']
     events = {}; conflicts = set(); unidentified = 0
     for record in view['scheduled_outlook']['strategy_assessments']:
         context = record.get('economic_calendar_context', {})
@@ -92,13 +149,13 @@ def review_calendar_price_windows(bundle, source, snapshot_blob_sha, followup,
     cases = []; outside = 0
     for (pair, event_id), event in sorted(events.items()):
         when = event.get('scheduled_at_utc')
-        if type(when) is int and not since < when <= through:
+        if type(when) is int and not since < when <= event_window_through:
             outside += 1
             continue
         for seconds in horizons:
             observation = ({'status': 'unavailable', 'reason': 'conflicting_saved_event_identity'}
                            if (pair, event_id) in conflicts else
-                           _measure(event, followup.get('m5_observations', {}).get(pair), since, through, seconds))
+                           _measure(event, feeds.get(pair), since, through, seconds))
             overlap = [other_id for (other_pair, other_id), other in events.items()
                        if other_pair == pair and other_id != event_id and type(when) is int
                        and type(other.get('scheduled_at_utc')) is int
@@ -117,8 +174,10 @@ def review_calendar_price_windows(bundle, source, snapshot_blob_sha, followup,
                 'other_uncertain_time_event_count': unknown, 'observation': observation})
     return {'schema': 'saved_calendar_price_windows_v1', 'source': deepcopy(source),
             'snapshot_git_blob_sha': snapshot_blob_sha,
-            'followup_source': deepcopy(bound['followup_source']),
+            'price_evidence': deepcopy(price_evidence),
+            'followup_source': deepcopy(price_evidence['source']) if price_evidence['kind'] == 'matched_followup' else None,
             'through_saved_evaluation': through, 'horizons_seconds': list(horizons),
+            'scheduled_event_window_through': event_window_through,
             'private_research_only': True, 'cases': cases,
             'measurable_window_count': sum(c['observation']['status'] == 'saved_price_observation' for c in cases),
             'unavailable_reason_counts': dict(Counter(c['observation']['reason'] for c in cases
