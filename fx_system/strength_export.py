@@ -1,5 +1,6 @@
 """Small private read projection of saved strength; never recalculate prices."""
 from copy import deepcopy
+from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import math
@@ -9,6 +10,28 @@ from .strength import ALGORITHM, CURRENCIES
 
 
 SCHEMA = 'saved_currency_strength_v1'
+
+
+def render_strength_summary(value, clock):
+    """Display the saved 24h ranking, preserving ties and missing-data limits."""
+    if strength_errors(value, clock):
+        return '通貨強弱（24時間）：確認できません。'
+    if value['status'] == 'unavailable':
+        return '通貨強弱（24時間）：データ不足で8通貨を比較できません。'
+    groups = []
+    for currency in value['ranking']:
+        if groups and value['scores'][groups[-1][-1]] == value['scores'][currency]:
+            groups[-1].append(currency)
+        else:
+            groups.append([currency])
+    ranking = ' ＞ '.join(' ＝ '.join(group) for group in groups)
+    label = '差なし' if len(groups) == 1 else '強い順'
+    end = datetime.fromtimestamp(value['end_closed_at'], timezone(timedelta(hours=9)))
+    coverage = f"{value['coverage_pairs']}/16ペア"
+    provisional = '・一部データによる暫定順位' if value['status'] == 'provisional' else ''
+    return (f'通貨強弱（24時間・{end:%m/%d %H:%M} JSTまで）：{label} {ranking}\n'
+            f'保存済みH1終値の相対比較（{coverage}{provisional}）。'
+            '各候補の6時間強弱とは期間が異なり、売買方向を単独で決めるものではありません。')
 
 
 def _finite(value):
@@ -71,6 +94,8 @@ def build_strength_export(snapshot_bytes, source):
             'snapshot_git_blob_sha': blob_sha, 'snapshot_byte_length': len(snapshot_bytes),
             'status': 'unavailable' if errors else 'saved', 'errors': errors,
             'currency_strength': None if errors else deepcopy(strength)}
+    bundle['summary_version'] = 1
+    bundle['summary_text'] = render_strength_summary(strength, clock)
     references = snapshot.get('historical_shape_references')
     if references is not None:
         from .historical_shape_reference import reference_errors
@@ -86,4 +111,12 @@ def validate_strength_export(bundle, source, snapshot_blob_sha):
         return ['strength export source or snapshot mismatch']
     if bundle.get('status') != 'saved':
         return ['strength export unavailable']
-    return strength_errors(bundle.get('currency_strength'), source.get('evaluated_at'))
+    errors = strength_errors(bundle.get('currency_strength'), source.get('evaluated_at'))
+    if errors:
+        return errors
+    if 'summary_version' in bundle or 'summary_text' in bundle:
+        if (type(bundle.get('summary_version')) is not int or bundle['summary_version'] != 1
+                or bundle.get('summary_text') != render_strength_summary(
+                    bundle['currency_strength'], source.get('evaluated_at'))):
+            return ['strength summary invalid']
+    return []
