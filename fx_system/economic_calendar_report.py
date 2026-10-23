@@ -1,4 +1,5 @@
 """Read-only display of optional saved calendar evidence."""
+from .saved_economic_policy import policy_lines
 
 
 def _text(value):
@@ -59,7 +60,8 @@ def _background_lines(context, format_clock):
                          for key, label in (('actual', '実績'), ('consensus', '予想'), ('prior', '前回'))))
         lines.append('経済背景（保存範囲） '+_text(row.get('currency'))+'｜'+'｜'.join(parts))
     if lines:
-        lines.append('金利水準・政策方針・市場反応は未評価。予定や保存値だけで通貨の強弱を判断しない。')
+        prefix = '最新の' if 'policy_reference' in context else ''
+        lines.append(prefix+'金利水準・政策方針・市場反応は未評価。予定や保存値だけで通貨の強弱を判断しない。')
     return lines
 
 
@@ -67,6 +69,9 @@ def calendar_lines(record, format_clock):
     context = record.get('economic_calendar_context')
     if not isinstance(context, dict):
         return []
+    pair = record.get('pair', '')
+    policies = policy_lines(context.get('policy_reference'), (pair[:3], pair[3:]),
+                            lambda value: _clock(value, format_clock))
     if context.get('status') not in ('available', 'partial'):
         reasons = {'private_location_required': '非公開の保存先が未設定または使用不可',
                    'invalid_private_input': '保存入力の形式・配置を確認できない',
@@ -75,7 +80,7 @@ def calendar_lines(record, format_clock):
                    'unreadable_private_input': '保存入力が未配置または読み取り不可'}
         reason = context.get('load_reason')
         detail = reasons.get(reason) if isinstance(reason, str) else None
-        return ['経済指標：検証済み情報なし' + ('（'+detail+'）' if detail else '')]
+        return ['経済指標：検証済み情報なし' + ('（'+detail+'）' if detail else '')] + policies
     events = context.get('events')
     if not isinstance(events, list):
         return ['経済指標：保存形式未確認']
@@ -85,6 +90,7 @@ def calendar_lines(record, format_clock):
     if type(context.get('observed_at_utc')) is int:
         lines.append(f"経済指標取得：{_clock(context['observed_at_utc'], format_clock)}｜鮮度・網羅性は未検証（取得時刻は出典確認時刻と別）")
     lines.extend(_background_lines(context, format_clock))
+    lines.extend(policies)
     health_labels = {'degraded': '出典の取得状態が劣化', 'failed': '出典の取得失敗', 'disabled': '出典の取得停止'}
     for state, label in health_labels.items():
         affected = sum(isinstance(e, dict) and isinstance(e.get('source_health'), dict)

@@ -65,6 +65,10 @@ def configured_calendar(*, evaluated_at):
     if not root:
         return _unavailable('private_location_required')
     result = load_saved_calendar(root, evaluated_at=evaluated_at)
+    from .saved_economic_policy import load_saved_policy
+    policy = load_saved_policy(root, evaluated_at=evaluated_at)
+    if policy is not None:
+        result['policy_reference'] = policy
     status = os.environ.get('FX_ECONOMIC_CALENDAR_COLLECTION_STATUS')
     result['collection_status'] = status if status in ('saved', 'unavailable', 'already_attempted') else 'unverified'
     return result

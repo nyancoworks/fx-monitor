@@ -1,5 +1,8 @@
 # Optional economic calendar context
 
+Dated official policy documents are handled separately from event calendars;
+see [POLICY_REFERENCE.md](POLICY_REFERENCE.md) for the optional offline input.
+
 ## Saved economic background overview
 
 New assessments include a versioned `background` inside their calendar context.
