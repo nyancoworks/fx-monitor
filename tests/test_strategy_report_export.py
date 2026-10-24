@@ -39,6 +39,27 @@ def snapshot():
 
 
 class StrategyReportExportTests(unittest.TestCase):
+    def test_comparison_explanation_versions_preserve_legacy_text_and_canonical_records(self):
+        saved = snapshot()
+        original = deepcopy(saved)
+        bundle = build_strategy_report_export(json.dumps(saved).encode(), SOURCE)
+        self.assertEqual(bundle['comparison_explanation_version'], 2)
+        self.assertIn('同条件', bundle['report_text'])
+        legacy = deepcopy(bundle)
+        legacy.pop('comparison_explanation_version')
+        legacy['report_text'] = render_strategy_report(saved)
+        legacy['review_context_text'] = render_strategy_report(
+            saved, include_all_reviews=True, complete_evidence=True)
+        for envelope in (bundle, legacy):
+            restored = restore_strategy_report_export(envelope, SOURCE, bundle['snapshot_git_blob_sha'])
+            self.assertEqual(restored['scheduled_outlook']['strategy_assessments'],
+                             saved['scheduled_outlook']['strategy_assessments'])
+        for value in (True, 0, 3, '2', 1):
+            with self.assertRaises(ValueError):
+                restore_strategy_report_export({**bundle, 'comparison_explanation_version': value},
+                                               SOURCE, bundle['snapshot_git_blob_sha'])
+        self.assertEqual(saved, original)
+
     def test_selection_versions_restore_exact_saved_text_and_reject_mislabelled_versions(self):
         saved = snapshot()
         bundle = build_strategy_report_export(json.dumps(saved).encode(), SOURCE)
@@ -46,6 +67,7 @@ class StrategyReportExportTests(unittest.TestCase):
         restore_strategy_report_export(bundle, SOURCE, bundle['snapshot_git_blob_sha'])
         legacy = deepcopy(bundle)
         legacy.pop('selection_version')
+        legacy.pop('comparison_explanation_version')
         legacy['report_text'] = render_strategy_report(saved, selection_version=1)
         legacy['review_context_text'] = render_strategy_report(
             saved, include_all_reviews=True, complete_evidence=True, selection_version=1)
@@ -71,10 +93,10 @@ class StrategyReportExportTests(unittest.TestCase):
         self.assertEqual(bundle['assessment_counts'], saved['scheduled_outlook']['assessment_counts'])
         self.assertIn('32戦略', bundle['report_text'])
         self.assertIn('Synthetic calendar reference', bundle['report_text'])
-        self.assertEqual(bundle['report_text'], render_strategy_report(saved))
+        self.assertEqual(bundle['report_text'], render_strategy_report(saved, comparison_explanation_version=2))
         self.assertEqual(bundle['review_context_version'], 2)
         self.assertEqual(bundle['review_context_text'], render_strategy_report(
-            saved, include_all_reviews=True, complete_evidence=True))
+            saved, include_all_reviews=True, complete_evidence=True, comparison_explanation_version=2))
         self.assertNotIn('raw_unrelated_price_input', json.dumps(restored))
         self.assertLess(len(json.dumps(bundle).encode()), 900000)
         self.assertEqual(saved, original)
@@ -235,6 +257,8 @@ class StrategyReportExportTests(unittest.TestCase):
         saved = snapshot()
         bundle = build_strategy_report_export(json.dumps(saved).encode(), SOURCE)
         legacy = deepcopy(bundle); legacy.pop('review_context_version')
+        legacy.pop('comparison_explanation_version')
+        legacy['report_text'] = render_strategy_report(saved)
         legacy['review_context_text'] = render_strategy_report(saved, include_all_reviews=True)
         restore_strategy_report_export(legacy, SOURCE, bundle['snapshot_git_blob_sha'])
         for version in (True, 0, 3, '2'):

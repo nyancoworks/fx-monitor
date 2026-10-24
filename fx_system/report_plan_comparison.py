@@ -19,6 +19,23 @@ def _fresh(stamp, seconds, clock):
             and stamp > 0 and 0 <= clock - stamp < seconds)
 
 
+def comparison_explanations(records):
+    """Describe actual peer availability among all reviews, without ranking."""
+    reviews = [r for r in records if r.get('assessment') == 'review']
+    groups = [saved_plan_comparison(r)[0] for r in reviews]
+    notes = {}
+    for record, group in zip(reviews, groups):
+        peers = sum(other == group for other in groups)-1 if group is not None else 0
+        if group is None:
+            note = '同条件比較：比較に必要な保存情報が揃わず対象外。参考値だけで掲載順位を上げない'
+        elif peers == 0:
+            note = '同条件の比較相手：なし。参考値だけでは順位を上げず、この条件の掲載枠を維持'
+        else:
+            note = f'同条件の比較相手：{peers}件。保存価格の余地は同条件の掲載枠内だけで比較。評価・方向は不変'
+        notes[(record['pair'], record['strategy'])] = note
+    return notes
+
+
 def saved_plan_comparison(record):
     """Return an optional comparison group, saved RR, and Japanese explanation.
 
