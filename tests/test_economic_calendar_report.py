@@ -84,9 +84,39 @@ class CalendarReportTests(unittest.TestCase):
         row = {'economic_calendar_context': {'status': 'available', 'events': [event]}}
         legacy = calendar_lines(row, str)
         self.assertFalse(any('値の対象' in line for line in legacy))
-        for version in (None, 2, True, '1'):
+        for version in (None, 3, True, '1'):
             row['economic_calendar_context']['value_evidence_version'] = version
             self.assertEqual(calendar_lines(row, str), legacy)
+
+    def test_recent_acquisition_does_not_override_stale_or_degraded_evidence(self):
+        row = {'evaluated_at': 1000, 'economic_calendar_context': {
+            'status': 'partial', 'observed_at_utc': 940, 'acquisition_age_seconds': 0,
+            'value_evidence_version': 2, 'events': [dict(currency='USD',
+                scheduled_at_utc=500, freshness='stale', actual_raw='0',
+                consensus_raw=None, prior_raw='1',
+                source_health={'status':'degraded','observed_at_utc':940})]}}
+        original = deepcopy(row)
+        text = '\n'.join(calendar_lines(row, str))
+        self.assertIn('保存取得から60秒', text)
+        self.assertIn('内容の最新性を保証しない', text)
+        self.assertIn('古い保存情報', text)
+        self.assertIn('取得状態が劣化', text)
+        self.assertIn('予想値は未記録。前回値から補完しない', text)
+        self.assertIn('予定時刻と実際の公表時刻は別', text)
+        self.assertEqual(row, original)
+        row['economic_calendar_context']['observed_at_utc'] = 1001
+        self.assertIn('経過時間は未確認', '\n'.join(calendar_lines(row, str)))
+
+    def test_nonblank_forecast_does_not_establish_pre_release_vintage(self):
+        row = {'economic_calendar_context': {'status': 'available',
+               'value_evidence_version': 2, 'events': [dict(currency='USD',
+               scheduled_at_utc=100, actual_raw='0', consensus_raw='0', prior_raw='0',
+               period='Synthetic month', unit='Synthetic unit',
+               numeric_comparison_verified=True)]}}
+        text = '\n'.join(calendar_lines(row, str))
+        self.assertIn('同じ期間・単位の比較根拠が未検証', text)
+        self.assertIn('発表前の市場予想として確認できた時刻・出典は未検証', text)
+        self.assertIn('初報・改定履歴は未検証', text)
 
 
 if __name__ == "__main__":
