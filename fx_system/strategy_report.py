@@ -6,7 +6,7 @@ import math
 from .validate_strategy_snapshot import validate_strategy_snapshot
 from .price_reaction_observation import reaction_description
 from .economic_calendar_report import calendar_lines
-from .report_plan_comparison import saved_plan_comparison
+from .report_plan_comparison import saved_plan_comparison, comparison_explanations
 
 
 def _ordered_reviews(outlook, *, selection_version=2):
@@ -58,11 +58,14 @@ def _label(r):
 
 
 def render_strategy_report(snapshot, *, include_all_reviews=False, complete_evidence=False,
-                           selection_version=2):
+                           selection_version=2, comparison_explanation_version=1):
+    if type(comparison_explanation_version) is not int or comparison_explanation_version not in (1, 2):
+        raise ValueError('unsupported comparison explanation version')
     failures = validate_strategy_snapshot(snapshot)
     if failures:
         raise ValueError('; '.join(failures))
     outlook = snapshot['scheduled_outlook']; rows = outlook['strategy_assessments']
+    comparison_notes = comparison_explanations(rows) if comparison_explanation_version == 2 else {}
     shown = ([r for strategy in ('swing', 'daytrade') for r in _ordered_reviews(
                 outlook, selection_version=selection_version)
               if r['strategy'] == strategy] if include_all_reviews else report_records(
@@ -93,6 +96,8 @@ def render_strategy_report(snapshot, *, include_all_reviews=False, complete_evid
                   f"基準足{r['reference_timeframe'].upper()}保存終値：{_number(plan.get('reference_close'))}（{base_clock}）｜参考RR {_number(levels.get('reference_rr'))}",
                   f"構造無効化：{_number(levels.get('invalidation'))}｜構造目標：{_number(levels.get('structural_target'))}"]
         lines.append(saved_plan_comparison(r)[2])
+        if comparison_explanation_version == 2:
+            lines.append(comparison_notes[(r['pair'], r['strategy'])])
         condition_plan = r.get('scenario_conditions', {})
         if r.get('scenario_type') == 'range_reversal':
             rc = r['range_context']

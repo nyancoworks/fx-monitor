@@ -3,7 +3,7 @@ from copy import deepcopy
 import json
 import unittest
 
-from fx_system.report_plan_comparison import saved_plan_comparison
+from fx_system.report_plan_comparison import saved_plan_comparison, comparison_explanations
 from fx_system.strategy_report import report_records, render_strategy_report
 from fx_system.scheduled_outlook import build_scheduled_outlook
 from fx_system.validate_strategy_snapshot import validate_strategy_snapshot
@@ -50,6 +50,23 @@ def selected(*rows, selection_version=2):
 
 
 class PlanComparisonTests(unittest.TestCase):
+    def test_peer_notes_distinguish_unavailable_singleton_and_all_review_peers(self):
+        a, b, c = row('EURUSD', 2), row('GBPUSD', 3), row('AUDUSD', 4)
+        c['opposing_evidence'] = ['保存済みの別の反対根拠']
+        missing = row('NZDUSD', 2)
+        missing['reference_levels']['structural_target'] = None
+        skipped = row('USDJPY', 2)
+        skipped['assessment'] = 'skip'
+        records = [a, b, c, missing, skipped]
+        original = deepcopy(records)
+        notes = comparison_explanations(records)
+        self.assertIn('比較相手：1件', notes[('EURUSD', 'daytrade')])
+        self.assertIn('比較相手：1件', notes[('GBPUSD', 'daytrade')])
+        self.assertIn('比較相手：なし', notes[('AUDUSD', 'daytrade')])
+        self.assertIn('対象外', notes[('NZDUSD', 'daytrade')])
+        self.assertNotIn(('USDJPY', 'daytrade'), notes)
+        self.assertEqual(records, original)
+
     def test_comparable_same_grade_headroom_changes_display_only(self):
         rows = [row('EURUSD', .1), row('GBPUSD', .8), row('AUDUSD', 2)]
         outlook = {'strategy_assessments': rows,
