@@ -101,6 +101,13 @@ def calendar_lines(record, format_clock):
         lines.append('経済指標：直近の取得・保存を確認できない。保存参考情報は元の取得時刻のまま使用')
     if type(context.get('observed_at_utc')) is int:
         lines.append(f"経済指標取得：{_clock(context['observed_at_utc'], format_clock)}｜鮮度・網羅性は未検証（取得時刻は出典確認時刻と別）")
+    evidence_version = context.get('value_evidence_version')
+    if type(evidence_version) is int and evidence_version == 2:
+        observed, clock = context.get('observed_at_utc'), record.get('evaluated_at')
+        age = clock-observed if (type(clock) is int and type(observed) is int
+                                 and 0 < observed <= clock) else None
+        age_note = f'保存取得から{age}秒' if age is not None else '取得からの経過時間は未確認'
+        lines.append('鮮度の確認範囲：'+age_note+'。最近の取得・取得成功は、出典の更新や内容の最新性を保証しない')
     lines.extend(_background_lines(context, format_clock))
     lines.extend(policies)
     health_labels = {'degraded': '出典の取得状態が劣化', 'failed': '出典の取得失敗', 'disabled': '出典の取得停止'}
@@ -142,8 +149,14 @@ def calendar_lines(record, format_clock):
             lines.append('提供元記録の出典確認：'+_clock(event['last_verified_at_utc'], format_clock)+'（現在の鮮度保証ではない）')
         if 'actual_raw' in event:
             lines.append(f"実績（保存文字列）：{_text(event.get('actual_raw'))}｜市場予想：{_text(event.get('consensus_raw'))}｜前回：{_text(event.get('prior_raw'))}。単位変換・サプライズ計算なし。保存時点の値で、過去公表時の初報再現ではない")
-            if type(context.get('value_evidence_version')) is int and context['value_evidence_version'] == 1:
+            if type(evidence_version) is int and evidence_version in (1, 2):
                 lines.extend(_value_evidence_lines(event))
+                if evidence_version == 2:
+                    forecast = event.get('consensus_raw')
+                    lines.append('予想値の時点：'+('発表前の市場予想として確認できた時刻・出典は未検証'
+                        if isinstance(forecast, str) and forecast.strip() else
+                        '予想値は未記録。前回値から補完しない'))
+                    lines.append('公表時刻：予定時刻と実際の公表時刻は別。初報・改定履歴は未検証')
         if event.get('source_name') or event.get('source_url'):
             lines.append('元出典：'+_text(event.get('source_name'))+' '+_text(event.get('source_url')))
         for key in ('source_license', 'source_rights'):
