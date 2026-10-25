@@ -26,18 +26,24 @@ def validate(snapshot, now=None, *, ny=None, require_strategies=False):
         failures.append("snapshot older than 10 minutes")
     if int(snapshot.get("generated_at",0))>now:
         failures.append("snapshot generation time is in the future")
+    # Verify the saved decision at its own clock. Wall time still governs
+    # snapshot age above; validation must not demand bars closed after evaluation.
+    evaluated=snapshot.get("evaluated_at", now)
+    if type(evaluated) is not int or evaluated > now or evaluated <= 0 or evaluated < int(snapshot.get("generated_at",0)):
+        failures.append("invalid snapshot evaluation clock")
+        return failures
     for pair in PAIRS:
         name=pair.replace("/","")
         data=snapshot.get("pairs",{}).get(name,{})
         quality=snapshot.get("quality",{}).get(name,{})
         if not quality.get("ok"):
             failures.append(name+": NOT_READY")
-        context=ny.context(name,now) if ny is not None else None
-        _,decision_quality=evaluate_pair(data,now,ny_context=context)
+        context=ny.context(name,evaluated) if ny is not None else None
+        _,decision_quality=evaluate_pair(data,evaluated,ny_context=context)
         failures.extend(name+": "+reason for reason in decision_quality["reasons"])
         for tf,seconds in (("m5",300),("h1",3600)):
             rows=data.get(tf,{}).get("candles",[])
-            expected=(now//seconds-1)*seconds
+            expected=(evaluated//seconds-1)*seconds
             timestamps=[bar.get("timestamp") for bar in rows]
             if any(type(t) is not int for t in timestamps):
                 failures.append(name+":"+tf+" invalid timestamp")
