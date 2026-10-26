@@ -92,6 +92,7 @@ class GitHubStorage:
             session = requests.Session()
         self.session, self.token = session, token
         self.calls, self.remaining = 0, None
+        self.last_status = 0
 
     def reserve(self, count):
         if self.calls+count>64 or (self.remaining is not None and self.remaining-count<=200):
@@ -109,8 +110,10 @@ class GitHubStorage:
         for hop in range(2):
             self.reserve(1)
             self.calls += 1
+            self.last_status = 0
             response = self.session.request(method, url, headers=headers, json=body, data=raw,
                                             timeout=(10, 30), allow_redirects=False, stream=True)
+            self.last_status = response.status_code
             try:
                 rate = response.headers.get('X-RateLimit-Remaining')
                 if rate is not None:
