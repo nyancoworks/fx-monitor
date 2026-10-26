@@ -223,6 +223,7 @@ def main():
             # runner is discarded. Full inputs/results remain private.
             summary = json.loads((logs/'backtest-result.json').read_bytes())['result']
             counters = {key:summary[key] for key in ('requests','used_bytes','added')}
+            counters['revision_conflicts']=summary.get('revision_conflicts',0)
             if any(type(value) is not int or value < 0 for value in counters.values()):
                 raise ValueError('invalid backtest counters')
             if counters['requests'] > 64 or counters['used_bytes'] > 1024**3:
