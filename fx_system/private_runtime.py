@@ -130,12 +130,26 @@ def save_snapshot(root, run_id, source_commit):
     source = {'source_repository': CODE_REPOSITORY, 'source_commit': source_commit,
               'run_id': int(run_id), 'evaluated_at': snapshot['evaluated_at']}
     for name in ('data/source.json', 'data/currency-strength.json', 'data/run-diagnostics.json',
-                 'data/strategy-report.json'):
+                 'data/strategy-report.json', 'data/scenario-continuity.json'):
         path = root/name
         if path.is_symlink() or not path.resolve().is_relative_to(root):
             raise ValueError('private derived file path invalid')
     compact = build_strength_export(snapshot_bytes, source)
     strategy_report = build_strategy_report_export(snapshot_bytes, source)
+    from .scenario_continuity import build_continuity
+    previous_bundle=previous_source=previous_blob=None
+    try:
+        previous_bundle=json.loads(git(root,'show','HEAD:data/strategy-report.json'))
+        previous_source=json.loads(git(root,'show','HEAD:data/source.json'))
+        previous_blob=git(root,'rev-parse','HEAD:data/latest.json')
+    except Exception:
+        pass
+    continuity=build_continuity(strategy_report,source,strategy_report['snapshot_git_blob_sha'],
+                                previous_bundle,previous_source,previous_blob)
+    if continuity['status']=='saved':
+        continuity['previous_data_commit']=git(root,'rev-parse','HEAD')
+    (root/'data/scenario-continuity.json').write_text(json.dumps(continuity,ensure_ascii=False,sort_keys=True)+'\n')
+    (root/'data/scenario-continuity.json').chmod(0o600)
     # Save a bounded diagnostic view in the same private Git push.
     # The public stage log and monitoring assessment stay unchanged. A new run
     # with no report is explicitly unavailable, never a prior run's success.
@@ -158,9 +172,9 @@ def save_snapshot(root, run_id, source_commit):
     (root/'data/strategy-report.json').write_text(json.dumps(strategy_report, ensure_ascii=False,
                                                           sort_keys=True, allow_nan=False) + '\n')
     (root/'data/strategy-report.json').chmod(0o600)
-    git(root, 'add', '--', 'data/cache.json', 'data/latest.json', 'data/source.json', 'data/currency-strength.json', 'data/run-diagnostics.json', 'data/strategy-report.json')
+    git(root, 'add', '--', 'data/cache.json', 'data/latest.json', 'data/source.json', 'data/currency-strength.json', 'data/run-diagnostics.json', 'data/strategy-report.json', 'data/scenario-continuity.json')
     staged = git(root, 'diff', '--cached', '--name-only').splitlines()
-    if not set(staged) <= {'data/cache.json', 'data/latest.json', 'data/source.json', 'data/currency-strength.json', 'data/run-diagnostics.json', 'data/strategy-report.json'}:
+    if not set(staged) <= {'data/cache.json', 'data/latest.json', 'data/source.json', 'data/currency-strength.json', 'data/run-diagnostics.json', 'data/strategy-report.json', 'data/scenario-continuity.json'}:
         raise ValueError('unexpected staged private files')
     git(root, '-c', 'user.name=github-actions[bot]', '-c',
         'user.email=41898286+github-actions[bot]@users.noreply.github.com',
