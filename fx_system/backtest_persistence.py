@@ -50,19 +50,27 @@ def main():
             os.environ.get('GITHUB_REPOSITORY')!=CODE_REPOSITORY or
             os.environ.get('GITHUB_REF')!='refs/heads/main'):
         raise ValueError('trusted collection identity required')
-    batches,quality,source=saved_input(root,run,commit)
-    # Unknown provenance is retained as unknown in the private diagnostic. No
-    # guesses or market fetches are introduced to fill rejected observations.
-    api=GitHubStorage(os.environ['FX_DATA_REPO_TOKEN'])
-    result=ReleaseWarehouse(api).cycle(batches,now=source['evaluated_at'],source=source)
-    log=root/'.private-run'/run/'backtest-result.json'
-    if log.is_symlink() or not log.resolve().is_relative_to(root):
-        raise ValueError('storage diagnostics must remain private')
-    log.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
-    log.write_text(json.dumps({'result':result,'quality':quality,'source':source},sort_keys=True))
-    log.chmod(0o600)
-    # This stdout is captured by private_runtime, never emitted in public logs.
-    print(json.dumps(result,sort_keys=True))
+    from .backtest_failure import metadata, PREFIX
+    phase='saved_input'; api=None
+    try:
+        batches,quality,source=saved_input(root,run,commit)
+        # Unknown provenance is retained as unknown in the private diagnostic. No
+        # guesses or market fetches are introduced to fill rejected observations.
+        phase='storage'
+        api=GitHubStorage(os.environ['FX_DATA_REPO_TOKEN'])
+        result=ReleaseWarehouse(api).cycle(batches,now=source['evaluated_at'],source=source)
+        phase='result_save'
+        log=root/'.private-run'/run/'backtest-result.json'
+        if log.is_symlink() or not log.resolve().is_relative_to(root):
+            raise ValueError('storage diagnostics must remain private')
+        log.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
+        log.write_text(json.dumps({'result':result,'quality':quality,'source':source},sort_keys=True))
+        log.chmod(0o600)
+        # This stdout is captured by private_runtime, never emitted in public logs.
+        print(json.dumps(result,sort_keys=True))
+    except Exception as error:
+        print(PREFIX + json.dumps(metadata(error, phase, api), sort_keys=True), flush=True)
+        raise
 
 
 if __name__=='__main__':

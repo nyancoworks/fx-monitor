@@ -215,6 +215,9 @@ def main():
                              log=logs/(args.stage+'.log'), env=env)
         logs.mkdir(parents=True, exist_ok=True, mode=0o700)
         (logs/(args.stage+'.status.json')).write_text(json.dumps({'returncode': rc}))
+        if args.stage == 'backtest' and rc != 0:
+            from .backtest_failure import safe_failure_line
+            print(safe_failure_line((logs/'backtest.log').read_text(errors='replace')))
         if args.stage == 'backtest' and rc == 0:
             # Fixed, price-free operational counters are reviewable after a
             # runner is discarded. Full inputs/results remain private.
