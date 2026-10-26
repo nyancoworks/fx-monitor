@@ -275,7 +275,7 @@ class ReleaseWarehouse:
                 grouped.setdefault(key,[]).append((partition,batch['rows']))
         # Hold enough calls for 302 downloads, two indices, pointer commit and GC.
         self.api.reserve(2*len(grouped)+1)
-        objects={};added=0
+        objects={};added=0;conflicts=[]
         for key,items in sorted(grouped.items()):
             previous=old['bundles'].get(key)
             partitions=decode_bundle(self._get(previous),key,now) if previous else {}
@@ -291,7 +291,12 @@ class ReleaseWarehouse:
                         if ({k:v for k,v in prior.items() if k not in ('captured_at','capture_ref')} !=
                                 {k:v for k,v in row.items() if k not in ('captured_at','capture_ref')} or
                                 row['captured_at']<prior['captured_at']):
-                            raise ValueError('conflicting archive revision')
+                            # Preserve the first archived observation byte-for-byte.
+                            # The alternate remains in the acknowledged immutable
+                            # input commit; retain identities and digests for audit.
+                            conflicts.append({'partition':partition,'timestamp':row['timestamp'],
+                                'archived_sha256':digest(canonical(prior)),
+                                'incoming_sha256':digest(canonical(row))})
                     else:
                         rows[row['timestamp']]={**row,'capture_ref':copy.deepcopy(source)};changed+=1
                 partitions[partition]=list(rows.values())
@@ -300,7 +305,11 @@ class ReleaseWarehouse:
         for key in list(new['bundles']):
             if expired(key):
                 del new['bundles'][key]
-        if not objects and new['bundles']==old['bundles']:
+        if conflicts:
+            new['last_revision_observation']={'source':copy.deepcopy(source),
+                'policy':'preserve_first_archived_use_saved_input_for_alternate',
+                'conflicts':conflicts}
+        if not objects and new==old:
             return {'status':'unchanged','added':0,'requests':self.api.calls,
                     'used_bytes':sum(a['size'] for a in self.assets.values())}
         new['generation']+=1;new['last_source']=source
@@ -348,4 +357,4 @@ class ReleaseWarehouse:
         return {'status':'persisted','added':added,'generation':new['generation'],
                 'requests':self.api.calls,'deleted_derived_assets':deleted,
                 'used_bytes':sum(a['size'] for aid,a in self.assets.items() if aid not in removed),
-                'retained_bundles':len(new['bundles']),'backup_verified':True}
+                'retained_bundles':len(new['bundles']),'backup_verified':True,'revision_conflicts':len(conflicts)}

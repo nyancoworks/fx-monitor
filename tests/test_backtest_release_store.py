@@ -77,11 +77,34 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(r['added'],2);self.assertEqual(r['deleted_derived_assets'],4)
         self.assertEqual(len(api.assets),4)
 
-    def test_conflict_preserves_pointer_and_objects(self):
-        api=MemoryAPI();self.cycle(api);before=(api.release['body'],copy.deepcopy(api.bytes));api.reset()
-        with self.assertRaises(ValueError):self.cycle(api,batches(price=200))
-        self.assertEqual((api.release['body'],api.bytes),before)
-        self.assertFalse(any(m in ('UPLOAD','PATCH','DELETE') for m,p in api.trace))
+    def test_revision_keeps_archived_rows_and_records_alternate_source(self):
+        api=MemoryAPI();self.cycle(api);old=api.state();before={k:api.bytes[r['id']] for k,r in old['bundles'].items()};api.reset()
+        result=ReleaseWarehouse(api).cycle(batches(price=200),now=NOW,source={'saved_commit':'synthetic-new'})
+        self.assertEqual(result['revision_conflicts'],2)
+        state=api.state()
+        self.assertEqual(state['bundles'],old['bundles'])
+        self.assertEqual(state['last_revision_observation']['source'],{'saved_commit':'synthetic-new'})
+        self.assertEqual(len(state['last_revision_observation']['conflicts']),2)
+        for k,ref in state['bundles'].items():self.assertEqual(api.bytes[ref['id']],before[k])
+        api.reset();new=batches(NOW+3600);new.extend([])
+        result=self.cycle(api,new,now=NOW+3600)
+        self.assertEqual(result['added'],2)
+        self.assertEqual(api.state()['last_revision_observation'],state['last_revision_observation'])
+
+    def test_conflicting_old_rows_do_not_block_new_observations(self):
+        api=MemoryAPI();self.cycle(api);old=api.state();api.reset()
+        incoming=batches(NOW+3600)
+        for batch,revision in zip(incoming,batches(price=200)):
+            batch['rows']=revision['rows']+batch['rows']
+        result=self.cycle(api,incoming,now=NOW+3600)
+        self.assertEqual(result['revision_conflicts'],2)
+        self.assertEqual(result['added'],2)
+        for key,ref in api.state()['bundles'].items():
+            partitions=decode_bundle(api.bytes[ref['id']],key,NOW+3600)
+            rows=next(iter(partitions.values()))
+            self.assertEqual(len(rows),2)
+            self.assertEqual(rows[0]['open'],100)
+        self.assertLessEqual(api.calls,64)
 
     def test_expiry_and_pinned_research_survive(self):
         api=MemoryAPI();self.cycle(api);state=api.state()
