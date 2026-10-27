@@ -166,6 +166,40 @@ class StrategyStrengthTests(unittest.TestCase):
         self.assertEqual(c['other_horizon_relation'],'aligned')
         self.assertNotIn('EURUSD',c['temporal_reference']['contributing_pairs'])
 
+    def test_frozen_legacy_context_roundtrip_and_mixed_generation_comparison(self):
+        import json
+        from fx_system.strategy_report_export import build_strategy_report_export, restore_strategy_report_export
+        from fx_system.scenario_continuity import build_continuity
+        from test_strategy_report_export import snapshot, SOURCE
+        from unittest.mock import patch
+        current=build_strategy_report_export(json.dumps(snapshot()).encode(),SOURCE)
+        prior_clock=SOURCE['evaluated_at']-300
+        with patch('test_strategy_report_export.CLOCK',prior_clock), patch('test_range_scenario.CLOCK',prior_clock):
+            older=snapshot()
+        context=build_contexts(fixture(),CLOCK)['EURUSD']['daytrade']
+        context.pop('temporal_reference'); context.pop('other_horizon')
+        legacy=interpret(context,'EURUSD','daytrade','long',CLOCK)
+        self.assertNotIn('gap_size',legacy)
+        self.assertEqual(legacy['comparison_priority'],0)
+        self.assertEqual(interpret(legacy,'EURUSD','daytrade','long',CLOCK),legacy)
+        # Exercise a frozen available legacy context inside a full32export.
+        for row in older['scheduled_outlook']['strategy_assessments']:
+            c=row.get('currency_strength_context',{})
+            if c.get('status')!='available': continue
+            for field in ('temporal_reference','other_horizon','gap_size','relative_size',
+                          'material_opposition','other_horizon_relation'):
+                c.pop(field,None)
+            row['currency_strength_context']=interpret(c,row['pair'],row['strategy'],row['direction'],prior_clock)
+        for row in older['scheduled_outlook']['rows']:
+            row['strategy_assessments']={r['strategy']:r for r in older['scheduled_outlook']['strategy_assessments'] if r['pair']==row['pair']}
+        source={**SOURCE,'run_id':122,'evaluated_at':prior_clock}
+        prior=build_strategy_report_export(json.dumps(older).encode(),source)
+        self.assertEqual(prior['status'],'saved')
+        self.assertEqual(len(restore_strategy_report_export(prior,source,prior['snapshot_git_blob_sha'])['scheduled_outlook']['strategy_assessments']),32)
+        comparison=build_continuity(current,SOURCE,current['snapshot_git_blob_sha'],prior,source,prior['snapshot_git_blob_sha'])
+        self.assertEqual(comparison['status'],'saved')
+        self.assertEqual(len(comparison['rows']),32)
+
     def test_balanced_strength_does_not_invent_a_range_trade(self):
         track = mature_track(); track.update(direction=None, base_structure='mixed')
         result = assess_strategy('EURUSD','daytrade',track,CLOCK)

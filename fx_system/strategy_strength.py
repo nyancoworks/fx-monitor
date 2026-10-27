@@ -194,6 +194,13 @@ def interpret(context, pair, strategy, direction, clock):
                    'balanced': '方向差がほぼない', 'not_directional': '方向未確定のため採否に使わない'}[relation]
     transition = {'improving': '前の同期間より売買方向へ改善', 'weakening': '前の同期間より売買方向への強弱差が悪化',
                   'unchanged': '前の同期間と同程度', 'unverified': '前の同期間との変化は未確認'}[movement]
+    # Frozen pre-temporal exports must validate against their original meaning.
+    # New production contexts always include both metadata fields, even unavailable.
+    if 'temporal_reference' not in value and 'other_horizon' not in value:
+        value.update(relation=relation, movement=movement,
+            comparison_priority=0 if relation=='aligned' else 2 if relation=='opposed' else 1,
+            summary=f'{hours}時間の通貨強弱は{description}。{transition}。同じ価格由来の参考で独立票ではない')
+        return value
     reference=value.get('temporal_reference', {})
     samples=reference.get('samples', [])
     valid_reference=(reference.get('status')=='available'
