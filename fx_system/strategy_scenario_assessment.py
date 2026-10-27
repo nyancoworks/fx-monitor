@@ -23,7 +23,7 @@ def assess_strategy(pair,strategy,track,evaluated_at):
     record={'pair':pair,'strategy':strategy,'direction':direction,'state':t.get('state'),
         'assessment':'evaluation_pending','grade':None,'grade_reason':None,
         'grade_scope':'provisional_scenario_quality_not_permission',
-        'method_version':'contextual_scenario_review_v3_currency_strength','method_validated_for_profitability':False,
+        'method_version':'contextual_scenario_review_v5_temporal_strength','method_validated_for_profitability':False,
         'evaluated_at':evaluated_at,'price_basis':'saved_completed_candles_not_current_quote',
         'reference_timeframe':base,'trigger_timeframe':trigger,
         'execution_authority':'none','reasons':reasons,'opposing_evidence':opposition,
@@ -146,7 +146,8 @@ def assess_strategy(pair,strategy,track,evaluated_at):
             opposition.append(note);strength_only_opposition.append(note)
     elif strength.get('relation') == 'opposed':
         opposition.append(strength['summary'])
-        strength_only_opposition.append(strength['summary'])
+        if not strength.get('material_opposition'):
+            strength_only_opposition.append(strength['summary'])
         record['waiting_conditions'].append('通貨強弱の逆行を押し戻り・転換の価格反応と併せて確認。逆行だけで一律除外しない')
     elif strength.get('status') != 'available':
         uncertainties.append(strength['summary'])
@@ -352,7 +353,8 @@ def assess_strategy(pair,strategy,track,evaluated_at):
     if reaction:
         reasons.append(f'{trigger}で方向に沿う参考プライスアクションを観測')
         # Correlated cross-pair context informs comparison/waits but must not
-        # become a new single-indicator A/B gate. Preserve existing grading.
+        # determine direction or skip. Material adverse context prevents claiming
+        # a fully aligned A, while preserving the price-based scenario as B.
         if any(note not in strength_only_opposition for note in opposition):
             return finish('review','B','反応と価格計画はあるが逆行背景または採算上の反対根拠が残る')
         return finish('review','A','保存時点で構造・価格計画に沿う反応まで説明できる成熟シナリオ。優位性未実証')
