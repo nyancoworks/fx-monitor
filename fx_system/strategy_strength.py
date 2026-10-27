@@ -6,6 +6,7 @@ Compare adjacent windows only on identical input-pair sets.
 """
 from copy import deepcopy
 import math
+from statistics import median
 from .core import expected_closed_timestamp
 from .data_quality import evaluate_pair
 from .monitor_pairs import PAIR_KEYS
@@ -38,8 +39,31 @@ def _comparison(contributions, pair):
                                             for p, v in selected.items())/len(selected))}
 
 
+def temporal_reference(frames, edges, pair, end, hours, difference):
+    """Past disjoint equal-duration windows; descriptive scale, not a significance test."""
+    samples=[]; windows=[]
+    for offset in range(1,13):
+        b=end-offset*hours*3600; a=b-hours*3600
+        if not all(all(t in frames.get(p,{}) for t in range(a,b+1,3600)) for p in edges):
+            continue
+        values={p:{'_return':100*(math.log(frames[p][b])-math.log(frames[p][a]))} for p in edges}
+        fit=_comparison(values,pair)
+        if not fit: break
+        samples.append(fit['difference'])
+        windows.append({'start_closed_at':a+3600,'end_closed_at':b+3600})
+    scale=median(abs(v) for v in samples) if samples else None
+    available=len(samples)>=4 and scale is not None and scale>EPSILON
+    return {'status':'available' if available else 'unavailable',
+        'method':'past_disjoint_same_horizon_median_absolute_gap_v1',
+        'sample_count':len(samples),'samples':samples,'windows':windows,'contributing_pairs':sorted(edges),
+        'last_end_closed_at':windows[0]['end_closed_at'] if windows else None,
+        'median_absolute_gap':scale if available else None,
+        'relative_size':abs(difference)/scale if available else None,
+        'scope':'descriptive_recent_scale_not_significance_or_profitability'}
+
+
 def build_contexts(pairs, evaluated_at):
-    frames = {}
+    frames = {}; historical_frames = {}
     for pair in PAIR_KEYS:
         data = pairs.get(pair)
         if not isinstance(data, dict): continue
@@ -51,6 +75,22 @@ def build_contexts(pairs, evaluated_at):
             verified, _ = evaluate_pair({'decision_data': {'raw': {'h1': closed},
                 'provenance': evidence.get('provenance', {})}}, evaluated_at)
             provenance = evidence.get('provenance', {})
+            # Older complete windows may be separated by closures. Never bridge
+            # a gap within a sample or use unverified/invalid individual bars.
+            historical={}; last=None
+            for bar in closed:
+                stamp=bar.get('timestamp')
+                if type(stamp) is not int or (last is not None and stamp<=last):
+                    historical={}; break
+                last=stamp
+                prices=[bar.get(k) for k in ('open','high','low','close')]
+                if (stamp%3600 or stamp+3600>evaluated_at
+                    or not all(type(v) in (int,float) and math.isfinite(v) and v>0 for v in prices)):
+                    continue
+                o,h,l,c=prices
+                if l<=min(o,c)<=max(o,c)<=h and provenance.get('h1:'+str(stamp))=='Twelve Data':
+                    historical[stamp]=c
+            historical_frames[pair]=historical
             frames[pair] = {b['timestamp']: b['close'] for b in verified['h1']
                             if provenance.get('h1:'+str(b['timestamp'])) == 'Twelve Data'}
         except (ValueError, TypeError, KeyError, AttributeError, OverflowError):
@@ -98,7 +138,15 @@ def build_contexts(pairs, evaluated_at):
                     'previous_start_closed_at': start-hours*3600+3600,
                     'previous_end_closed_at': start+3600,
                     'same_pair_set': now_fit['pairs'] == old_fit['pairs']}
+            context['temporal_reference'] = (temporal_reference(historical_frames, fit['pairs'], pair, end, hours, fit['difference'])
+                if fit else {'status':'unavailable'})
             result[pair][strategy] = context
+    for pair in PAIR_KEYS:
+        for strategy in WINDOWS:
+            other=result[pair]['daytrade' if strategy=='swing' else 'swing']
+            result[pair][strategy]['other_horizon']={
+                'status':other['status'],'lookback_h1_bars':other['lookback_h1_bars'],
+                'difference':other['difference'],'evaluated_at':evaluated_at}
     return result
 
 
@@ -146,7 +194,42 @@ def interpret(context, pair, strategy, direction, clock):
                    'balanced': '方向差がほぼない', 'not_directional': '方向未確定のため採否に使わない'}[relation]
     transition = {'improving': '前の同期間より売買方向へ改善', 'weakening': '前の同期間より売買方向への強弱差が悪化',
                   'unchanged': '前の同期間と同程度', 'unverified': '前の同期間との変化は未確認'}[movement]
+    reference=value.get('temporal_reference', {})
+    samples=reference.get('samples', [])
+    valid_reference=(reference.get('status')=='available'
+        and reference.get('method')=='past_disjoint_same_horizon_median_absolute_gap_v1'
+        and isinstance(samples,list) and 4<=len(samples)<=12
+        and all(type(v) in (int,float) and math.isfinite(v) for v in samples)
+        and reference.get('sample_count')==len(samples)
+        and reference.get('contributing_pairs')==sorted(edges)
+        and isinstance(reference.get('windows'),list) and len(reference['windows'])==len(samples)
+        and all(isinstance(w,dict) and type(w.get('end_closed_at')) is int
+            and type(w.get('start_closed_at')) is int
+            and w['end_closed_at']-w['start_closed_at']==hours*3600
+            and 1<=(end-w['end_closed_at'])//(hours*3600)<=12
+            and (end-w['end_closed_at'])%(hours*3600)==0 for w in reference['windows'])
+        and all(a['start_closed_at']>=b['end_closed_at'] for a,b in zip(reference['windows'],reference['windows'][1:]))
+        and reference.get('last_end_closed_at')==reference['windows'][0]['end_closed_at']
+        and median(abs(v) for v in samples)>EPSILON
+        and type(reference.get('median_absolute_gap')) in (int,float)
+        and abs(reference['median_absolute_gap']-median(abs(v) for v in samples))<=EPSILON)
+    relative=abs(diff)/median(abs(v) for v in samples) if valid_reference else None
+    size='at_least_recent_median' if relative is not None and relative>=1-EPSILON else 'below_recent_median' if relative is not None else 'unverified'
+    value['gap_size']=size
+    value['relative_size']=relative
+    value['material_opposition']=relation=='opposed' and size=='at_least_recent_median'
+    size_text=('差は直近の同期間の通常幅以上（中央値との比較、統計的有意性ではない）' if size=='at_least_recent_median'
+        else '差は直近の同期間の通常幅未満で支持・逆行を過大評価しない' if size=='below_recent_median'
+        else '差の大小は比較履歴不足で未確認')
+    other=value.get('other_horizon', {})
+    other_diff=other.get('difference')
+    other_hours=6 if strategy=='swing' else 24
+    other_verified=(other.get('status')=='available' and other.get('evaluated_at')==clock
+        and other.get('lookback_h1_bars')==other_hours
+        and type(other_diff) in (int,float) and math.isfinite(other_diff) and sign)
+    value['other_horizon_relation']=('opposed' if sign*other_diff < -EPSILON else 'aligned' if sign*other_diff>EPSILON else 'balanced') if other_verified else 'unverified'
+    other_text=(f"別期間{other_hours}時間は売買方向と"+('逆行' if value['other_horizon_relation']=='opposed' else '整合' if value['other_horizon_relation']=='aligned' else 'ほぼ均衡')) if other_verified else '別期間との整合は未確認'
     value.update(relation=relation, movement=movement,
-                 comparison_priority=0 if relation == 'aligned' else 2 if relation == 'opposed' else 1,
-                 summary=f'{hours}時間の通貨強弱は{description}。{transition}。同じ価格由来の参考で独立票ではない')
+                 comparison_priority=(0 if relation=='aligned' and size=='at_least_recent_median' and movement!='weakening' else 2 if value['material_opposition'] else 1),
+                 summary=f'{hours}時間の通貨強弱は{description}。{transition}。{size_text}。{other_text}。同じ価格由来の参考で独立票ではない')
     return value

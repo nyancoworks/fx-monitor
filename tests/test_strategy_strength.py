@@ -132,7 +132,7 @@ class StrategyStrengthTests(unittest.TestCase):
         opposed = deepcopy(good); opposed['difference'] = -good['difference']
         opposed['comparison'] = {'status':'unavailable'}
         result = assess_strategy('EURUSD', 'daytrade', mature_track(opposed), CLOCK)
-        self.assertEqual((result['assessment'],result['grade']), ('review','A'))
+        self.assertEqual((result['assessment'],result['grade']), ('review','B'))
         self.assertEqual(result['currency_strength_context']['comparison_priority'],2)
         self.assertEqual(result['execution_authority'], 'none')
         self.assertTrue(any('通貨強弱' in r for r in result['opposing_evidence']))
@@ -140,6 +140,31 @@ class StrategyStrengthTests(unittest.TestCase):
         self.assertEqual(assess_strategy('EURUSD','daytrade',pending,CLOCK)['assessment'], 'evaluation_pending')
         missing_plan = mature_track(good); missing_plan['reference_levels']['structural_target'] = None
         self.assertEqual(assess_strategy('EURUSD','daytrade',missing_plan,CLOCK)['grade'], 'C')
+
+    def test_small_opposition_and_missing_scale_do_not_become_grade_gates(self):
+        good=build_contexts(fixture(hours=150),CLOCK)['EURUSD']['daytrade']
+        for mode in ('small','missing','tampered'):
+            context=deepcopy(good); context['comparison']={'status':'unavailable'}
+            context['difference']=-good['difference']*.01 if mode=='small' else -good['difference']
+            if mode=='missing': context.pop('temporal_reference')
+            if mode=='tampered': context['temporal_reference']['last_end_closed_at']+=3600
+            result=assess_strategy('EURUSD','daytrade',mature_track(context),CLOCK)
+            self.assertEqual(result['grade'],'A')
+            self.assertFalse(result['currency_strength_context']['material_opposition'])
+
+    def test_temporal_scale_uses_only_past_same_edges_and_horizon(self):
+        from fx_system.strategy_strength import temporal_reference
+        frames={p:{i*3600:100*math.exp(.001*i) for i in range(201)} for p in ('EURJPY','USDJPY')}
+        # A gap invalidates its window, without treating the gap as a flat return.
+        frames['EURJPY'].pop(190*3600)
+        ref=temporal_reference(frames,['EURJPY','USDJPY'],'EURUSD',200*3600,6,.1)
+        self.assertLess(ref['sample_count'],12)
+        self.assertEqual(ref['status'],'unavailable')  # zero relative history
+        contexts=build_contexts(fixture(hours=150),CLOCK)
+        c=interpret(contexts['EURUSD']['daytrade'],'EURUSD','daytrade','long',CLOCK)
+        self.assertEqual(c['gap_size'],'at_least_recent_median')
+        self.assertEqual(c['other_horizon_relation'],'aligned')
+        self.assertNotIn('EURUSD',c['temporal_reference']['contributing_pairs'])
 
     def test_balanced_strength_does_not_invent_a_range_trade(self):
         track = mature_track(); track.update(direction=None, base_structure='mixed')
