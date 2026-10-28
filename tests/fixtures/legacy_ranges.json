@@ -1,0 +1,686 @@
+[
+  {
+    "pair": "EURUSD",
+    "strategy": "daytrade",
+    "evaluated_at": 1800000000,
+    "assessment": "review",
+    "direction": "long",
+    "grade": "B",
+    "reference_timeframe": "h1",
+    "trigger_timeframe": "m5",
+    "reference_levels": {
+      "invalidation": 90,
+      "structural_target": 110,
+      "reference_rr": 1.0,
+      "executable_price": false
+    },
+    "scenario_conditions": {
+      "schema": "scenario_conditions_v1",
+      "evaluated_at": 1800000000,
+      "timeframe": "m5",
+      "direction": "long",
+      "status": "conditions_observed",
+      "route": "range_edge_rejection",
+      "conditions": [
+        {
+          "kind": "range_touch_reclaim_directional_close",
+          "level": 95,
+          "touch_relation": "<=",
+          "close_relation": ">",
+          "body_relation": "close>open"
+        }
+      ],
+      "observed_at": 1800000000,
+      "observed_close": 96,
+      "formation_price": null,
+      "formation_rr": null,
+      "advisory_only": true,
+      "profitability_validated": false,
+      "basis": "contextual_saved_price_action_v1",
+      "scope": "scenario_confirmation_conditions_not_order_or_fill",
+      "reason": "確認済み水平帯の端で反発・反落を確認。レンジ解釈・収益性は未検証",
+      "summary": "5分足でレンジ下側水平帯の内縁95を試し、終値が同水準を上回る、始値より高く引けることを確認する。外縁への終値到達で撤回",
+      "level": 95,
+      "level_basis": "confirmed_range_wick_zone_inner_edge",
+      "anchor_started_at": 1799935200,
+      "anchor_closed_at": 1799989200,
+      "evaluated_candle_closed_at": 1800000000,
+      "breakout_observed_at": null,
+      "evidence": {
+        "test_open": 94,
+        "test_high": 98,
+        "test_low": 92,
+        "test_close": 96,
+        "test_closed_at": 1800000000,
+        "breakout_close": null
+      },
+      "withdrawal_conditions": [
+        {
+          "condition": "invalidation_crossed",
+          "price": 90,
+          "relation": "<=",
+          "basis_timeframe": "h1",
+          "confirmation": "verified_saved_closed_candle_not_live_quote"
+        },
+        {
+          "condition": "structural_target_reached",
+          "price": 110,
+          "relation": ">=",
+          "basis_timeframe": "h1",
+          "confirmation": "verified_saved_closed_candle_not_live_quote"
+        }
+      ],
+      "recheck": "保存時の局所水準。新しい確定足では構造・反応・比較水準を再評価する。固定の注文価格や期限ではない",
+      "limitations": [
+        "条件観測後も主要な反対根拠と目標までの余地を再評価する",
+        "観測終値は約定価格ではない。成立後RR・利益確率は未検証"
+      ]
+    },
+    "range_context": {
+      "schema": "horizontal_range_v1",
+      "status": "bounded",
+      "evaluated_at": 1800000000,
+      "timeframe": "h1",
+      "advisory_only": true,
+      "profitability_validated": false,
+      "reason": "下側水平帯の反発を確認する買いシナリオ",
+      "formed_at": 1799989200,
+      "anchors": [
+        {
+          "timestamp": 1799935200,
+          "open": 105,
+          "high": 111,
+          "low": 99,
+          "close": 105,
+          "kind": "high",
+          "confirmed_at": 1799946000
+        },
+        {
+          "timestamp": 1799949600,
+          "open": 95,
+          "high": 101,
+          "low": 90,
+          "close": 95,
+          "kind": "low",
+          "confirmed_at": 1799960400
+        },
+        {
+          "timestamp": 1799964000,
+          "open": 105,
+          "high": 110,
+          "low": 99,
+          "close": 105,
+          "kind": "high",
+          "confirmed_at": 1799974800
+        },
+        {
+          "timestamp": 1799978400,
+          "open": 95,
+          "high": 101,
+          "low": 91,
+          "close": 95,
+          "kind": "low",
+          "confirmed_at": 1799989200
+        }
+      ],
+      "lower_zone": [
+        91,
+        95
+      ],
+      "upper_zone": [
+        105,
+        110
+      ],
+      "lower_outer": 90,
+      "upper_outer": 111,
+      "selection": "lower_edge",
+      "limitations": [
+        "水平帯の定義は暫定。視覚的な全レンジを網羅しない",
+        "勝率・収益性・閾値最適化は未検証"
+      ],
+      "direction": "long",
+      "reaction_level": 95
+    },
+    "expiry": {
+      "status": "reference_recheck",
+      "time_expiry": {
+        "status": "not_defined",
+        "reason": "時間失効の合意済み規定なし。期限は推定しない"
+      },
+      "withdrawal_conditions": [
+        {
+          "condition": "invalidation_crossed",
+          "price": 90,
+          "relation": "<=",
+          "basis_timeframe": "h1",
+          "confirmation": "verified_saved_closed_candle_not_live_quote"
+        },
+        {
+          "condition": "structural_target_reached",
+          "price": 110,
+          "relation": ">=",
+          "basis_timeframe": "h1",
+          "confirmation": "verified_saved_closed_candle_not_live_quote"
+        }
+      ],
+      "observed_condition": null,
+      "observation": null,
+      "basis": "existing_saved_scenario_decision_not_position_exit_or_new_gate",
+      "recheck": "新しい確定足で構造・品質・反応を再評価。保存時判断を現在の許可に流用しない"
+    },
+    "scenario_type": "range_reversal"
+  },
+  {
+    "pair": "EURUSD",
+    "strategy": "daytrade",
+    "evaluated_at": 1800000000,
+    "assessment": "review",
+    "direction": "short",
+    "grade": "B",
+    "reference_timeframe": "h1",
+    "trigger_timeframe": "m5",
+    "reference_levels": {
+      "invalidation": 111,
+      "structural_target": 91,
+      "reference_rr": 0.82,
+      "executable_price": false
+    },
+    "scenario_conditions": {
+      "schema": "scenario_conditions_v1",
+      "evaluated_at": 1800000000,
+      "timeframe": "m5",
+      "direction": "short",
+      "status": "conditions_observed",
+      "route": "range_edge_rejection",
+      "conditions": [
+        {
+          "kind": "range_touch_reclaim_directional_close",
+          "level": 105,
+          "touch_relation": ">=",
+          "close_relation": "<",
+          "body_relation": "close<open"
+        }
+      ],
+      "observed_at": 1800000000,
+      "observed_close": 104,
+      "formation_price": null,
+      "formation_rr": null,
+      "advisory_only": true,
+      "profitability_validated": false,
+      "basis": "contextual_saved_price_action_v1",
+      "scope": "scenario_confirmation_conditions_not_order_or_fill",
+      "reason": "確認済み水平帯の端で反発・反落を確認。レンジ解釈・収益性は未検証",
+      "summary": "5分足でレンジ上側水平帯の内縁105を試し、終値が同水準を下回る、始値より安く引けることを確認する。外縁への終値到達で撤回",
+      "level": 105,
+      "level_basis": "confirmed_range_wick_zone_inner_edge",
+      "anchor_started_at": 1799935200,
+      "anchor_closed_at": 1799989200,
+      "evaluated_candle_closed_at": 1800000000,
+      "breakout_observed_at": null,
+      "evidence": {
+        "test_open": 106,
+        "test_high": 109,
+        "test_low": 102,
+        "test_close": 104,
+        "test_closed_at": 1800000000,
+        "breakout_close": null
+      },
+      "withdrawal_conditions": [
+        {
+          "condition": "invalidation_crossed",
+          "price": 111,
+          "relation": ">=",
+          "basis_timeframe": "h1",
+          "confirmation": "verified_saved_closed_candle_not_live_quote"
+        },
+        {
+          "condition": "structural_target_reached",
+          "price": 91,
+          "relation": "<=",
+          "basis_timeframe": "h1",
+          "confirmation": "verified_saved_closed_candle_not_live_quote"
+        }
+      ],
+      "recheck": "保存時の局所水準。新しい確定足では構造・反応・比較水準を再評価する。固定の注文価格や期限ではない",
+      "limitations": [
+        "条件観測後も主要な反対根拠と目標までの余地を再評価する",
+        "観測終値は約定価格ではない。成立後RR・利益確率は未検証"
+      ]
+    },
+    "range_context": {
+      "schema": "horizontal_range_v1",
+      "status": "bounded",
+      "evaluated_at": 1800000000,
+      "timeframe": "h1",
+      "advisory_only": true,
+      "profitability_validated": false,
+      "reason": "上側水平帯の反落を確認する売りシナリオ",
+      "formed_at": 1799989200,
+      "anchors": [
+        {
+          "timestamp": 1799935200,
+          "open": 105,
+          "high": 111,
+          "low": 99,
+          "close": 105,
+          "kind": "high",
+          "confirmed_at": 1799946000
+        },
+        {
+          "timestamp": 1799949600,
+          "open": 95,
+          "high": 101,
+          "low": 90,
+          "close": 95,
+          "kind": "low",
+          "confirmed_at": 1799960400
+        },
+        {
+          "timestamp": 1799964000,
+          "open": 105,
+          "high": 110,
+          "low": 99,
+          "close": 105,
+          "kind": "high",
+          "confirmed_at": 1799974800
+        },
+        {
+          "timestamp": 1799978400,
+          "open": 95,
+          "high": 101,
+          "low": 91,
+          "close": 95,
+          "kind": "low",
+          "confirmed_at": 1799989200
+        }
+      ],
+      "lower_zone": [
+        91,
+        95
+      ],
+      "upper_zone": [
+        105,
+        110
+      ],
+      "lower_outer": 90,
+      "upper_outer": 111,
+      "selection": "upper_edge",
+      "limitations": [
+        "水平帯の定義は暫定。視覚的な全レンジを網羅しない",
+        "勝率・収益性・閾値最適化は未検証"
+      ],
+      "direction": "short",
+      "reaction_level": 105
+    },
+    "expiry": {
+      "status": "reference_recheck",
+      "time_expiry": {
+        "status": "not_defined",
+        "reason": "時間失効の合意済み規定なし。期限は推定しない"
+      },
+      "withdrawal_conditions": [
+        {
+          "condition": "invalidation_crossed",
+          "price": 111,
+          "relation": ">=",
+          "basis_timeframe": "h1",
+          "confirmation": "verified_saved_closed_candle_not_live_quote"
+        },
+        {
+          "condition": "structural_target_reached",
+          "price": 91,
+          "relation": "<=",
+          "basis_timeframe": "h1",
+          "confirmation": "verified_saved_closed_candle_not_live_quote"
+        }
+      ],
+      "observed_condition": null,
+      "observation": null,
+      "basis": "existing_saved_scenario_decision_not_position_exit_or_new_gate",
+      "recheck": "新しい確定足で構造・品質・反応を再評価。保存時判断を現在の許可に流用しない"
+    },
+    "scenario_type": "range_reversal"
+  },
+  {
+    "pair": "EURUSD",
+    "strategy": "swing",
+    "evaluated_at": 1800000000,
+    "assessment": "review",
+    "direction": "long",
+    "grade": "B",
+    "reference_timeframe": "h4",
+    "trigger_timeframe": "m15",
+    "reference_levels": {
+      "invalidation": 90,
+      "structural_target": 110,
+      "reference_rr": 1.0,
+      "executable_price": false
+    },
+    "scenario_conditions": {
+      "schema": "scenario_conditions_v1",
+      "evaluated_at": 1800000000,
+      "timeframe": "m15",
+      "direction": "long",
+      "status": "conditions_observed",
+      "route": "range_edge_rejection",
+      "conditions": [
+        {
+          "kind": "range_touch_reclaim_directional_close",
+          "level": 95,
+          "touch_relation": "<=",
+          "close_relation": ">",
+          "body_relation": "close>open"
+        }
+      ],
+      "observed_at": 1800000000,
+      "observed_close": 96,
+      "formation_price": null,
+      "formation_rr": null,
+      "advisory_only": true,
+      "profitability_validated": false,
+      "basis": "contextual_saved_price_action_v1",
+      "scope": "scenario_confirmation_conditions_not_order_or_fill",
+      "reason": "確認済み水平帯の端で反発・反落を確認。レンジ解釈・収益性は未検証",
+      "summary": "15分足でレンジ下側水平帯の内縁95を試し、終値が同水準を上回る、始値より高く引けることを確認する。外縁への終値到達で撤回",
+      "level": 95,
+      "level_basis": "confirmed_range_wick_zone_inner_edge",
+      "anchor_started_at": 1799740800,
+      "anchor_closed_at": 1799956800,
+      "evaluated_candle_closed_at": 1800000000,
+      "breakout_observed_at": null,
+      "evidence": {
+        "test_open": 94,
+        "test_high": 98,
+        "test_low": 92,
+        "test_close": 96,
+        "test_closed_at": 1800000000,
+        "breakout_close": null
+      },
+      "withdrawal_conditions": [
+        {
+          "condition": "invalidation_crossed",
+          "price": 90,
+          "relation": "<=",
+          "basis_timeframe": "h4",
+          "confirmation": "verified_saved_closed_candle_not_live_quote"
+        },
+        {
+          "condition": "structural_target_reached",
+          "price": 110,
+          "relation": ">=",
+          "basis_timeframe": "h4",
+          "confirmation": "verified_saved_closed_candle_not_live_quote"
+        }
+      ],
+      "recheck": "保存時の局所水準。新しい確定足では構造・反応・比較水準を再評価する。固定の注文価格や期限ではない",
+      "limitations": [
+        "条件観測後も主要な反対根拠と目標までの余地を再評価する",
+        "観測終値は約定価格ではない。成立後RR・利益確率は未検証"
+      ]
+    },
+    "range_context": {
+      "schema": "horizontal_range_v1",
+      "status": "bounded",
+      "evaluated_at": 1800000000,
+      "timeframe": "h4",
+      "advisory_only": true,
+      "profitability_validated": false,
+      "reason": "下側水平帯の反発を確認する買いシナリオ",
+      "formed_at": 1799956800,
+      "anchors": [
+        {
+          "timestamp": 1799740800,
+          "open": 105,
+          "high": 111,
+          "low": 99,
+          "close": 105,
+          "kind": "high",
+          "confirmed_at": 1799784000
+        },
+        {
+          "timestamp": 1799798400,
+          "open": 95,
+          "high": 101,
+          "low": 90,
+          "close": 95,
+          "kind": "low",
+          "confirmed_at": 1799841600
+        },
+        {
+          "timestamp": 1799856000,
+          "open": 105,
+          "high": 110,
+          "low": 99,
+          "close": 105,
+          "kind": "high",
+          "confirmed_at": 1799899200
+        },
+        {
+          "timestamp": 1799913600,
+          "open": 95,
+          "high": 101,
+          "low": 91,
+          "close": 95,
+          "kind": "low",
+          "confirmed_at": 1799956800
+        }
+      ],
+      "lower_zone": [
+        91,
+        95
+      ],
+      "upper_zone": [
+        105,
+        110
+      ],
+      "lower_outer": 90,
+      "upper_outer": 111,
+      "selection": "lower_edge",
+      "limitations": [
+        "水平帯の定義は暫定。視覚的な全レンジを網羅しない",
+        "勝率・収益性・閾値最適化は未検証"
+      ],
+      "direction": "long",
+      "reaction_level": 95
+    },
+    "expiry": {
+      "status": "reference_recheck",
+      "time_expiry": {
+        "status": "not_defined",
+        "reason": "時間失効の合意済み規定なし。期限は推定しない"
+      },
+      "withdrawal_conditions": [
+        {
+          "condition": "invalidation_crossed",
+          "price": 90,
+          "relation": "<=",
+          "basis_timeframe": "h4",
+          "confirmation": "verified_saved_closed_candle_not_live_quote"
+        },
+        {
+          "condition": "structural_target_reached",
+          "price": 110,
+          "relation": ">=",
+          "basis_timeframe": "h4",
+          "confirmation": "verified_saved_closed_candle_not_live_quote"
+        }
+      ],
+      "observed_condition": null,
+      "observation": null,
+      "basis": "existing_saved_scenario_decision_not_position_exit_or_new_gate",
+      "recheck": "新しい確定足で構造・品質・反応を再評価。保存時判断を現在の許可に流用しない"
+    },
+    "scenario_type": "range_reversal"
+  },
+  {
+    "pair": "EURUSD",
+    "strategy": "swing",
+    "evaluated_at": 1800000000,
+    "assessment": "review",
+    "direction": "short",
+    "grade": "B",
+    "reference_timeframe": "h4",
+    "trigger_timeframe": "m15",
+    "reference_levels": {
+      "invalidation": 111,
+      "structural_target": 91,
+      "reference_rr": 0.82,
+      "executable_price": false
+    },
+    "scenario_conditions": {
+      "schema": "scenario_conditions_v1",
+      "evaluated_at": 1800000000,
+      "timeframe": "m15",
+      "direction": "short",
+      "status": "conditions_observed",
+      "route": "range_edge_rejection",
+      "conditions": [
+        {
+          "kind": "range_touch_reclaim_directional_close",
+          "level": 105,
+          "touch_relation": ">=",
+          "close_relation": "<",
+          "body_relation": "close<open"
+        }
+      ],
+      "observed_at": 1800000000,
+      "observed_close": 104,
+      "formation_price": null,
+      "formation_rr": null,
+      "advisory_only": true,
+      "profitability_validated": false,
+      "basis": "contextual_saved_price_action_v1",
+      "scope": "scenario_confirmation_conditions_not_order_or_fill",
+      "reason": "確認済み水平帯の端で反発・反落を確認。レンジ解釈・収益性は未検証",
+      "summary": "15分足でレンジ上側水平帯の内縁105を試し、終値が同水準を下回る、始値より安く引けることを確認する。外縁への終値到達で撤回",
+      "level": 105,
+      "level_basis": "confirmed_range_wick_zone_inner_edge",
+      "anchor_started_at": 1799740800,
+      "anchor_closed_at": 1799956800,
+      "evaluated_candle_closed_at": 1800000000,
+      "breakout_observed_at": null,
+      "evidence": {
+        "test_open": 106,
+        "test_high": 109,
+        "test_low": 102,
+        "test_close": 104,
+        "test_closed_at": 1800000000,
+        "breakout_close": null
+      },
+      "withdrawal_conditions": [
+        {
+          "condition": "invalidation_crossed",
+          "price": 111,
+          "relation": ">=",
+          "basis_timeframe": "h4",
+          "confirmation": "verified_saved_closed_candle_not_live_quote"
+        },
+        {
+          "condition": "structural_target_reached",
+          "price": 91,
+          "relation": "<=",
+          "basis_timeframe": "h4",
+          "confirmation": "verified_saved_closed_candle_not_live_quote"
+        }
+      ],
+      "recheck": "保存時の局所水準。新しい確定足では構造・反応・比較水準を再評価する。固定の注文価格や期限ではない",
+      "limitations": [
+        "条件観測後も主要な反対根拠と目標までの余地を再評価する",
+        "観測終値は約定価格ではない。成立後RR・利益確率は未検証"
+      ]
+    },
+    "range_context": {
+      "schema": "horizontal_range_v1",
+      "status": "bounded",
+      "evaluated_at": 1800000000,
+      "timeframe": "h4",
+      "advisory_only": true,
+      "profitability_validated": false,
+      "reason": "上側水平帯の反落を確認する売りシナリオ",
+      "formed_at": 1799956800,
+      "anchors": [
+        {
+          "timestamp": 1799740800,
+          "open": 105,
+          "high": 111,
+          "low": 99,
+          "close": 105,
+          "kind": "high",
+          "confirmed_at": 1799784000
+        },
+        {
+          "timestamp": 1799798400,
+          "open": 95,
+          "high": 101,
+          "low": 90,
+          "close": 95,
+          "kind": "low",
+          "confirmed_at": 1799841600
+        },
+        {
+          "timestamp": 1799856000,
+          "open": 105,
+          "high": 110,
+          "low": 99,
+          "close": 105,
+          "kind": "high",
+          "confirmed_at": 1799899200
+        },
+        {
+          "timestamp": 1799913600,
+          "open": 95,
+          "high": 101,
+          "low": 91,
+          "close": 95,
+          "kind": "low",
+          "confirmed_at": 1799956800
+        }
+      ],
+      "lower_zone": [
+        91,
+        95
+      ],
+      "upper_zone": [
+        105,
+        110
+      ],
+      "lower_outer": 90,
+      "upper_outer": 111,
+      "selection": "upper_edge",
+      "limitations": [
+        "水平帯の定義は暫定。視覚的な全レンジを網羅しない",
+        "勝率・収益性・閾値最適化は未検証"
+      ],
+      "direction": "short",
+      "reaction_level": 105
+    },
+    "expiry": {
+      "status": "reference_recheck",
+      "time_expiry": {
+        "status": "not_defined",
+        "reason": "時間失効の合意済み規定なし。期限は推定しない"
+      },
+      "withdrawal_conditions": [
+        {
+          "condition": "invalidation_crossed",
+          "price": 111,
+          "relation": ">=",
+          "basis_timeframe": "h4",
+          "confirmation": "verified_saved_closed_candle_not_live_quote"
+        },
+        {
+          "condition": "structural_target_reached",
+          "price": 91,
+          "relation": "<=",
+          "basis_timeframe": "h4",
+          "confirmation": "verified_saved_closed_candle_not_live_quote"
+        }
+      ],
+      "observed_condition": null,
+      "observation": null,
+      "basis": "existing_saved_scenario_decision_not_position_exit_or_new_gate",
+      "recheck": "新しい確定足で構造・品質・反応を再評価。保存時判断を現在の許可に流用しない"
+    },
+    "scenario_type": "range_reversal"
+  }
+]

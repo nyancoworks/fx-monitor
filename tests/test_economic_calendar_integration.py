@@ -2,7 +2,7 @@
 from copy import deepcopy
 import json
 import unittest
-from test_range_scenario import sample, CLOCK
+from synthetic_candles import sample, CLOCK
 from fx_system.scheduled_outlook import build_scheduled_outlook
 from fx_system.validate_strategy_snapshot import validate_strategy_snapshot
 from fx_system.strategy_report import render_strategy_report, _clock
@@ -16,7 +16,7 @@ class CalendarIntegrationTests(unittest.TestCase):
         quality = {'timeframes': {'h1': {'ok': True, 'count': 20},
                                   'm5': {'ok': True, 'count': 5, 'age_minutes': 0}}}
         data['decision_quality'] = {**deepcopy(quality), 'evaluated_at': CLOCK}
-        data['technical'] = {'h1': {'status': 'ok', 'structure': 'mixed'}}
+        data['technical'] = {'h1': {'status':'ok','structure':'HH_HL','confirmed_swing_highs':[{'price':110,'timestamp':CLOCK-5*3600}],'confirmed_swing_lows':[{'price':90,'timestamp':CLOCK-6*3600}]}}
         return build_scheduled_outlook({'EURUSD': data}, {'EURUSD': quality},
                                        evaluated_at=CLOCK, economic_calendar=calendar)
 

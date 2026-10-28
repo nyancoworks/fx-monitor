@@ -14,7 +14,6 @@ from .scenario_price_plan import saved_price_plan, trigger_price_reference
 from .price_reaction_observation import observe_saved_reaction
 from .scenario_conditions import condition_inputs
 from .strategy_strength import build_contexts
-from .range_scenario import apply_range
 
 def _dict(x): return x if isinstance(x,dict) else {}
 def _price(x): return x if type(x) in (int,float) and math.isfinite(x) and x>0 else None
@@ -306,7 +305,6 @@ def _one(pair, data, source_quality, evaluated_at):
         else "timing_unverified")
 
     for track in strategy_tracks.values():
-        apply_range(data, track, evaluated_at)
         track['price_reaction_observation'] = observe_saved_reaction(data, track, evaluated_at)
         track_direction=track["direction"]
         track["macro_context"]={

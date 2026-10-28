@@ -177,7 +177,7 @@ class StrategyStrengthTests(unittest.TestCase):
         from unittest.mock import patch
         current=build_strategy_report_export(json.dumps(snapshot()).encode(),SOURCE)
         prior_clock=SOURCE['evaluated_at']-300
-        with patch('test_strategy_report_export.CLOCK',prior_clock), patch('test_range_scenario.CLOCK',prior_clock):
+        with patch('test_strategy_report_export.CLOCK',prior_clock), patch('synthetic_candles.CLOCK',prior_clock):
             older=snapshot()
         context=build_contexts(fixture(),CLOCK)['EURUSD']['daytrade']
         context.pop('temporal_reference'); context.pop('other_horizon')
@@ -207,7 +207,7 @@ class StrategyStrengthTests(unittest.TestCase):
         track = mature_track(); track.update(direction=None, base_structure='mixed')
         result = assess_strategy('EURUSD','daytrade',track,CLOCK)
         self.assertEqual(result['assessment'], 'skip')
-        self.assertIn('反復水平帯', result['grade_reason'])
+        self.assertIn('方向構造', result['grade_reason'])
 
     def test_all32_contexts_roundtrip_and_tampered_clock_is_rejected(self):
         from fx_system.scheduled_outlook import build_scheduled_outlook

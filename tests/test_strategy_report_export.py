@@ -15,7 +15,7 @@ from fx_system.scheduled_outlook import build_scheduled_outlook
 from fx_system.strategy_report import render_strategy_report
 from fx_system.strategy_report_export import build_strategy_report_export, restore_strategy_report_export
 from fx_system.validate_strategy_snapshot import validate_strategy_snapshot
-from test_range_scenario import sample, CLOCK
+from synthetic_candles import sample, CLOCK
 
 
 SOURCE = {'source_repository': 'nyancoworks/fx-monitor', 'source_commit': 'a'*40,
@@ -27,7 +27,7 @@ def snapshot():
     quality = {'timeframes': {'h1': {'ok': True, 'count': 20},
                              'm5': {'ok': True, 'count': 5, 'age_minutes': 0}}}
     data['decision_quality'] = {**deepcopy(quality), 'evaluated_at': CLOCK}
-    data['technical'] = {'h1': {'status': 'ok', 'structure': 'mixed'}}
+    data['technical'] = {'h1': {'status':'ok','structure':'HH_HL','confirmed_swing_highs':[{'price':110,'timestamp':CLOCK-5*3600}],'confirmed_swing_lows':[{'price':90,'timestamp':CLOCK-6*3600}]}}
     calendar = {'observed_at_utc': CLOCK, 'complete': True,
         'attribution_url': 'https://example.invalid/synthetic', 'events': [
             {'currency': 'USD', 'scheduled_at_utc': CLOCK+3600, 'observed_at_utc': CLOCK,
@@ -202,7 +202,7 @@ class StrategyReportExportTests(unittest.TestCase):
         quality = {'timeframes': {'h1': {'ok': True, 'count': 20},
                                  'm5': {'ok': True, 'count': 5, 'age_minutes': 0}}}
         data['decision_quality'] = {**deepcopy(quality), 'evaluated_at': CLOCK}
-        data['technical'] = {'h1': {'status': 'ok', 'structure': 'mixed'}}
+        data['technical'] = {'h1': {'status':'ok','structure':'HH_HL','confirmed_swing_highs':[{'price':110,'timestamp':CLOCK-5*3600}],'confirmed_swing_lows':[{'price':90,'timestamp':CLOCK-6*3600}]}}
         outlook = build_scheduled_outlook({p: deepcopy(data) for p in PAIR_KEYS},
                                           {p: deepcopy(quality) for p in PAIR_KEYS}, evaluated_at=CLOCK)
         saved = {'evaluated_at': CLOCK, 'scheduled_outlook': outlook}; before = deepcopy(saved)
@@ -229,7 +229,7 @@ class StrategyReportExportTests(unittest.TestCase):
         quality = {'timeframes': {'h1': {'ok': True, 'count': 20},
                                  'm5': {'ok': True, 'count': 5, 'age_minutes': 0}}}
         data['decision_quality'] = {**deepcopy(quality), 'evaluated_at': CLOCK}
-        data['technical'] = {'h1': {'status': 'ok', 'structure': 'mixed'}}
+        data['technical'] = {'h1': {'status':'ok','structure':'HH_HL','confirmed_swing_highs':[{'price':110,'timestamp':CLOCK-5*3600}],'confirmed_swing_lows':[{'price':90,'timestamp':CLOCK-6*3600}]}}
         outlook = build_scheduled_outlook({p: deepcopy(data) for p in PAIR_KEYS},
                                           {p: deepcopy(quality) for p in PAIR_KEYS}, evaluated_at=CLOCK)
         reviews = [r for r in outlook['strategy_assessments'] if r['assessment'] == 'review']

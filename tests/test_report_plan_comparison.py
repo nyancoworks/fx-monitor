@@ -169,7 +169,7 @@ class PlanComparisonTests(unittest.TestCase):
         self.assertEqual([r['pair'] for r in report_records(outlook)], ['GBPUSD', 'EURUSD'])
 
     def test_full_32_json_history_report_pipeline_keeps_assessments_and_counts(self):
-        from test_range_scenario import sample, CLOCK as SAMPLE_CLOCK
+        from synthetic_candles import sample, CLOCK as SAMPLE_CLOCK
         data, _ = sample()
         quality = {'timeframes': {'h1': {'ok': True, 'count': 20},
                                  'm5': {'ok': True, 'count': 5, 'age_minutes': 0}}}
