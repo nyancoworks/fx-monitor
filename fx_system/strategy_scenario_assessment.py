@@ -113,6 +113,8 @@ def assess_strategy(pair,strategy,track,evaluated_at):
                     record['scenario_explanation']['waiting_condition']=condition_plan['summary']
         record['scenario_explanation']['formation_conditions']=deepcopy(record['formation_conditions'])
         record['scenario_explanation']['scenario_conditions']=deepcopy(condition_plan)
+        from .technical_context import attach_technical_context
+        attach_technical_context(record)
         from .practical_review import review
         return review(record)
     if t.get('base_verified') is not True:

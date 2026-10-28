@@ -331,7 +331,7 @@ def _one(pair, data, source_quality, evaluated_at):
         track["macro_reference"]=macro_reference
         track["scenario_explanation"]=explain_strategy_track(track)
         track["rci_observation"]=rci_track_context(data, track, evaluated_at)
-        track["indicator_context"]=strategy_indicator_context(data, track)
+        track["indicator_context"]=strategy_indicator_context(data, track, evaluated_at=evaluated_at)
         track['condition_inputs'] = condition_inputs(data, track, evaluated_at)
     return {
         "strategy_tracks":strategy_tracks,

@@ -53,13 +53,25 @@ def fibonacci_retracement(swing_low, swing_high, direction):
 
 def dma_snapshot(rows):
     """Compute display-only DMA from caller-supplied completed closes."""
-    closes = [r["close"] for r in sorted(rows, key=lambda r: r["timestamp"])]
+    ordered = sorted(rows, key=lambda r: r["timestamp"])
+    closes = [r["close"] for r in ordered]
     if any(type(x) not in (int, float) or not math.isfinite(x) for x in closes):
         raise ValueError("invalid closes")
-    return {"candles": len(closes), "dma": {f"{p}x{shift}": {
-                "period": p, "display_shift": shift,
-                "latest_known": displaced_sma(closes, p, shift)["latest_known"]}
-                for p, shift in DMA_SPECS},
+    result = {}
+    for p, shift in DMA_SPECS:
+        series = sma_series(closes, p)
+        current = series[-1-shift] if len(series) > shift else None
+        previous = series[-2-shift] if len(series) > shift+1 else None
+        result[f'{p}x{shift}'] = {
+            'period': p, 'display_shift': shift, 'latest_known': series[-1] if series else None,
+            'current_plot': current, 'previous_plot': previous,
+            'plot_slope': current-previous if current is not None and previous is not None else None,
+            'plot_timestamp': ordered[-1]['timestamp'] if current is not None else None,
+            'source_timestamp': ordered[-1-shift]['timestamp'] if current is not None else None,
+            'basis': 'historical_sma_displaced_to_current_bar_not_latest_future_plot'}
+    return {"candles": len(closes), "dma": result,
+            'last_timestamp': ordered[-1]['timestamp'] if ordered else None,
+            'saved_close': closes[-1] if closes else None,
             "advisory_only": True,
             "fibonacci_status": "requires_explicit_confirmed_impulse_anchors"}
 

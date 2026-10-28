@@ -23,7 +23,7 @@ from .monitoring_macro import build_reference, unavailable as unavailable_macro_
 from .h4_setup import h4_setup_diagnostic
 from .zones import propose_h1_zone
 from .advisory_indicators import advisory_snapshot
-from .indicator_research import research_snapshot, super_bollinger_context
+from .indicator_research import research_snapshot
 from .setup_comparison import compare_setups
 from .m15_entry_shadow import m15_entry_shadow
 from .m5_price_action import observe_m5_price_action
@@ -32,7 +32,7 @@ from .m5_rci_momentum import observe_m5_rci, m5_history_diagnostic
 from .h1_rci_shadow import h1_rci_shadow
 from .multitimeframe_shadow import multitimeframe_shadow
 from .dinapoli_research import dma_snapshot, confirmed_fibonacci
-from .dinapoli_indicator_reference import indicator_reference
+from .indicator_refresh import dinapoli_diagnostics, refresh_strategy_indicators
 from .storage_paths import storage_root
 
 ROOT=pathlib.Path(__file__).resolve().parents[1]
@@ -47,13 +47,6 @@ REFRESH_DEADLINE_SECONDS=360
 
 class ProviderRateLimit(requests.HTTPError):
     """Provider error payload reports quota rejection even with HTTP 200."""
-
-def dinapoli_diagnostics(frames, setup):
-    """Non-gating completed-candle DMA and directional Fibonacci research."""
-    direction=setup.get("direction")
-    return {tf:{**dma_snapshot(frames[tf]),
-                "confirmed_fibonacci":confirmed_fibonacci(frames[tf],direction)}
-            for tf in ("w1","d1","h4","h1","m5")}
 
 def budget_for_day(cache,now):
     """Persist conservative request accounting, resetting at 00:00 UTC."""
@@ -488,19 +481,13 @@ def _refresh(ny=None):
         data["m5_rci_momentum_shadow"]=observe_m5_rci(verified["m5"],h1_direction)
         data["h1_rci_shadow"]=h1_rci_shadow(verified["h1"],data["h4_setup_shadow"],quality)
         data["multitimeframe_shadow"]=multitimeframe_shadow(data["h4_setup_shadow"],data["h1_rci_shadow"],data["m15_entry_shadow"],data["setup_comparison"],quality)
-        data["indicator_research"]={tf:research_snapshot(indicator_frames[tf]) for tf in ("w1","d1","h4","h1","m15")}
-        data["super_bollinger_context"]={tf:super_bollinger_context(verified[tf],timeframe=tf,
-            calendar=quality["timeframes"][tf].get("calendar")) for tf in ("w1","d1","h4","h1")}
-
         setup["zone_proposal"]=propose_h1_zone(verified["h1"],setup.get("direction"),setup.get("invalidation"))
         data["setup"]=setup
         data["technical"]={tf:technical(indicator_frames[tf]) for tf in ("m5","m15","h1","h4","d1","w1")}
         data["advisory_indicators"]={tf:advisory_snapshot(indicator_frames[tf]) for tf in ("w1","d1","h4","h1","m5")}
-        data["dinapoli_research"]=dinapoli_diagnostics(indicator_frames,setup)
         # Reference only: reuse the already validated contiguous indicator frames.
         # No new provider calls, no new entry gates, and no candidate selection change.
-        data["dinapoli_indicator_reference"]={tf:indicator_reference(indicator_frames[tf])
-            for tf in ("w1","d1","h4","h1","m15","m5")}
+        refresh_strategy_indicators(data,verified,indicator_frames,quality,setup)
         q=result["quality"][name]
         q.update({"ok":quality["ready"] and all(quality["timeframes"][tf]["ok"] for tf in ("m5","h1","h4","d1")),"decision_data_ready":quality["ready"],
                   "intraday_monitoring_ready":quality["intraday_monitoring_ready"],

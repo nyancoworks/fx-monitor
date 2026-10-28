@@ -66,7 +66,15 @@ def build_strategy_report_export(snapshot_bytes, source):
                              for row in outlook['rows']]
         projected['strategy_candidates'] = [{key: row[key] for key in ('pair', 'strategy')}
                                              for row in outlook.get('strategy_candidates', [])]
-        raw = _json(view)
+        packed_view = view
+        compact_rows = any('technical_context' in r for r in projected['strategy_assessments'])
+        if compact_rows:
+            # Original canonical/row equality has already been validated. Save
+            # each assessment once; reconstruct the identical projected rows on
+            # read, rather than removing evidence or increasing size limits.
+            packed_view = deepcopy(view)
+            packed_view['scheduled_outlook']['rows'] = [{'pair':row['pair']} for row in projected['rows']]
+        raw = _json(packed_view)
         if len(raw) > MAX_PAYLOAD_BYTES:
             return bundle
         saved = {**bundle, 'status': 'saved', 'error': None,
@@ -82,6 +90,8 @@ def build_strategy_report_export(snapshot_bytes, source):
                                                         comparison_explanation_version=2),
             'payload_sha256': hashlib.sha256(raw).hexdigest(), 'payload_byte_length': len(raw),
             'payload_base64': base64.b64encode(gzip.compress(raw, mtime=0)).decode('ascii')}
+        if compact_rows:
+            saved['payload_layout']='canonical_rows_v2'
         return saved if len(_json(saved)) <= MAX_EXPORT_BYTES else bundle
     except Exception:
         # Derived report failure must never suppress the original FX save.
@@ -113,6 +123,19 @@ def restore_strategy_report_export(bundle, source, snapshot_blob_sha):
                 or hashlib.sha256(raw).hexdigest() != bundle.get('payload_sha256')):
             raise ValueError
         view = json.loads(raw)
+        layout = bundle.get('payload_layout')
+        if layout not in (None,'canonical_rows_v2'):
+            raise ValueError
+        if layout=='canonical_rows_v2':
+            outlook=view['scheduled_outlook']
+            records=outlook['strategy_assessments']
+            canonical={(r['pair'],r['strategy']):r for r in records}
+            for row in outlook['rows']:
+                if set(row)!={'pair'} or not isinstance(row['pair'],str):
+                    raise ValueError
+                row['strategy_assessments']={s:deepcopy(canonical[row['pair'],s]) for s in ('swing','daytrade')}
+            if len(_json(view))>MAX_PAYLOAD_BYTES:
+                raise ValueError
         selection_version = bundle.get('selection_version', 1)
         if type(selection_version) is not int or selection_version not in (1, 2, 3, 4):
             raise ValueError
