@@ -64,6 +64,10 @@ def validate_strategy_snapshot(snapshot):
             checked=review(deepcopy(r),monitor_wait=r['practical_review'].get('schema')!='saved_practical_review_v1')
             if (checked['practical_review']!=r['practical_review'] or checked['grade']!=r.get('grade')):
                 failures.append('scheduled practical review mismatch')
+        if 'decision_brief' in r:
+            from .decision_brief import build_brief
+            if r['decision_brief']!=build_brief(r):
+                failures.append('scheduled decision brief mismatch')
         if r.get('execution_authority') != 'none' or 'entry_permission' in r:
             failures.append('scheduled strategy execution contract invalid')
         base, trigger = ('h4', 'm15') if r.get('strategy') == 'swing' else ('h1', 'm5')

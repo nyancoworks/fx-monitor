@@ -72,11 +72,11 @@ def build_strategy_report_export(snapshot_bytes, source):
         saved = {**bundle, 'status': 'saved', 'error': None,
             'assessment_summaries': _summaries(view),
             'assessment_counts': deepcopy(projected['assessment_counts']),
-            'selection_version': 3,
+            'selection_version': 4,
             'comparison_explanation_version': 2,
             'report_text': render_strategy_report(view, comparison_explanation_version=2),
             'encoding': 'gzip_base64_json',
-            'review_context_version': 2,
+            'review_context_version': 3,
             'review_context_text': render_strategy_report(view, include_all_reviews=True,
                                                         complete_evidence=True,
                                                         comparison_explanation_version=2),
@@ -114,7 +114,7 @@ def restore_strategy_report_export(bundle, source, snapshot_blob_sha):
             raise ValueError
         view = json.loads(raw)
         selection_version = bundle.get('selection_version', 1)
-        if type(selection_version) is not int or selection_version not in (1, 2, 3):
+        if type(selection_version) is not int or selection_version not in (1, 2, 3, 4):
             raise ValueError
         comparison_version = bundle.get('comparison_explanation_version', 1)
         if type(comparison_version) is not int or comparison_version not in (1, 2):
@@ -130,12 +130,12 @@ def restore_strategy_report_export(bundle, source, snapshot_blob_sha):
         # mode. Keep its exact verification while version 2 retains every
         # saved reason/opposition for candidate comparison.
         context_version = bundle.get('review_context_version', 1)
-        if (type(context_version) is not int or context_version not in (1, 2)
+        if (type(context_version) is not int or context_version not in (1, 2, 3)
                 or ('review_context_version' in bundle and 'review_context_text' not in bundle)):
             raise ValueError
         if ('review_context_text' in bundle and bundle['review_context_text'] !=
                 render_strategy_report(view, include_all_reviews=True,
-                                       complete_evidence=context_version == 2,
+                                       complete_evidence=context_version >= 2,
                                        selection_version=selection_version,
                                        comparison_explanation_version=comparison_version)):
             raise ValueError
