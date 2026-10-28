@@ -49,7 +49,7 @@ class ContinuityTests(unittest.TestCase):
     def test_full_verified_exports_and_missing_tampered_future_prior(self):
         current=build_strategy_report_export(json.dumps(snapshot()).encode(),SOURCE)
         from unittest.mock import patch
-        with patch('test_strategy_report_export.CLOCK',SOURCE['evaluated_at']-300), patch('test_range_scenario.CLOCK',SOURCE['evaluated_at']-300):
+        with patch('test_strategy_report_export.CLOCK',SOURCE['evaluated_at']-300), patch('synthetic_candles.CLOCK',SOURCE['evaluated_at']-300):
             older=snapshot()
         source={**SOURCE,'run_id':122,'evaluated_at':SOURCE['evaluated_at']-300}
         prior=build_strategy_report_export(json.dumps(older).encode(),source)
@@ -89,7 +89,7 @@ class ContinuityTests(unittest.TestCase):
             git('add','.');git('-c','user.name=test','-c','user.email=test@localhost','commit','-m','initial')
             git('push','origin','HEAD:main')
             for i in range(2):
-                with patch('test_strategy_report_export.CLOCK',SOURCE['evaluated_at']+300*i), patch('test_range_scenario.CLOCK',SOURCE['evaluated_at']+300*i):
+                with patch('test_strategy_report_export.CLOCK',SOURCE['evaluated_at']+300*i), patch('synthetic_candles.CLOCK',SOURCE['evaluated_at']+300*i):
                     data=snapshot()
                 data['generated_at']=2+i
                 (root/'data/latest.json').write_text(json.dumps(data))

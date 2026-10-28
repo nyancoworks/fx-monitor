@@ -13,7 +13,7 @@ from fx_system.saved_economic_calendar import configured_calendar
 from fx_system.strategy_report_export import build_strategy_report_export, restore_strategy_report_export
 from diagnostics.monitoring_result_history import pack_generation, restore_generation
 import test_economic_calendar_integration as integration
-from test_range_scenario import CLOCK
+from synthetic_candles import CLOCK
 
 
 def fact(**changes):

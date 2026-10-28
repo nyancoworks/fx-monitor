@@ -5,7 +5,7 @@ import unittest
 from fx_system.economic_background import summarize_background
 from fx_system.strategy_report_export import build_strategy_report_export, restore_strategy_report_export
 import test_economic_calendar_integration as integration
-from test_range_scenario import CLOCK
+from synthetic_candles import CLOCK
 import json
 
 

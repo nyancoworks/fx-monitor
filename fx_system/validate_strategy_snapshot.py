@@ -2,7 +2,7 @@
 from collections import Counter
 from .monitor_pairs import PAIR_KEYS
 from .scenario_conditions import validate_conditions
-from .range_scenario import validate_range
+from .legacy_range import validate_range
 
 
 def validate_strategy_snapshot(snapshot):
