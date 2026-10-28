@@ -15,6 +15,7 @@ from urllib.parse import urlparse, quote
 import zlib
 
 from .backtest_partition import canonical, pack, unpack, partition_key
+from .archive_inventory import summarize
 
 REPOSITORY = 'nyancoworks/fx-monitor-data'
 TAG = 'fx-backtest-derived-v1'
@@ -218,6 +219,15 @@ class ReleaseWarehouse:
             tf,month=key.split('/');bundle_key(tf,month);self._check(ref)
             if not ref['name'].startswith('fxbt-bundle-'):
                 raise ValueError('invalid bundle reference')
+        inventory=state.get('inventory')
+        if inventory is not None:
+            if inventory.get('schema')!='archive_inventory_v1' or not isinstance(inventory.get('bundles'),dict):
+                raise ValueError('invalid inventory')
+            for key,item in inventory['bundles'].items():
+                if key not in state['bundles'] or item.get('bundle_sha256')!=state['bundles'][key]['sha256']:
+                    raise ValueError('inventory bundle identity differs')
+            if inventory.get('unknown_bundle_keys')!=sorted(set(state['bundles'])-set(inventory['bundles'])):
+                raise ValueError('inventory coverage differs')
         for name,pins in state['pins'].items():
             if not re.fullmatch('[A-Za-z0-9_-]{1,64}',name):
                 raise ValueError('invalid research pin')
@@ -250,7 +260,7 @@ class ReleaseWarehouse:
                 raise ValueError('invalid initial pointer')
             old=empty
         else:
-            if (set(pointer)!={'index','backup'} or pointer['index']['id']==pointer['backup']['id'] or
+            if (set(pointer) not in ({'index','backup'},{'index','backup','inventory'}) or pointer['index']['id']==pointer['backup']['id'] or
                     not pointer['index']['name'].startswith('fxbt-index-') or
                     not pointer['backup']['name'].startswith('fxbt-backup-')):
                 raise ValueError('independent index copies required')
@@ -259,6 +269,8 @@ class ReleaseWarehouse:
             if open_envelope(self._get(pointer['backup']))!=old:
                 raise ValueError('backup differs; refuse writes/deletion')
             self._validate_state(old)
+            if 'inventory' in pointer and pointer['inventory']!=old.get('inventory'):
+                raise ValueError('inventory differs from verified index')
         new=copy.deepcopy(old); grouped={}; seen=set()
         current=datetime.fromtimestamp(now,timezone.utc)
         def expired(key):
@@ -275,7 +287,7 @@ class ReleaseWarehouse:
                 grouped.setdefault(key,[]).append((partition,batch['rows']))
         # Hold enough calls for 302 downloads, two indices, pointer commit and GC.
         self.api.reserve(2*len(grouped)+1)
-        objects={};added=0;conflicts=[]
+        objects={};added=0;conflicts=[];observed_inventory={}
         for key,items in sorted(grouped.items()):
             previous=old['bundles'].get(key)
             partitions=decode_bundle(self._get(previous),key,now) if previous else {}
@@ -302,6 +314,7 @@ class ReleaseWarehouse:
                 partitions[partition]=list(rows.values())
             if changed:
                 objects[key]=encode_bundle(key,partitions,now);added+=changed
+            observed_inventory[key]=summarize(partitions)
         for key in list(new['bundles']):
             if expired(key):
                 del new['bundles'][key]
@@ -312,6 +325,14 @@ class ReleaseWarehouse:
         if not objects and new==old:
             return {'status':'unchanged','added':0,'requests':self.api.calls,
                     'used_bytes':sum(a['size'] for a in self.assets.values())}
+        # Publish only during an already-required storage generation. Never add
+        # requests for an otherwise unchanged cycle, or download sealed months.
+        inventory=copy.deepcopy(old.get('inventory',{}).get('bundles',{}))
+        inventory.update(observed_inventory)
+        inventory={k:v for k,v in inventory.items() if k in new['bundles'] or k in objects}
+        new['inventory']={'schema':'archive_inventory_v1','bundles':inventory,
+            'unknown_bundle_keys':sorted(set(new['bundles'])-set(inventory)),
+            'source':copy.deepcopy(source),'cross_month_gaps_checked':False}
         new['generation']+=1;new['last_source']=source
         # Capacity before any upload includes both full new index copies and a
         # conservative allowance for remote IDs/references, all old assets remain.
@@ -324,6 +345,8 @@ class ReleaseWarehouse:
             # _put has read back these exact bytes and verified their digest.
             decode_bundle(raw,key,now)
             new['bundles'][key]=ref
+        for key,item in new['inventory']['bundles'].items():
+            item['bundle_sha256']=new['bundles'][key]['sha256']
         index=envelope(new)
         index_ref=self._put(rid,'index',index)
         backup_ref=self._put(rid,'backup',index)
@@ -331,7 +354,10 @@ class ReleaseWarehouse:
         fresh=self.api.request('GET',f'/releases/{rid}')
         if fresh['body']!=prior_body:
             raise ValueError('archive writer changed; preserve unreferenced uploads')
-        body=envelope({'index':index_ref,'backup':backup_ref}).decode()
+        pointer_body={'index':index_ref,'backup':backup_ref}
+        if len(canonical(new['inventory']))<=60000:
+            pointer_body['inventory']=new['inventory']
+        body=envelope(pointer_body).decode()
         self.api.request('PATCH',f'/releases/{rid}',body={'body':body})
         saved=self.api.request('GET',f'/releases/{rid}')
         if saved['body']!=body:
