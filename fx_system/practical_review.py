@@ -74,4 +74,7 @@ def review(record, *, monitor_wait=True):
         record['grade']='B' if blockers else 'A'
         record['grade_reason']=('具体的な価格反応と現在の参考価格計画が整合。補助指標の遅れは独立した否定票にせず、記載した懸念を監視' if not blockers
             else '監視を継続。A未到達の理由：'+'／'.join(blockers))
+    if monitor_wait:
+        from .decision_brief import build_brief
+        record['decision_brief']=build_brief(record)
     return record
