@@ -38,7 +38,10 @@ def mature_track(context=None):
         'trigger_price_reference': {'status': 'observed_reference', 'close': 100,
             'timeframe': 'm5', 'evaluated_at': CLOCK, 'closed_at': CLOCK},
         'reaction_timestamp': CLOCK-300, 'price_action': {'status': 'watch_pattern'},
-        'currency_strength_context': context}
+        'currency_strength_context': context,
+        'condition_inputs': __import__('fx_system.scenario_conditions',fromlist=['condition_inputs']).condition_inputs(
+            {'m5':{'candles':[{'timestamp':CLOCK-(5-i)*300,'open':100,'high':104 if i==4 else 102,'low':99,'close':103 if i==4 else 101} for i in range(5)]}},
+            {'trigger_timeframe':'m5','base_timeframe':'h1','base_verified':True,'trigger_verified':True,'direction':'long'},CLOCK)}
 
 
 class StrategyStrengthTests(unittest.TestCase):
