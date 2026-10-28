@@ -55,6 +55,18 @@ class ContinuityTests(unittest.TestCase):
         prior=build_strategy_report_export(json.dumps(older).encode(),source)
         result=build_continuity(current,SOURCE,current['snapshot_git_blob_sha'],prior,source,prior['snapshot_git_blob_sha'])
         self.assertEqual(result['status'],'saved');self.assertEqual(len(result['rows']),32)
+        inputs=deepcopy((current,prior))
+        checked=build_continuity(current,SOURCE,current['snapshot_git_blob_sha'],prior,source,prior['snapshot_git_blob_sha'],
+                                 current_snapshot_bytes=json.dumps(snapshot()).encode())
+        self.assertEqual(checked['followthrough_status'],'same_snapshot_saved_candles_checked')
+        self.assertEqual(len(checked['rows']),32)
+        self.assertTrue(all('previous_condition_followthrough' in r for r in checked['rows']))
+        unbound=build_continuity(current,SOURCE,current['snapshot_git_blob_sha'],prior,source,prior['snapshot_git_blob_sha'],
+                                current_snapshot_bytes=b'{}')
+        self.assertEqual(unbound['status'],'saved')
+        self.assertEqual(unbound['followthrough_status'],'snapshot_identity_unverified')
+        self.assertEqual(unbound['rows'],result['rows'])
+        self.assertEqual((current,prior),inputs)
         bad=deepcopy(prior);bad['payload_sha256']='0'*64
         for bundle,src,blob in [(None,None,None),(bad,source,prior['snapshot_git_blob_sha']),
                                 (current,SOURCE,current['snapshot_git_blob_sha'])]:
@@ -86,6 +98,8 @@ class ContinuityTests(unittest.TestCase):
                 self.assertEqual(result['status'],'unavailable' if i==0 else 'saved')
                 if i==1:
                     self.assertEqual(len(result['rows']),32)
+                    self.assertEqual(result['followthrough_status'],'same_snapshot_saved_candles_checked')
+                    self.assertTrue(all('previous_condition_followthrough' in r for r in result['rows']))
                     self.assertEqual(result['previous_data_commit'],git('rev-parse','HEAD^'))
                 self.assertEqual(git('rev-parse','HEAD'),git('ls-remote','origin','refs/heads/main').split()[0])
                 self.assertEqual((root/'data/scenario-continuity.json').stat().st_mode&0o777,0o600)
