@@ -121,6 +121,11 @@ def enrich_outlook(outlook, calendar):
                 count = reference.get(key, 0)
                 normalized[key] = normalized.get(key, 0) + (count if type(count) is int and count >= 0 else 0)
             assessment['economic_calendar_context']['policy_reference'] = normalized
+        # Practical event priority depends on the final enriched calendar.
+        # Reconcile before copying rows or validating/rendering the snapshot.
+        if 'practical_review' in assessment:
+            from .practical_review import review
+            review(assessment)
     if seen != {(p, s) for p in PAIR_KEYS for s in WINDOWS}:
         raise ValueError("missing canonical assessments")
     # Snapshot validator requires row copies to match canonical assessments.

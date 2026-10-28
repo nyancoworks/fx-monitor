@@ -39,6 +39,26 @@ class PracticalTests(unittest.TestCase):
         r['economic_calendar_context']['events'][0]['time_precision']='date'
         self.assertEqual(review(r)['practical_review']['status'],'reaction_confirmed')
 
+    def test_calendar_enrichment_then_full_snapshot_export_and_restore(self):
+        import json
+        from test_strategy_report_export import snapshot,SOURCE
+        from fx_system.economic_calendar_context import enrich_outlook
+        from fx_system.validate_strategy_snapshot import validate_strategy_snapshot
+        from fx_system.strategy_report_export import build_strategy_report_export,restore_strategy_report_export
+        s=snapshot();clock=SOURCE['evaluated_at']
+        before={(r['pair'],r['strategy']):(r['grade'],r['direction']) for r in s['scheduled_outlook']['strategy_assessments']}
+        calendar={'observed_at_utc':clock,'complete':True,'events':[{
+            'currency':'USD','scheduled_at_utc':clock,'observed_at_utc':clock,
+            'reference_only':True,'impact':'high','time_precision':'minute','id':'synthetic-policy'}]}
+        s['scheduled_outlook']=enrich_outlook(s['scheduled_outlook'],calendar)
+        self.assertEqual(validate_strategy_snapshot(s),[])
+        self.assertTrue(any(r['practical_review']['status']=='event_recheck' for r in s['scheduled_outlook']['strategy_assessments']))
+        self.assertEqual(before,{(r['pair'],r['strategy']):(r['grade'],r['direction']) for r in s['scheduled_outlook']['strategy_assessments']})
+        bundle=build_strategy_report_export(json.dumps(s).encode(),SOURCE)
+        self.assertEqual(bundle['status'],'saved')
+        self.assertEqual(len(restore_strategy_report_export(bundle,SOURCE,bundle['snapshot_git_blob_sha'])['scheduled_outlook']['strategy_assessments']),32)
+        self.assertEqual(enrich_outlook(s['scheduled_outlook'],calendar),s['scheduled_outlook'])
+
     def test_stale_close_does_not_reuse_attractive_price_plan(self):
         r=record();r['trigger_price_review']['closed_at']-=300
         self.assertEqual(review(r)['grade'],'B')
