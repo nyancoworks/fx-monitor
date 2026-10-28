@@ -23,7 +23,7 @@ def assess_strategy(pair,strategy,track,evaluated_at):
     record={'pair':pair,'strategy':strategy,'direction':direction,'state':t.get('state'),
         'assessment':'evaluation_pending','grade':None,'grade_reason':None,
         'grade_scope':'provisional_scenario_quality_not_permission',
-        'method_version':'contextual_scenario_review_v5_temporal_strength','method_validated_for_profitability':False,
+        'method_version':'contextual_scenario_review_v6_practical_review','method_validated_for_profitability':False,
         'evaluated_at':evaluated_at,'price_basis':'saved_completed_candles_not_current_quote',
         'reference_timeframe':base,'trigger_timeframe':trigger,
         'execution_authority':'none','reasons':reasons,'opposing_evidence':opposition,
@@ -113,7 +113,8 @@ def assess_strategy(pair,strategy,track,evaluated_at):
                     record['scenario_explanation']['waiting_condition']=condition_plan['summary']
         record['scenario_explanation']['formation_conditions']=deepcopy(record['formation_conditions'])
         record['scenario_explanation']['scenario_conditions']=deepcopy(condition_plan)
-        return record
+        from .practical_review import review
+        return review(record)
     if t.get('base_verified') is not True:
         uncertainties.append(f'{base}確定足の品質・出所・評価時刻が未確認')
         return finish('evaluation_pending',None,'当該戦略の基準足を評価できない。相場の見送りとは別')

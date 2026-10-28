@@ -9,9 +9,9 @@ from .economic_calendar_report import calendar_lines
 from .report_plan_comparison import saved_plan_comparison, comparison_explanations
 
 
-def _ordered_reviews(outlook, *, selection_version=2):
+def _ordered_reviews(outlook, *, selection_version=3):
     """All reviews; grade first, then headroom in matching contexts."""
-    if type(selection_version) is not int or selection_version not in (1, 2):
+    if type(selection_version) is not int or selection_version not in (1, 2, 3):
         raise ValueError('unsupported saved report selection version')
     priority = {(c['pair'], c['strategy']): i for i, c in enumerate(outlook.get('strategy_candidates', []))}
     reviews = [r for r in outlook['strategy_assessments'] if r['assessment'] == 'review']
@@ -22,11 +22,15 @@ def _ordered_reviews(outlook, *, selection_version=2):
         return int(conditions.get('status') not in (
             'waiting', 'awaiting_breakout', 'awaiting_retest', 'conditions_observed')
             or record.get('expiry', {}).get('status') == 'withdrawn')
-    ordered = sorted(reviews, key=lambda r: ('ABC'.index(r['grade']), presentation_pending(r),
+    def practicality(r):
+        if selection_version<3:return 0
+        return {'reaction_confirmed':0,'confirmation_wait':0,'price_plan_recheck':1,'event_recheck':2}.get(r.get('practical_review',{}).get('status'),1)
+    ordered = sorted(reviews, key=lambda r: (practicality(r), 'ABC'.index(r['grade']), presentation_pending(r),
                   priority.get((r['pair'], r['strategy']), len(priority))))
     groups = {}
     for index, record in enumerate(ordered):
         group, ratio, _ = saved_plan_comparison(record)
+        if selection_version==3 and group is not None: group=(practicality(record),group)
         if group is not None:
             groups.setdefault(group, []).append((index, record, ratio))
     # Preserve each context's existing slots. Larger RR cannot move a weak or
@@ -38,9 +42,11 @@ def _ordered_reviews(outlook, *, selection_version=2):
     return ordered
 
 
-def report_records(outlook, *, selection_version=2):
+def report_records(outlook, *, selection_version=3):
     """Up to three per strategy; do not change any saved assessment."""
     ordered = _ordered_reviews(outlook, selection_version=selection_version)
+    if selection_version==3:
+        ordered=[r for r in ordered if 'practical_review' not in r or r['practical_review'].get('status') in ('reaction_confirmed','confirmation_wait')]
     return [r for strategy in ('swing','daytrade')
             for r in [x for x in ordered if x['strategy']==strategy][:3]]
 
@@ -58,7 +64,7 @@ def _label(r):
 
 
 def render_strategy_report(snapshot, *, include_all_reviews=False, complete_evidence=False,
-                           selection_version=2, comparison_explanation_version=1):
+                           selection_version=3, comparison_explanation_version=1):
     if type(comparison_explanation_version) is not int or comparison_explanation_version not in (1, 2):
         raise ValueError('unsupported comparison explanation version')
     failures = validate_strategy_snapshot(snapshot)
@@ -76,9 +82,11 @@ def render_strategy_report(snapshot, *, include_all_reviews=False, complete_evid
     lines = [f"保存評価：{_clock(snapshot['evaluated_at'])}（保存値に基づく判断）",
              f"{len(rows)}戦略：検討{counts['review']}（A{grades['A']}/B{grades['B']}/C{grades['C']}）｜見送り{counts['skip']}｜評価保留{counts['evaluation_pending']}",
              ('A/B/Cはシナリオの優位性・完成度。同評価では具体的な待つ条件を示せる候補を先に掲載。条件の組み直し・再試し失敗・確認状況不明の候補も評価を維持する。同じ確認段階と反対根拠の候補間で保存価格の余地を比較する。'
-              if selection_version == 2 else
+              if selection_version in (2,3) else
               'A/B/Cはシナリオの優位性・完成度。同評価・同じ確認段階と反対根拠の候補間で保存価格の余地を比較し、比較条件が異なる候補の掲載枠は維持する。'),
              '参考RRは保存価格基準で、スプレッド・手数料・滑りを含まない。']
+    if selection_version==3:
+        lines.append('優先掲載は価格計画と確認足が評価可能な監視候補。値幅不足・発表をまたぐ候補は再評価待ちとして保存し、掲載外を見送りとはしない。')
     if not shown: lines.append('掲載する検討候補なし。見送りと評価保留の内訳は上記。')
     for r in shown:
         plan = r.get('reference_plan', {}); levels = r.get('reference_levels', {})
@@ -95,6 +103,8 @@ def render_strategy_report(snapshot, *, include_all_reviews=False, complete_evid
                   '成立確認：'+('／'.join(r.get('formation_conditions', [])) or '未提供')+'。成立価格・成立後RRは未確定',
                   f"基準足{r['reference_timeframe'].upper()}保存終値：{_number(plan.get('reference_close'))}（{base_clock}）｜参考RR {_number(levels.get('reference_rr'))}",
                   f"構造無効化：{_number(levels.get('invalidation'))}｜構造目標：{_number(levels.get('structural_target'))}"]
+        if selection_version==3 and r.get('practical_review'):
+            lines.append('実用上の位置づけ：'+r['practical_review']['summary'])
         lines.append(saved_plan_comparison(r)[2])
         if comparison_explanation_version == 2:
             lines.append(comparison_notes[(r['pair'], r['strategy'])])

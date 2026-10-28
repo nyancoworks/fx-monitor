@@ -58,6 +58,12 @@ def validate_strategy_snapshot(snapshot):
             elif strength.get('status') == 'unavailable' and (
                     strength.get('relation') != 'unverified' or strength.get('comparison_priority') != 1):
                 failures.append('unavailable strategy strength contains a preference')
+        if 'practical_review' in r:
+            from copy import deepcopy
+            from .practical_review import review
+            checked=review(deepcopy(r))
+            if (checked['practical_review']!=r['practical_review'] or checked['grade']!=r.get('grade')):
+                failures.append('scheduled practical review mismatch')
         if r.get('execution_authority') != 'none' or 'entry_permission' in r:
             failures.append('scheduled strategy execution contract invalid')
         base, trigger = ('h4', 'm15') if r.get('strategy') == 'swing' else ('h1', 'm5')
