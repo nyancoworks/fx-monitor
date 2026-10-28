@@ -79,6 +79,7 @@ def super_bollinger_context(rows, period=21, lag=21, *, timeframe=None, calendar
     slope=middle-previous["middle"]
     return {**result,"status":"calculated",
             "centerline":middle,"centerline_slope":slope,
+            "last_close":close,
             "centerline_direction":"up" if slope>0 else "down" if slope<0 else "flat",
             "bands":current["bands"],
             "bandwidth_3sigma":6*current["stddev"],

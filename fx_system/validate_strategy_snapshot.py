@@ -31,6 +31,10 @@ def validate_strategy_snapshot(snapshot):
         failures.append('scheduled strategy total mismatch')
     counts = Counter()
     for r in records:
+        if 'technical_context' in r or r.get('indicator_context',{}).get('schema')=='contextual_indicator_context_v2':
+            from .technical_context import build_technical_context
+            if r['technical_context'] != build_technical_context(r):
+                failures.append('scheduled technical context mismatch')
         failures.extend(validate_conditions(r))
         failures.extend(validate_range(r))
         state = r.get('assessment')

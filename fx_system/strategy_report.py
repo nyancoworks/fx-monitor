@@ -105,6 +105,8 @@ def render_strategy_report(snapshot, *, include_all_reviews=False, complete_evid
                   f"構造無効化：{_number(levels.get('invalidation'))}｜構造目標：{_number(levels.get('structural_target'))}"]
         if selection_version>=3 and r.get('practical_review'):
             lines.append('実用上の位置づけ：'+r['practical_review']['summary'])
+        if r.get('technical_context') and not include_all_reviews:
+            lines.append('テクニカル要約：'+r['technical_context']['summary'])
         if selection_version>=4 and not include_all_reviews and r.get('decision_brief'):
             b=r['decision_brief']; boundary=b['before_cost_reward_equals_risk_boundary']
             if boundary is not None:
