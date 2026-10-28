@@ -6,7 +6,7 @@ def _number(x):
     return type(x) in (int,float) and math.isfinite(x)
 
 
-def review(record):
+def review(record, *, monitor_wait=True):
     conditions=record.get('scenario_conditions',{})
     recent=record.get('trigger_price_review',{})
     clock=record['evaluated_at']; seconds={'m5':300,'m15':900}.get(record.get('trigger_timeframe'),0)
@@ -16,6 +16,26 @@ def review(record):
     risk=recent.get('risk_distance');reward=recent.get('reward_distance')
     defined=verified and _number(risk) and _number(reward) and risk>0 and reward>0
     margin=defined and reward>risk
+    planned={'status':'unavailable','reason':'保存された待ち水準での価格計画は未確認'}
+    planned_ok=False
+    if monitor_wait:
+        level=conditions.get('level'); levels=record.get('reference_levels',{})
+        stop=levels.get('invalidation');target=levels.get('structural_target');price=recent.get('saved_close')
+        sign=1 if record.get('direction')=='long' else -1 if record.get('direction')=='short' else 0
+        eligible=(record.get('assessment')=='review' and record.get('grade') in ('A','B')
+            and conditions.get('status') in ('waiting','awaiting_breakout','awaiting_retest')
+            and conditions.get('evaluated_at')==clock and verified and sign
+            and all(_number(v) and v>0 for v in (level,stop,target,price)))
+        if eligible:
+            planned_risk=sign*(level-stop);planned_reward=sign*(target-level)
+            better=sign*(price-level)>0
+            planned_ok=better and planned_risk>0 and planned_reward>planned_risk
+            planned={'status':'indicative' if planned_ok else 'insufficient',
+                'level':level,'risk_distance':planned_risk,'reward_distance':planned_reward,
+                'reference_rr':planned_reward/planned_risk if planned_risk>0 and planned_reward>0 else None,
+                'basis':'saved_condition_level_not_entry_or_formation_price',
+                'actual_formation_price':None,'actual_formation_rr':None,'costs_included':False,
+                'reason':'待ち水準での参考計画。足の反応・成立時価格・費用で再評価'}
     blockers=[]
     if not margin:blockers.append('現在の確認足では価格余地が不足、または未確認')
     if conditions.get('status')!='conditions_observed':blockers.append('具体的な成立条件は未観測')
@@ -39,7 +59,8 @@ def review(record):
                 'reason':'発表予定前または発表後の基準足未更新。結果・市場反応は未確認'})
     status=('event_recheck' if events else 'price_plan_recheck' if not margin
         else 'reaction_confirmed' if conditions.get('status')=='conditions_observed' else 'confirmation_wait')
-    descriptions={'event_recheck':'発表をまたぐため再評価待ち。発表前の見方を現在判断へ流用しない',
+    if monitor_wait and not events and not margin and planned_ok: status='planned_price_wait'
+    descriptions={'planned_price_wait':'現在価格は追わず、保存された押し戻り・再試し水準での反応を監視。待ち水準の余地は参考で成立時に再評価', 'event_recheck':'発表をまたぐため再評価待ち。発表前の見方を現在判断へ流用しない',
         'price_plan_recheck':'今から追わず価格計画の組み直し待ち。成立条件の観測と機会の有無は別',
         'reaction_confirmed':'保存足で成立条件と価格余地を確認。執行価格・費用・継続性は別確認',
         'confirmation_wait':'価格計画を維持し、具体的な反応を待つ'}
@@ -47,6 +68,8 @@ def review(record):
         'summary':descriptions[status],'a_blockers':blockers,'events':events,
         'margin_basis':'fresh_saved_trigger_reward_exceeds_risk_before_costs',
         'reference_margin_sufficient':margin,'not_order_or_profitability':True}
+    if monitor_wait:
+        record['practical_review'].update(schema='saved_practical_review_v2',planned_price_review=planned)
     if record.get('assessment')=='review' and record.get('grade') in ('A','B'):
         record['grade']='B' if blockers else 'A'
         record['grade_reason']=('具体的な価格反応と現在の参考価格計画が整合。補助指標の遅れは独立した否定票にせず、記載した懸念を監視' if not blockers

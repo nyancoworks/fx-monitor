@@ -59,6 +59,37 @@ class PracticalTests(unittest.TestCase):
         self.assertEqual(len(restore_strategy_report_export(bundle,SOURCE,bundle['snapshot_git_blob_sha'])['scheduled_outlook']['strategy_assessments']),32)
         self.assertEqual(enrich_outlook(s['scheduled_outlook'],calendar),s['scheduled_outlook'])
 
+    def test_waiting_level_can_remain_monitorable_without_promoting_A(self):
+        for direction in ('long','short'):
+            r=record();r['direction']=direction
+            r['scenario_conditions'].update(status='waiting',evaluated_at=CLOCK,level=95 if direction=='long' else 105)
+            r['reference_levels']={'invalidation':90 if direction=='long' else 110,'structural_target':105 if direction=='long' else 95}
+            r['trigger_price_review'].update(saved_close=102 if direction=='long' else 98,risk_distance=12,reward_distance=3)
+            review(r)
+            self.assertEqual(r['practical_review']['status'],'planned_price_wait')
+            self.assertEqual(r['grade'],'B')
+            self.assertIsNone(r['practical_review']['planned_price_review']['actual_formation_price'])
+            self.assertEqual(len(report_records({'strategy_assessments':[r],'strategy_candidates':[]},selection_version=3)),1)
+            # Observed moves are not resurrected with a hypothetical better entry.
+            r['scenario_conditions']['status']='conditions_observed';review(r)
+            self.assertEqual(r['practical_review']['status'],'price_plan_recheck')
+
+    def test_missing_or_worse_wait_level_and_events_do_not_create_candidates(self):
+        r=record();r['scenario_conditions'].update(status='waiting',evaluated_at=CLOCK,level=104)
+        r['reference_levels']={'invalidation':90,'structural_target':105}
+        r['trigger_price_review'].update(saved_close=102,risk_distance=12,reward_distance=3)
+        self.assertEqual(review(r)['practical_review']['status'],'price_plan_recheck')
+        r['scenario_conditions']['level']=95
+        r['economic_calendar_context']['events']=[{'impact':'high','scheduled_at_utc':CLOCK,'time_precision':'minute'}]
+        self.assertEqual(review(r)['practical_review']['status'],'event_recheck')
+        self.assertEqual(report_records({'strategy_assessments':[r],'strategy_candidates':[]},selection_version=3),[])
+
+    def test_legacy_practical_metadata_reproduces_exact_v1(self):
+        r=review(record(),monitor_wait=False)
+        self.assertEqual(r['practical_review']['schema'],'saved_practical_review_v1')
+        self.assertNotIn('planned_price_review',r['practical_review'])
+        self.assertEqual(review(deepcopy(r),monitor_wait=False),r)
+
     def test_stale_close_does_not_reuse_attractive_price_plan(self):
         r=record();r['trigger_price_review']['closed_at']-=300
         self.assertEqual(review(r)['grade'],'B')
