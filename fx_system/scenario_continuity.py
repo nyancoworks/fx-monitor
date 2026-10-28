@@ -3,6 +3,7 @@ from copy import deepcopy
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import json
+import hashlib
 from .strategy_report_export import restore_strategy_report_export
 from .strategy_report import report_records
 
@@ -71,12 +72,30 @@ def render(rows, previous_clock, current_clock):
                 text+='。今回保存は撤回状態：'+str(current['expiry'].get('reason') or current.get('skip_reason') or current.get('grade_reason') or '理由は今回評価を参照')
             elif row['status']=='no_longer_reviewed':
                 text+='。今回理由：'+str(current.get('skip_reason') or current.get('grade_reason') or '今回評価を参照')
+            follow=row.get('previous_condition_followthrough',{})
+            observation=follow.get('condition_observation')
+            if observation:
+                text+='。前回固定条件を保存間の確定足で観測（'+clock(observation['closed_at'])+'）'
+                text+='。その終値の費用前価格余地は'+('あり' if observation['margin_sufficient_before_costs'] else '不足・不整合')
+                if not observation['base_close_coverage_complete']:
+                    text+='（基準足の撤回検証に未確認区間あり）'
+            elif follow.get('status')=='frozen_condition_not_seen_in_whole_candles':
+                text+='。前回固定条件は保存間の完全な確認足では未観測'
+            elif follow.get('status')=='frozen_retest_failed':
+                text+='。前回固定条件の再試しは終値で維持できず'
+            elif follow and follow.get('status') not in ('not_monitorable_at_save','already_observed_at_save','close_based_withdrawal_observed'):
+                text+='。前回固定条件の保存間検証は未確認'
+            if follow.get('base_close_withdrawal'):
+                text+='。前回固定水準の基準足終値による撤回条件を観測'
+            if follow.get('trigger_close_withdrawal'):
+                text+='。前回固定水準の確認足終値による撤回条件を観測'
             lines.append(text)
     lines.append('同方向でも同一の固定シナリオが継続有効とは限らない。前回の水準を今回へ上書きせず、成立・撤回・目標は各保存時点で区別する。')
     return '\n'.join(lines)
 
 
-def build_continuity(current_bundle, source, blob, previous_bundle=None, previous_source=None, previous_blob=None):
+def build_continuity(current_bundle, source, blob, previous_bundle=None, previous_source=None, previous_blob=None,
+                     *, current_snapshot_bytes=None):
     result={'schema':SCHEMA,'source':deepcopy(source),'snapshot_git_blob_sha':blob,
             'status':'unavailable','reason':'adjacent_saved_comparison_unavailable','rows':[],'text':None}
     try:
@@ -88,9 +107,27 @@ def build_continuity(current_bundle, source, blob, previous_bundle=None, previou
         rows=compare_views(current,previous,
             current_selection_version=current_bundle.get('selection_version',1),
             previous_selection_version=previous_bundle.get('selection_version',1))
+        if current_snapshot_bytes is not None:
+            result['followthrough_status']='snapshot_identity_unverified'
+            if (isinstance(current_snapshot_bytes,bytes)
+                and hashlib.sha1(b'blob '+str(len(current_snapshot_bytes)).encode()+b'\0'+current_snapshot_bytes).hexdigest()==blob):
+                snapshot=json.loads(current_snapshot_bytes)
+                if snapshot.get('evaluated_at')==source['evaluated_at'] and isinstance(snapshot.get('pairs'),dict):
+                    from .scenario_followthrough import observe_frozen_condition
+                    old={(r['pair'],r['strategy']):r for r in previous['scheduled_outlook']['strategy_assessments']}
+                    for row in rows:
+                        try:
+                            follow=observe_frozen_condition(old[row['pair'],row['strategy']],
+                                snapshot['pairs'].get(row['pair'],{}),source['evaluated_at'])
+                        except (ValueError,KeyError,TypeError,AttributeError,OverflowError):
+                            follow={'status':'followup_input_invalid','condition_observation':None}
+                        row['previous_condition_followthrough']=follow
+                    result['followthrough_status']='same_snapshot_saved_candles_checked'
         result.update(status='saved',reason=None,previous_source=deepcopy(previous_source),
             previous_snapshot_git_blob_sha=previous_blob,rows=rows,
             text=render(rows,previous_source['evaluated_at'],source['evaluated_at']))
+        if result.get('followthrough_status')=='same_snapshot_saved_candles_checked':
+            result['text']+='\n前回固定条件の後続確認は、今回snapshotと同一blobの保存足のみを使用。評価時刻をまたぐ途中足・欠損・出所未確認は除外。現在のシナリオ有効性・約定・費用控除後の成績とは別。各行の被覆・除外時間を参照。'
         if len(json.dumps(result,ensure_ascii=False).encode())>512*1024:
             raise ValueError('bounded comparison exceeded')
         return result

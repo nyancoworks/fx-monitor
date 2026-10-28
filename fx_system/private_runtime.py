@@ -145,7 +145,8 @@ def save_snapshot(root, run_id, source_commit):
     except Exception:
         pass
     continuity=build_continuity(strategy_report,source,strategy_report['snapshot_git_blob_sha'],
-                                previous_bundle,previous_source,previous_blob)
+                                previous_bundle,previous_source,previous_blob,
+                                current_snapshot_bytes=snapshot_bytes)
     if continuity['status']=='saved':
         continuity['previous_data_commit']=git(root,'rev-parse','HEAD')
     (root/'data/scenario-continuity.json').write_text(json.dumps(continuity,ensure_ascii=False,sort_keys=True)+'\n')
