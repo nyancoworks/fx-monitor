@@ -24,7 +24,7 @@ def _ordered_reviews(outlook, *, selection_version=3):
             or record.get('expiry', {}).get('status') == 'withdrawn')
     def practicality(r):
         if selection_version<3:return 0
-        return {'reaction_confirmed':0,'confirmation_wait':0,'price_plan_recheck':1,'event_recheck':2}.get(r.get('practical_review',{}).get('status'),1)
+        return {'reaction_confirmed':0,'confirmation_wait':0,'planned_price_wait':0,'price_plan_recheck':1,'event_recheck':2}.get(r.get('practical_review',{}).get('status'),1)
     ordered = sorted(reviews, key=lambda r: (practicality(r), 'ABC'.index(r['grade']), presentation_pending(r),
                   priority.get((r['pair'], r['strategy']), len(priority))))
     groups = {}
@@ -46,7 +46,7 @@ def report_records(outlook, *, selection_version=3):
     """Up to three per strategy; do not change any saved assessment."""
     ordered = _ordered_reviews(outlook, selection_version=selection_version)
     if selection_version==3:
-        ordered=[r for r in ordered if 'practical_review' not in r or r['practical_review'].get('status') in ('reaction_confirmed','confirmation_wait')]
+        ordered=[r for r in ordered if 'practical_review' not in r or r['practical_review'].get('status') in ('reaction_confirmed','confirmation_wait','planned_price_wait')]
     return [r for strategy in ('swing','daytrade')
             for r in [x for x in ordered if x['strategy']==strategy][:3]]
 

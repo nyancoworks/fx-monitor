@@ -36,3 +36,21 @@ than treating these records as nonexistent or market rejection.
 
 This policy is provisional. Offline frozen-view re-review is not full raw-price
 replay and does not measure missed entries, fills, transaction costs or profit.
+
+## Planned-price monitoring (practical schema v2)
+
+A currently unattractive saved close need not discard a valid pullback/retest
+watch. A B/A review may retain a planned_price_wait when an unobserved saved
+condition has a current-clock numeric level, a fresh trigger reference, and a
+coherent structural target/invalidation at that better-than-current level.
+Remaining reward must exceed risk at this indicative level. No new levels are
+invented and unavailable or adverse planned levels do not create candidates.
+
+This is a saved waiting-level plan, never a fill or known future confirmation
+price. Reclaim/breakout close, costs, price response and RR must be reassessed
+when the condition actually occurs. An already-observed condition cannot be
+resurrected with a hypothetical better price. Planned monitoring cannot promote
+A, override event rechecks, revive a withdrawn/skip scenario, or complete a C
+plan. Current-price A maturity remains separate. Schema v1 restores against its
+original logic; new records use v2. Selection version 3 accepts the new waiting
+status without changing the listing of frozen v1 records.

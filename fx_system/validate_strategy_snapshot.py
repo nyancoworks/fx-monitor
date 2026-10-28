@@ -61,7 +61,7 @@ def validate_strategy_snapshot(snapshot):
         if 'practical_review' in r:
             from copy import deepcopy
             from .practical_review import review
-            checked=review(deepcopy(r))
+            checked=review(deepcopy(r),monitor_wait=r['practical_review'].get('schema')!='saved_practical_review_v1')
             if (checked['practical_review']!=r['practical_review'] or checked['grade']!=r.get('grade')):
                 failures.append('scheduled practical review mismatch')
         if r.get('execution_authority') != 'none' or 'entry_permission' in r:
