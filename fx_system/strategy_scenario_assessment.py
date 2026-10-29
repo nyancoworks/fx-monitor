@@ -23,7 +23,7 @@ def assess_strategy(pair,strategy,track,evaluated_at):
     record={'pair':pair,'strategy':strategy,'direction':direction,'state':t.get('state'),
         'assessment':'evaluation_pending','grade':None,'grade_reason':None,
         'grade_scope':'provisional_scenario_quality_not_permission',
-        'method_version':'contextual_scenario_review_v7_trend_swing','method_validated_for_profitability':False,
+        'method_version':('contextual_scenario_review_v8_swing_horizon' if strategy=='swing' else 'contextual_scenario_review_v7_trend_swing'),'method_validated_for_profitability':False,
         'base_structure':t.get('base_structure'),'base_quality_verified':t.get('base_verified') is True,
         'evaluated_at':evaluated_at,'price_basis':'saved_completed_candles_not_current_quote',
         'reference_timeframe':base,'trigger_timeframe':trigger,
@@ -114,7 +114,12 @@ def assess_strategy(pair,strategy,track,evaluated_at):
         from .technical_context import attach_technical_context
         attach_technical_context(record)
         from .practical_review import review
-        return review(record)
+        review(record)
+        from .swing_horizon import build_swing_context
+        context = build_swing_context(record)
+        if context is not None:
+            record['swing_context'] = context
+        return record
     if t.get('base_verified') is not True:
         uncertainties.append(f'{base}確定足の品質・出所・評価時刻が未確認')
         return finish('evaluation_pending',None,'当該戦略の基準足を評価できない。相場の見送りとは別')
