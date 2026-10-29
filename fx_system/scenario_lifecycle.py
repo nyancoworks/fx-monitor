@@ -49,6 +49,13 @@ def describe_lifecycle(record):
         'recheck': old.get('recheck', '次の確定基準足で構造・品質・反応を再評価する'),
     }
     inv = deepcopy(record.get('invalidation', {}))
+    from .swing_horizon import METHOD
+    if record.get('strategy') == 'swing' and record.get('method_version') == METHOD:
+        expiry['scope'] = 'saved_price_plan_not_h4_direction'
+        expiry['recheck'] = 'H4で方向構造、M15で仕掛け計画を別々に再評価する'
+        for condition in conditions:
+            condition['scope'] = 'price_plan'
+            condition['confirmation_timeframes'] = ['h4', 'm15']
     diagnostic = inv.get('observed') is True
     inv.update(observed=invalidation,
                observation_status='observed_in_saved_evidence' if invalidation else

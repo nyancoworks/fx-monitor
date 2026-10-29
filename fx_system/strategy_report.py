@@ -109,6 +109,9 @@ def render_strategy_report(snapshot, *, include_all_reviews=False, complete_evid
             lines.append('テクニカル要約：'+r['technical_context']['summary'])
         if r.get('swing_environment'):
             lines.append('スイング環境：'+r['swing_environment']['summary'])
+        if r.get('swing_context'):
+            lines.append('スイング大局：'+r['swing_context']['summary'])
+            lines.append('時間軸：H4で方向構造、M15で仕掛けを確認。保有期間は未推定。目標は直近のH4構造上の障害で、数日先の到達予測ではない')
         if selection_version>=4 and not include_all_reviews and r.get('decision_brief'):
             b=r['decision_brief']; boundary=b['before_cost_reward_equals_risk_boundary']
             if boundary is not None:
@@ -176,6 +179,9 @@ def render_strategy_report(snapshot, *, include_all_reviews=False, complete_evid
                'saved_base_invalidation_crossed':'基準足保存終値が構造無効化を越境',
                'confirmed_trigger_invalidation':'検証済み確認足で無効化を観測'}
     for r in withdrawn:
-        lines.append(f"撤回：{_label(r)}｜{reasons.get(r['expiry'].get('observed_condition'), r['grade_reason'])}")
+        prefix = '仕掛け計画停止' if r.get('swing_context', {}).get('entry_status') == 'paused' else '撤回'
+        lines.append(f"{prefix}：{_label(r)}｜{reasons.get(r['expiry'].get('observed_condition'), r['grade_reason'])}")
+        if r.get('swing_context'):
+            lines.append('スイング大局：'+r['swing_context']['summary'])
     lines.append('上記は保存されたシナリオの報告。現在価格・約定・損益・通知到達は未確認。')
     return '\n'.join(lines)

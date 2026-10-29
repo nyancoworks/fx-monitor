@@ -9,18 +9,21 @@ from .strategy_report import report_records
 
 SCHEMA = 'saved_scenario_continuity_v1'
 FIELDS = ('direction','grade','reference_levels','invalidation','waiting_conditions',
-          'formation_conditions','scenario_conditions','opposing_evidence','reasons')
+          'formation_conditions','scenario_conditions','opposing_evidence','reasons','swing_context')
 LABELS = {'direction':'方向','grade':'評価','reference_levels':'構造水準',
           'invalidation':'撤回水準','waiting_conditions':'待つ条件',
           'formation_conditions':'成立条件','scenario_conditions':'確認段階',
-          'opposing_evidence':'反対根拠','reasons':'主根拠'}
+          'opposing_evidence':'反対根拠','reasons':'主根拠','swing_context':'スイング大局と仕掛け'}
 
 
 def _brief(record):
-    return {k:deepcopy(record.get(k)) for k in
+    result = {k:deepcopy(record.get(k)) for k in
             ('assessment','direction','grade','grade_reason','skip_reason','expiry',
              'reference_levels','invalidation','waiting_conditions','formation_conditions',
              'scenario_conditions','reasons','opposing_evidence')}
+    if 'swing_context' in record:
+        result['swing_context'] = deepcopy(record['swing_context'])
+    return result
 
 
 def compare_views(current, previous, *, current_selection_version=2, previous_selection_version=2):
@@ -36,6 +39,8 @@ def compare_views(current, previous, *, current_selection_version=2, previous_se
             item=value.get(field)
             if field=='scenario_conditions' and isinstance(item,dict):
                 return {k:item.get(k) for k in ('status','route','conditions','reason')}
+            if field=='swing_context' and isinstance(item,dict):
+                return {k:item.get(k) for k in ('direction','structure_status','entry_status','entry_pause_reason')}
             return item
         changed=[k for k in FIELDS if evidence(prior,k)!=evidence(record,k)]
         was=prior.get('assessment')=='review'; active=record.get('assessment')=='review'
@@ -69,7 +74,8 @@ def render(rows, previous_clock, current_clock):
                 text+='。保存既定掲載から外れた（撤回とは別）'
             current=row['current']
             if current.get('expiry',{}).get('status')=='withdrawn':
-                text+='。今回保存は撤回状態：'+str(current['expiry'].get('reason') or current.get('skip_reason') or current.get('grade_reason') or '理由は今回評価を参照')
+                label = '仕掛け計画停止：' if current.get('swing_context', {}).get('entry_status') == 'paused' else '今回保存は撤回状態：'
+                text+='。'+label+str(current['expiry'].get('reason') or current.get('skip_reason') or current.get('grade_reason') or '理由は今回評価を参照')
             elif row['status']=='no_longer_reviewed':
                 text+='。今回理由：'+str(current.get('skip_reason') or current.get('grade_reason') or '今回評価を参照')
             follow=row.get('previous_condition_followthrough',{})
@@ -88,7 +94,10 @@ def render(rows, previous_clock, current_clock):
             if follow.get('base_close_withdrawal'):
                 text+='。前回固定水準の基準足終値による撤回条件を観測'
             if follow.get('trigger_close_withdrawal'):
-                text+='。前回固定水準の確認足終値による撤回条件を観測'
+                text+=('。前回M15仕掛け計画の停止条件を観測（H4大局の撤回とは別）'
+                       if row['previous'].get('swing_context') else '。前回固定水準の確認足終値による撤回条件を観測')
+            if current.get('swing_context'):
+                text+='。大局：'+current['swing_context']['summary']
             lines.append(text)
     lines.append('同方向でも同一の固定シナリオが継続有効とは限らない。前回の水準を今回へ上書きせず、成立・撤回・目標は各保存時点で区別する。')
     return '\n'.join(lines)
