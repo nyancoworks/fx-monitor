@@ -31,6 +31,13 @@ def validate_strategy_snapshot(snapshot):
         failures.append('scheduled strategy total mismatch')
     counts = Counter()
     for r in records:
+        from .swing_environment import METHOD, build_environment
+        if r.get('method_version') == METHOD or 'swing_environment' in r:
+            environment = build_environment(r)
+            if environment != r.get('swing_environment'):
+                failures.append('scheduled swing environment mismatch')
+            if environment and environment['exclude_from_monitoring'] and r.get('assessment') != 'skip':
+                failures.append('consolidating swing must remain outside monitoring')
         if 'technical_context' in r or r.get('indicator_context',{}).get('schema')=='contextual_indicator_context_v2':
             from .technical_context import build_technical_context
             if r['technical_context'] != build_technical_context(r):
