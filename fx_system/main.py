@@ -6,7 +6,7 @@ import pathlib
 import time
 import requests
 import lzma
-from .dukascopy_probe import tick_url, decode_ticks, ticks_to_m5
+from .dukascopy_ticks import tick_url, decode_ticks, ticks_to_m5
 from .core import PAIRS, INTERVALS, aggregate, assess, parse_row, technical, expected_closed_timestamp
 from .strength import compute_strength
 from .yahoo_provider import fetch_yahoo

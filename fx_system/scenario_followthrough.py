@@ -1,5 +1,9 @@
 """Frozen prior conditions in already saved candles; never fills or new grades."""
-from .candidate_followup import positive
+import math
+
+
+def positive(v):
+    return type(v) in (int, float) and math.isfinite(v) and v > 0
 from .scenario_conditions import validate_conditions
 
 
