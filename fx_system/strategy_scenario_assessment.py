@@ -23,7 +23,8 @@ def assess_strategy(pair,strategy,track,evaluated_at):
     record={'pair':pair,'strategy':strategy,'direction':direction,'state':t.get('state'),
         'assessment':'evaluation_pending','grade':None,'grade_reason':None,
         'grade_scope':'provisional_scenario_quality_not_permission',
-        'method_version':'contextual_scenario_review_v6_practical_review','method_validated_for_profitability':False,
+        'method_version':'contextual_scenario_review_v7_trend_swing','method_validated_for_profitability':False,
+        'base_structure':t.get('base_structure'),'base_quality_verified':t.get('base_verified') is True,
         'evaluated_at':evaluated_at,'price_basis':'saved_completed_candles_not_current_quote',
         'reference_timeframe':base,'trigger_timeframe':trigger,
         'execution_authority':'none','reasons':reasons,'opposing_evidence':opposition,
@@ -39,6 +40,9 @@ def assess_strategy(pair,strategy,track,evaluated_at):
         'invalidation':deepcopy(explain.get('invalidation',{})),
         'expiry':deepcopy(explain.get('expiry',{'status':'not_defined'}))}
     strength=interpret_strength(t.get('currency_strength_context'),pair,strategy,direction,evaluated_at)
+    if strategy == 'swing':
+        from .swing_environment import build_environment
+        record['swing_environment'] = build_environment(record)
     record['currency_strength_context']=strength
     strength_only_opposition=[]
     def finish(state,grade,reason):
@@ -334,6 +338,12 @@ def assess_strategy(pair,strategy,track,evaluated_at):
             record['waiting_conditions'].append('成立候補価格での余地・無効化距離・価格反応を再評価。保存終値のRRだけで売買判断を確定しない')
     else:
         uncertainties.append('後の確認足保存終値を検証できない。基準足価格の参考RRだけを保持')
+    environment = record.get('swing_environment', {})
+    if environment.get('exclude_from_monitoring'):
+        record['skip_reason'] = 'h4_consolidation_excluded'
+        opposition.append(environment['summary'])
+        record['waiting_conditions'] = ['H4の方向構造とSB局面を再評価し、トレンド方向のM15価格反応を待つ']
+        return finish('skip',None,environment['summary'])
     if not plan_coherent:
         return finish('review','C','方向は説明できるが価格計画が未完成または不整合。欠落値は補完しない')
     if counter:

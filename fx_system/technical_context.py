@@ -66,10 +66,18 @@ def build_technical_context(record):
     trigger = frames['trigger']
     waiting = (str(trigger['timeframe']).upper()+'の保存された価格反応条件で、DMAに対する価格位置と勢いの変化を再評価（指標の全一致を成立条件に追加しない）'
                if trigger['interpretation'] in ('counterpressure','momentum_caution') else None)
-    return {'schema':'saved_technical_context_v1','evaluated_at':record['evaluated_at'],
+    result = {'schema':'saved_technical_context_v1','evaluated_at':record['evaluated_at'],
         'frames':frames,'summary':frames['base']['summary']+'／'+frames['trigger']['summary'],
         'supporting_evidence':support,'cautions':caution,'uncertainties':unknown,'waiting_note':waiting,
         'changes_price_conditions':False,'indicator_votes':False,'chart_parity_verified':False}
+    from .swing_environment import METHOD
+    if record.get('method_version') == METHOD:
+        result.update(schema='saved_technical_context_v2', role_basis='fx_monitor_adaptation_not_original_method_replication',
+            roles={'environment':'価格構造・SB遅行・σ帯・帯幅',
+                   'setup':'支持抵抗・通常Fib・DMA価格位置。投影は構造目標と別',
+                   'momentum':'ディナポリMACD・Preferred Stochastic・RCIの支持/逆行/未確認',
+                   'confirmation':'保存確定足の価格反応・目標/撤回までの余地'})
+    return result
 
 
 def attach_technical_context(record):
