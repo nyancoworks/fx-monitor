@@ -1,4 +1,4 @@
-"""Canonical monitoring history publisher with append-only follow-up evidence."""
+"""Canonical monitoring history publisher; no optional research generation."""
 import json
 import hashlib
 import os
@@ -7,7 +7,7 @@ import re
 import subprocess
 import tempfile
 import zlib
-from .monitoring_result_history import append_generation, restore_generation, latest_restorable, pack_generation
+from .monitoring_result_history import append_generation, restore_generation, latest_restorable
 
 BRANCH = 'monitoring-result-state'
 REF = 'refs/heads/' + BRANCH
@@ -66,6 +66,18 @@ def publish_results(repo, rows, *, evaluated_at, source_run_id, source_commit, a
     """Publish via a parented, non-forced push; conflicts stop without retries."""
     if type(source_run_id) is not int or source_run_id<=0 or not isinstance(source_commit,str) or not re.fullmatch('[0-9a-f]{40}',source_commit):
         raise ValueError('source run identity required')
+    if snapshot is not None:
+        if snapshot.get('evaluated_at') != evaluated_at or snapshot.get('scheduled_outlook', {}).get('rows') != rows:
+            raise ValueError('snapshot and result rows disagree')
+    identity = None
+    if input_identity is not None:
+        if (not isinstance(input_identity, dict)
+                or not isinstance(input_identity.get('sha256'), str)
+                or re.fullmatch('[0-9a-f]{64}', input_identity['sha256']) is None
+                or not isinstance(input_identity.get('git_blob_sha'), str)
+                or re.fullmatch('[0-9a-f]{40}', input_identity['git_blob_sha']) is None):
+            raise ValueError('invalid snapshot input identity')
+        identity = {k: input_identity[k] for k in ('sha256', 'git_blob_sha')}
     previous = read_remote_history(repo)
     if previous['head'] is None and not allow_create:
         raise ValueError('history ref creation requires explicit opt-in')
@@ -75,44 +87,17 @@ def publish_results(repo, rows, *, evaluated_at, source_run_id, source_commit, a
         if not isinstance(source_repository, str) or not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', source_repository):
             raise ValueError('invalid source repository')
         source['source_repository']=source_repository
+    if identity is not None:
+        source['snapshot_identity'] = identity
     old_source=previous['provenance'].get(str(evaluated_at))
     if old_source is not None and old_source!=source:
         raise ValueError('conflicting source run for evaluation')
     provenance={str(g['evaluated_at']):previous['provenance'].get(str(g['evaluated_at']),source) for g in history}
     if history==previous['history'] and provenance==previous['provenance']:
-        path=f'followup/{evaluated_at}.json'
-        if input_identity is not None and _git(repo, 'ls-tree', '--name-only', previous['head'], '--', path):
-            saved=json.loads(_git(repo, 'show', previous['head']+':'+path))
-            saved_identity=saved.get('input_identity') or {}
-            if any(saved_identity.get(k) != input_identity.get(k) for k in ('sha256', 'git_blob_sha')):
-                raise ValueError('conflicting followup input identity')
         return {'status':'unchanged','head':previous['head'],'generations':len(history)}
     blobs={name:_git(repo,'hash-object','-w','--stdin',stdin=_bytes(value))
            for name,value in [('history.json',history),('provenance.json',provenance)]}
-    archive_path = None
-    followup_status = 'not_requested'
-    if snapshot is not None:
-        if snapshot.get('evaluated_at') != evaluated_at or snapshot.get('scheduled_outlook', {}).get('rows') != rows:
-            raise ValueError('followup snapshot and result rows disagree')
-        from .candidate_followup_archive import build_followup
-        archive_path = f'followup/{evaluated_at}.json'
-        if previous['head'] and _git(repo, 'ls-tree', '--name-only', previous['head'], '--', archive_path):
-            raise ValueError('immutable followup path already exists')
-        try:
-            archive = _bytes(build_followup(previous, snapshot, source, input_identity=input_identity))
-            if len(archive) > MAX_BYTES:
-                raise ValueError('followup record exceeds size limit')
-            followup_status = 'saved_observations'
-        except (ValueError, TypeError, KeyError, AttributeError) as error:
-            # A supplemental observation error must not suppress the canonical32 history.
-            archive = _bytes({'schema': 'candidate_followup_save_v1', 'status': 'unavailable',
-                'error_type': type(error).__name__, 'evaluated_at': evaluated_at, 'source': source,
-                'input_identity': input_identity,
-                'saved_evaluation': pack_generation(rows, evaluated_at=evaluated_at),
-                'trade_performance': 'not_measured'})
-            followup_status = 'unavailable'
-        blobs[archive_path] = _git(repo, 'hash-object', '-w', '--stdin', stdin=archive)
-    # Preserve every prior followup file using a private index, never the worktree index.
+    # Keep existing immutable history-tree objects; only update canonical history/provenance.
     with tempfile.TemporaryDirectory() as folder:
         env = {**os.environ, 'GIT_INDEX_FILE': str(Path(folder)/'index')}
         if previous['head']:
@@ -130,7 +115,7 @@ def publish_results(repo, rows, *, evaluated_at, source_run_id, source_commit, a
     _git(repo,'push','origin',commit+':'+REF)
     return {'status':'persisted','head':commit,'generations':len(history),
             'saved_evaluated_at':latest_restorable(history)['saved_evaluated_at'],
-            'followup_path': archive_path, 'followup_status': followup_status}
+            'snapshot_identity_recorded': identity is not None}
 
 
 def main():
