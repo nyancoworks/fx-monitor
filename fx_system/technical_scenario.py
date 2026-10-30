@@ -214,6 +214,9 @@ def assess(pair, strategy, track, clock):
          'entry_condition_inputs':deepcopy(track.get('condition_inputs', {}))}
     if r['method_version'] in (EVOLUTION_METHOD,FORECAST_METHOD):
         r['base_evolution_inputs']=deepcopy(track.get('base_evolution_inputs',{}))
+    if r['method_version']==FORECAST_METHOD:
+        r['contextual_review_version']=1
+        r['trigger_structure_input']=deepcopy(track.get('trigger_structure_input',{}))
     r['currency_strength_context']=interpret(track.get('currency_strength_context'),pair,strategy,r['direction'],clock)
     if strategy=='swing':r['swing_environment']=build_environment(r)
     attach_technical_context(r)
@@ -340,6 +343,9 @@ def refresh(r):
     r['scenario_explanation']={'waiting_condition':out['path'], 'invalidation':deepcopy(r['invalidation']),
         'expiry':deepcopy(r['expiry']), 'scenario_conditions':deepcopy(r['scenario_conditions']),
         'formation_conditions':deepcopy(r['formation_conditions'])}
+    if r.get('contextual_review_version')==1:
+        from .judgment_review import build
+        r['judgment_review']=build(r)
     return r
 
 
@@ -354,6 +360,8 @@ def render_lines(r):
             '評価理由：'+r['grade_reason'], '見通し：'+o['path'],
             *((['予測の根拠：'+'／'.join(o['forecast']['support'])]) if 'forecast' in o else []),
             *((['反対経路：'+o['alternative_path']]) if 'alternative_path' in o else []),
+            *((['確認足の位置付け：'+r['judgment_review']['trigger']['summary'],
+                '強弱との関係：'+r['judgment_review']['currency_strength']['explanation']]) if 'judgment_review' in r else []),
             '主根拠：'+r.get('technical_context',{}).get('frames',{}).get('base',{}).get('summary','基準足の明細は未確認'),
             '重要な懸念：'+('／'.join(r['opposing_evidence']) or '追加の具体的な逆行は未観測。未確認事項は別'),
             f"押し戻り参考域：{fmt(pull.get('shallow'))}～{fmt(pull.get('deep'))}（通常Fib。DMA位置も併せて確認）",
