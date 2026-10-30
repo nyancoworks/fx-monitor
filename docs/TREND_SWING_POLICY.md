@@ -1,6 +1,8 @@
 # Trend-only swing context v1
 
-New assessments use `contextual_scenario_review_v7_trend_swing`. This is an
+The environment policy introduced `contextual_scenario_review_v7_trend_swing`.
+Current swing v9 adds H4 wave maturity before M15 priority; see
+[swing horizon](SWING_HORIZON.md). This is an
 FX Monitor adaptation, not certification of a named trader's complete method.
 It does not imply profitability or execution permission.
 

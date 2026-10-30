@@ -32,12 +32,16 @@ def validate_strategy_snapshot(snapshot):
     counts = Counter()
     for r in records:
         from .swing_horizon import METHOD as HORIZON_METHOD, build_swing_context
-        if r.get('method_version') == HORIZON_METHOD or 'swing_context' in r:
-            if (r.get('strategy') != 'swing' or r.get('method_version') != HORIZON_METHOD
+        from .swing_wave import METHOD as WAVE_METHOD, build_wave
+        if r.get('method_version') == WAVE_METHOD or 'swing_wave' in r:
+            if r.get('method_version') != WAVE_METHOD or r.get('swing_wave') != build_wave(r):
+                failures.append('scheduled swing wave mismatch')
+        if r.get('method_version') in (HORIZON_METHOD,WAVE_METHOD) or 'swing_context' in r:
+            if (r.get('strategy') != 'swing' or r.get('method_version') not in (HORIZON_METHOD,WAVE_METHOD)
                     or r.get('swing_context') != build_swing_context(r)):
                 failures.append('scheduled swing context mismatch')
         from .swing_environment import METHOD, build_environment
-        if r.get('method_version') in (METHOD, HORIZON_METHOD) or 'swing_environment' in r:
+        if r.get('method_version') in (METHOD, HORIZON_METHOD,WAVE_METHOD) or 'swing_environment' in r:
             environment = build_environment(r)
             if environment != r.get('swing_environment'):
                 failures.append('scheduled swing environment mismatch')

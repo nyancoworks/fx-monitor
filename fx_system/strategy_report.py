@@ -87,6 +87,8 @@ def render_strategy_report(snapshot, *, include_all_reviews=False, complete_evid
              '参考RRは保存価格基準で、スプレッド・手数料・滑りを含まない。']
     if selection_version>=3:
         lines.append('優先掲載は価格計画と確認足が評価可能な監視候補。値幅不足・発表をまたぐ候補は再評価待ちとして保存し、掲載外を見送りとはしない。')
+    if any(r.get('practical_review', {}).get('status') == 'swing_wave_wait' for r in rows):
+        lines.append('H4の波の反応待ちのスイングは方向監視のみ。M15の一時反応だけでは優先候補にしない。')
     if not shown: lines.append('掲載する検討候補なし。見送りと評価保留の内訳は上記。')
     for r in shown:
         plan = r.get('reference_plan', {}); levels = r.get('reference_levels', {})
@@ -112,6 +114,8 @@ def render_strategy_report(snapshot, *, include_all_reviews=False, complete_evid
         if r.get('swing_context'):
             lines.append('スイング大局：'+r['swing_context']['summary'])
             lines.append('時間軸：H4で方向構造、M15で仕掛けを確認。保有期間は未推定。目標は直近のH4構造上の障害で、数日先の到達予測ではない')
+        if r.get('swing_wave'):
+            lines.append('H4の波：'+r['swing_wave']['summary'])
         if selection_version>=4 and not include_all_reviews and r.get('decision_brief'):
             b=r['decision_brief']; boundary=b['before_cost_reward_equals_risk_boundary']
             if boundary is not None:

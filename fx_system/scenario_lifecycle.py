@@ -50,7 +50,8 @@ def describe_lifecycle(record):
     }
     inv = deepcopy(record.get('invalidation', {}))
     from .swing_horizon import METHOD
-    if record.get('strategy') == 'swing' and record.get('method_version') == METHOD:
+    from .swing_wave import METHOD as WAVE_METHOD
+    if record.get('strategy') == 'swing' and record.get('method_version') in (METHOD, WAVE_METHOD):
         expiry['scope'] = 'saved_price_plan_not_h4_direction'
         expiry['recheck'] = 'H4で方向構造、M15で仕掛け計画を別々に再評価する'
         for condition in conditions:

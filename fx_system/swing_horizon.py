@@ -5,7 +5,8 @@ METHOD = 'contextual_scenario_review_v8_swing_horizon'
 
 
 def build_swing_context(record):
-    if record.get('strategy') != 'swing' or record.get('method_version') != METHOD:
+    from .swing_wave import METHOD as WAVE_METHOD
+    if record.get('strategy') != 'swing' or record.get('method_version') not in (METHOD, WAVE_METHOD):
         return None
     clock = record.get('evaluated_at')
     plan = record.get('reference_plan', {})

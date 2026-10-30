@@ -37,6 +37,12 @@ def review(record, *, monitor_wait=True):
                 'actual_formation_price':None,'actual_formation_rr':None,'costs_included':False,
                 'reason':'待ち水準での参考計画。足の反応・成立時価格・費用で再評価'}
     blockers=[]
+    from .swing_wave import METHOD, build_wave
+    swing_wave = record.get('strategy')=='swing' and record.get('method_version')==METHOD
+    if swing_wave:
+        record['swing_wave'] = build_wave(record)
+        if record['swing_wave']['status'] != 'response_confirmed':
+            blockers.append(record['swing_wave']['summary'])
     if not margin:blockers.append('現在の確認足では価格余地が不足、または未確認')
     if conditions.get('status')!='conditions_observed':blockers.append('具体的な成立条件は未観測')
     if record.get('market_phase')=='transition_context':blockers.append('価格構造とトレンド背景が競合')
@@ -60,10 +66,14 @@ def review(record, *, monitor_wait=True):
     status=('event_recheck' if events else 'price_plan_recheck' if not margin
         else 'reaction_confirmed' if conditions.get('status')=='conditions_observed' else 'confirmation_wait')
     if monitor_wait and not events and not margin and planned_ok: status='planned_price_wait'
+    if (swing_wave and record.get('assessment')=='review' and record.get('grade') in ('A','B')
+            and record['swing_wave']['status']!='response_confirmed' and not events):
+        status='swing_wave_wait'
     descriptions={'planned_price_wait':'現在価格は追わず、保存された押し戻り・再試し水準での反応を監視。待ち水準の余地は参考で成立時に再評価', 'event_recheck':'発表をまたぐため再評価待ち。発表前の見方を現在判断へ流用しない',
         'price_plan_recheck':'今から追わず価格計画の組み直し待ち。成立条件の観測と機会の有無は別',
         'reaction_confirmed':'保存足で成立条件と価格余地を確認。執行価格・費用・継続性は別確認',
         'confirmation_wait':'価格計画を維持し、具体的な反応を待つ'}
+    descriptions['swing_wave_wait']='H4の波の反応待ち。大局の方向監視にとどめ、M15の一時反応だけでは優先候補にしない'
     record['practical_review']={'schema':'saved_practical_review_v1','status':status,
         'summary':descriptions[status],'a_blockers':blockers,'events':events,
         'margin_basis':'fresh_saved_trigger_reward_exceeds_risk_before_costs',
@@ -77,4 +87,8 @@ def review(record, *, monitor_wait=True):
     if monitor_wait:
         from .decision_brief import build_brief
         record['decision_brief']=build_brief(record)
+    from .swing_horizon import build_swing_context
+    context = build_swing_context(record)
+    if context is not None:
+        record['swing_context'] = context
     return record
