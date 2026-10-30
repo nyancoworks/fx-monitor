@@ -47,7 +47,9 @@ def observe_frozen_condition(record, pair, through):
     seconds = {'m5': 300, 'm15': 900}.get(record.get('trigger_timeframe'))
     base_seconds = {'h1': 3600, 'h4': 14400}.get(record.get('reference_timeframe'))
     levels = record.get('reference_levels', {})
-    stop, target, level = levels.get('invalidation'), levels.get('structural_target'), plan.get('level')
+    from .technical_scenario import METHOD as TECHNICAL_METHOD
+    technical = record.get('method_version')==TECHNICAL_METHOD
+    stop, target, level = levels.get('invalidation'), levels.get('scenario_target',levels.get('structural_target')), plan.get('level')
     sign = 1 if record.get('direction') == 'long' else -1 if record.get('direction') == 'short' else 0
     if (not seconds or not base_seconds or not sign or type(through) is not int
             or not 0 < through-clock <= 31*86400 or not all(positive(v) for v in (stop, target, level))
@@ -57,6 +59,11 @@ def observe_frozen_condition(record, pair, through):
                confirmation_timeframe=record['trigger_timeframe'],
                withdrawal_timeframes=[record['reference_timeframe'],record['trigger_timeframe']],
                condition_route=plan['route'])
+    if technical:
+        out.update(target_scope='conditional_path_objective_not_confirmed_structure',
+                   base_withdrawal_scope='base_wave_thesis',trigger_withdrawal_scope='local_entry_only',
+                   local_setup_failure=record.get('wave_price_plan',{}).get('local_setup_failure'),
+                   base_objective_observation=None)
     decision = pair.get('decision_data', {}) if isinstance(pair, dict) else {}
     if not isinstance(decision, dict) or not isinstance(decision.get('raw', {}), dict):
         return {**out, 'status': 'followup_input_invalid'}
@@ -129,7 +136,10 @@ def observe_frozen_condition(record, pair, through):
         if bar['closed_at'] <= clock:
             continue
         reason = ('invalidation_crossed' if sign*(bar['close']-stop) <= 0 else
-                  'structural_target_reached' if sign*(bar['close']-target) >= 0 else None)
+                  'structural_target_reached' if not technical and sign*(bar['close']-target) >= 0 else None)
+        if technical and sign*(bar['close']-target)>=0 and out['base_objective_observation'] is None:
+            out['base_objective_observation']={'closed_at':bar['closed_at'],'saved_close':bar['close'],
+                                               'meaning':'前回の波の経路目標到達。大局撤回や約定ではない'}
         if reason:
             out['base_close_withdrawal'] = {'condition': reason, 'closed_at': bar['closed_at'],
                                              'saved_close': bar['close']}
@@ -138,8 +148,10 @@ def observe_frozen_condition(record, pair, through):
     confirmation = _aggregate(rows, seconds, clock, through)
     out['whole_confirmation_candle_count'] = len(confirmation)
     for bar in confirmation:
-        reason = ('invalidation_crossed' if sign*(bar['close']-stop) <= 0 else
-                  'structural_target_reached' if sign*(bar['close']-target) >= 0 else None)
+        local = out.get('local_setup_failure') if technical else stop
+        reason = ('local_setup_failure_crossed' if technical and positive(local) and sign*(bar['close']-local)<=0 else
+                  'invalidation_crossed' if not technical and sign*(bar['close']-stop) <= 0 else
+                  ('path_objective_reached' if technical else 'structural_target_reached') if sign*(bar['close']-target) >= 0 else None)
         if reason:
             out['trigger_close_withdrawal'] = {'condition': reason, 'closed_at': bar['closed_at'],
                                                 'saved_close': bar['close']}

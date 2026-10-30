@@ -249,6 +249,8 @@ def _one(pair, data, source_quality, evaluated_at):
             track["reference_levels"]={k:own_plan.get(k) for k in ('invalidation','structural_target','reference_rr')}
             track["reference_levels"]["executable_price"]=False
         track["trigger_price_reference"]=trigger_price_reference(data,track,evaluated_at)
+        from .technical_scenario import plan_inputs
+        track['technical_plan_inputs'] = plan_inputs(data, track, evaluated_at)
         if name == 'swing':
             from .swing_wave import wave_inputs
             track['swing_wave_inputs'] = wave_inputs(data, track, evaluated_at)
@@ -368,7 +370,8 @@ def _one(pair, data, source_quality, evaluated_at):
                        "正式A/B判定・entry許可は変更しない"]
     }
 
-def build_scheduled_outlook(pairs, quality, *, evaluated_at, economic_calendar=None):
+def build_scheduled_outlook(pairs, quality, *, evaluated_at, economic_calendar=None,
+                            assessment_method='contextual_scenario_review_v10_technical_wave'):
     pairs,quality=_dict(pairs),_dict(quality)
     rows=[]
     for pair in PAIR_KEYS:
@@ -378,6 +381,7 @@ def build_scheduled_outlook(pairs, quality, *, evaluated_at, economic_calendar=N
     strength = build_contexts(pairs, evaluated_at) if type(evaluated_at) is int and evaluated_at > 0 else {}
     for row in rows:
         for strategy, track in row['strategy_tracks'].items():
+            track['assessment_method'] = assessment_method
             track['currency_strength_context'] = strength.get(row['pair'], {}).get(strategy)
     grade_counts={grade:sum(row["scheduled_grade"]==grade for row in rows)
                   for grade in ("A","B","C","D")}

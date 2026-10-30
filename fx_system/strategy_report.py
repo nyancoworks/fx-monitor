@@ -24,7 +24,7 @@ def _ordered_reviews(outlook, *, selection_version=4):
             or record.get('expiry', {}).get('status') == 'withdrawn')
     def practicality(r):
         if selection_version<3:return 0
-        return {'reaction_confirmed':0,'confirmation_wait':0,'planned_price_wait':0,'price_plan_recheck':1,'event_recheck':2}.get(r.get('practical_review',{}).get('status'),1)
+        return {'technical_watch':0,'reaction_confirmed':0,'confirmation_wait':0,'planned_price_wait':0,'price_plan_recheck':1,'event_recheck':2}.get(r.get('practical_review',{}).get('status'),1)
     ordered = sorted(reviews, key=lambda r: (practicality(r), 'ABC'.index(r['grade']), presentation_pending(r),
                   priority.get((r['pair'], r['strategy']), len(priority))))
     groups = {}
@@ -46,7 +46,7 @@ def report_records(outlook, *, selection_version=4):
     """Up to three per strategy; do not change any saved assessment."""
     ordered = _ordered_reviews(outlook, selection_version=selection_version)
     if selection_version>=3:
-        ordered=[r for r in ordered if 'practical_review' not in r or r['practical_review'].get('status') in ('reaction_confirmed','confirmation_wait','planned_price_wait')]
+        ordered=[r for r in ordered if 'practical_review' not in r or r['practical_review'].get('status') in ('technical_watch','reaction_confirmed','confirmation_wait','planned_price_wait')]
     return [r for strategy in ('swing','daytrade')
             for r in [x for x in ordered if x['strategy']==strategy][:3]]
 
@@ -85,12 +85,21 @@ def render_strategy_report(snapshot, *, include_all_reviews=False, complete_evid
               if selection_version in (2,3,4) else
               'A/B/Cはシナリオの優位性・完成度。同評価・同じ確認段階と反対根拠の候補間で保存価格の余地を比較し、比較条件が異なる候補の掲載枠は維持する。'),
              '参考RRは保存価格基準で、スプレッド・手数料・滑りを含まない。']
+    if any(r.get('method_version')=='contextual_scenario_review_v10_technical_wave' for r in rows):
+        lines[2]='A/B/Cは基準足のテクニカル見通しと波の価格計画の完成度。局所PAの観測や売買許可とは別。見通し→押し戻り→経路目標・条件付き拡張→仕掛け確認の順に読む。同じ確認段階と反対根拠の候補だけを比較し、RRだけで順位を上げない。'
     if selection_version>=3:
         lines.append('優先掲載は価格計画と確認足が評価可能な監視候補。値幅不足・発表をまたぐ候補は再評価待ちとして保存し、掲載外を見送りとはしない。')
     if any(r.get('practical_review', {}).get('status') == 'swing_wave_wait' for r in rows):
         lines.append('H4の波の反応待ちのスイングは方向監視のみ。M15の一時反応だけでは優先候補にしない。')
     if not shown: lines.append('掲載する検討候補なし。見送りと評価保留の内訳は上記。')
     for r in shown:
+        from .technical_scenario import METHOD as TECHNICAL_METHOD, render_lines
+        if r.get('method_version')==TECHNICAL_METHOD:
+            lines.extend(render_lines(r))
+            strength=r.get('currency_strength_context', {})
+            if strength.get('summary'):lines.append('通貨強弱：'+strength['summary'])
+            lines.extend(calendar_lines(r, _clock))
+            continue
         plan = r.get('reference_plan', {}); levels = r.get('reference_levels', {})
         recent = r.get('trigger_price_review', {}); expiry = r.get('expiry', {})
         stamp=plan.get('reference_close_timestamp')

@@ -18,7 +18,7 @@ class CalendarIntegrationTests(unittest.TestCase):
         data['decision_quality'] = {**deepcopy(quality), 'evaluated_at': CLOCK}
         data['technical'] = {'h1': {'status':'ok','structure':'HH_HL','confirmed_swing_highs':[{'price':110,'timestamp':CLOCK-5*3600}],'confirmed_swing_lows':[{'price':90,'timestamp':CLOCK-6*3600}]}}
         return build_scheduled_outlook({'EURUSD': data}, {'EURUSD': quality},
-                                       evaluated_at=CLOCK, economic_calendar=calendar)
+                                       evaluated_at=CLOCK, economic_calendar=calendar, assessment_method='legacy')
 
     def test_snapshot_json_history_and_report_preserve_32_assessments(self):
         baseline = self.build()

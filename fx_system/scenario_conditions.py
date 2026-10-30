@@ -100,7 +100,7 @@ def describe_conditions(record, inputs):
     bars = checked['bars']; last = bars[-1]; previous = bars[-2]
     long = record['direction'] == 'long'
     levels = _dict(record.get('reference_levels'))
-    stop, target = levels.get('invalidation'), levels.get('structural_target')
+    stop, target = levels.get('invalidation'), levels.get('scenario_target', levels.get('structural_target'))
     if not (_price(stop) and _price(target) and
             (stop < last['close'] < target if long else target < last['close'] < stop)):
         return unavailable('無効化・構造目標が不足、または確認足価格との前後関係が不整合')
@@ -223,7 +223,7 @@ def validate_conditions(record):
             return ['scenario condition evidence invalid']
         long = record.get('direction') == 'long'; route = plan.get('route')
         levels = _dict(record.get('reference_levels'))
-        stop, target = levels.get('invalidation'), levels.get('structural_target')
+        stop, target = levels.get('invalidation'), levels.get('scenario_target', levels.get('structural_target'))
         if not (_price(stop) and _price(target) and
                 (stop<min(level,c)<=max(level,c)<target if long else target<min(level,c)<=max(level,c)<stop)):
             return ['scenario condition levels outside structural plan']

@@ -33,7 +33,8 @@ def snapshot():
             {'currency': 'USD', 'scheduled_at_utc': CLOCK+3600, 'observed_at_utc': CLOCK,
              'reference_only': True, 'title': 'Synthetic calendar reference', 'actual': 99}]}
     outlook = build_scheduled_outlook({'EURUSD': data}, {'EURUSD': quality},
-                                     evaluated_at=CLOCK, economic_calendar=calendar)
+                                     evaluated_at=CLOCK, economic_calendar=calendar,
+                                     assessment_method='legacy')
     return {'generated_at': 2, 'evaluated_at': CLOCK, 'scheduled_outlook': outlook,
             'pairs': {'synthetic': {'raw_unrelated_price_input': 'not part of report view'}}}
 
@@ -204,7 +205,7 @@ class StrategyReportExportTests(unittest.TestCase):
         data['decision_quality'] = {**deepcopy(quality), 'evaluated_at': CLOCK}
         data['technical'] = {'h1': {'status':'ok','structure':'HH_HL','confirmed_swing_highs':[{'price':110,'timestamp':CLOCK-5*3600}],'confirmed_swing_lows':[{'price':90,'timestamp':CLOCK-6*3600}]}}
         outlook = build_scheduled_outlook({p: deepcopy(data) for p in PAIR_KEYS},
-                                          {p: deepcopy(quality) for p in PAIR_KEYS}, evaluated_at=CLOCK)
+                                          {p: deepcopy(quality) for p in PAIR_KEYS}, evaluated_at=CLOCK, assessment_method='legacy')
         saved = {'evaluated_at': CLOCK, 'scheduled_outlook': outlook}; before = deepcopy(saved)
         bundle = build_strategy_report_export(json.dumps(saved).encode(), SOURCE)
         reviews = [r for r in outlook['strategy_assessments'] if r['assessment'] == 'review']
@@ -231,7 +232,7 @@ class StrategyReportExportTests(unittest.TestCase):
         data['decision_quality'] = {**deepcopy(quality), 'evaluated_at': CLOCK}
         data['technical'] = {'h1': {'status':'ok','structure':'HH_HL','confirmed_swing_highs':[{'price':110,'timestamp':CLOCK-5*3600}],'confirmed_swing_lows':[{'price':90,'timestamp':CLOCK-6*3600}]}}
         outlook = build_scheduled_outlook({p: deepcopy(data) for p in PAIR_KEYS},
-                                          {p: deepcopy(quality) for p in PAIR_KEYS}, evaluated_at=CLOCK)
+                                          {p: deepcopy(quality) for p in PAIR_KEYS}, evaluated_at=CLOCK, assessment_method='legacy')
         reviews = [r for r in outlook['strategy_assessments'] if r['assessment'] == 'review']
         for index, record in enumerate(reviews):
             record['reasons'] = [f'synthetic reason {index}/{n}' for n in range(4)]

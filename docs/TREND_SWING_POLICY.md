@@ -1,7 +1,8 @@
 # Trend-only swing context v1
 
+新規生成は[technical wave plan v10](TECHNICAL_WAVE_PLAN.md)を使用する。以下の環境除外は維持し、旧v9のH4 PA必須条件は新規生成では置き換える。
 The environment policy introduced `contextual_scenario_review_v7_trend_swing`.
-Current swing v9 adds H4 wave maturity before M15 priority; see
+Historical swing v9 added H4 wave maturity before M15 priority; see
 [swing horizon](SWING_HORIZON.md). This is an
 FX Monitor adaptation, not certification of a named trader's complete method.
 It does not imply profitability or execution permission.
