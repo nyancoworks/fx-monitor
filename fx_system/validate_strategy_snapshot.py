@@ -78,6 +78,15 @@ def validate_strategy_snapshot(snapshot):
             failures.append('scheduled strategy grade/state mismatch')
         if r.get('evaluated_at') != clock:
             failures.append('scheduled strategy record clock mismatch')
+        if 'contextual_review_version' in r or 'judgment_review' in r:
+            from .judgment_review import build
+            if r.get('contextual_review_version')!=1 or r.get('method_version')!=FORECAST_METHOD:
+                failures.append('contextual judgment review version mismatch')
+            else:
+                try:
+                    if r.get('judgment_review')!=build(r):failures.append('contextual judgment review mismatch')
+                except (KeyError,TypeError,ValueError,AttributeError):
+                    failures.append('contextual judgment review inputs invalid')
         strength=r.get('currency_strength_context')
         if strength is not None:
             from .strategy_strength import interpret

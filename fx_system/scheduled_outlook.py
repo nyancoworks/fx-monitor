@@ -340,6 +340,13 @@ def _one(pair, data, source_quality, evaluated_at, assessment_method=None):
         track["rci_observation"]=rci_track_context(data, track, evaluated_at)
         track["indicator_context"]=strategy_indicator_context(data, track, evaluated_at=evaluated_at)
         track['condition_inputs'] = condition_inputs(data, track, evaluated_at)
+        if assessment_method=='contextual_scenario_review_v12_technical_forecast':
+            tf=track['trigger_timeframe'];bars=_dict(data.get(tf)).get('candles',[])
+            stamp=bars[-1].get('timestamp') if bars else None
+            track['trigger_structure_input']={'verified':track['trigger_verified'] and _dict(structural.get(tf)).get('status')=='ok',
+                'evaluated_at':evaluated_at,'timeframe':tf,
+                'closed_at':stamp+{'m15':900,'m5':300}[tf] if type(stamp) is int else None,
+                'structure':_structure(_dict(structural.get(tf)).get('structure'))}
     return {
         "strategy_tracks":strategy_tracks,
         "monitoring_macro_reference":macro_reference,

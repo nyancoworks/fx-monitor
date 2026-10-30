@@ -117,7 +117,10 @@ def describe_conditions(record, inputs):
                '既存評価で構造とトレンド背景が競合' if phase == 'transition_context' else
                '基準足の方向構造を軸に継続反応を確認')
     conditions = []; observed = False; breakout_at = None
-    if phase == 'pullback_wait' or local_pullback:
+    # New interpretations preserve the transition route even if one local
+    # candle pulls back. Frozen records without this marker keep their route.
+    transition_first = record.get('contextual_review_version') == 1 and phase == 'transition_context'
+    if (phase == 'pullback_wait' or local_pullback) and not transition_first:
         route = 'pullback_rejection'
         anchor_bars = bars[-3:-1]
         level = (min if long else max)(b[support_key] for b in anchor_bars)
