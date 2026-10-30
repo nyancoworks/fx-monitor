@@ -7,6 +7,9 @@ def _number(x):
 
 
 def review(record, *, monitor_wait=True):
+    from .technical_scenario import METHOD as TECHNICAL_METHOD, refresh
+    if record.get('method_version')==TECHNICAL_METHOD:
+        return refresh(record)
     conditions=record.get('scenario_conditions',{})
     recent=record.get('trigger_price_review',{})
     clock=record['evaluated_at']; seconds={'m5':300,'m15':900}.get(record.get('trigger_timeframe'),0)

@@ -9,11 +9,13 @@ from .strategy_report import report_records
 
 SCHEMA = 'saved_scenario_continuity_v1'
 FIELDS = ('direction','grade','reference_levels','invalidation','waiting_conditions',
-          'formation_conditions','scenario_conditions','opposing_evidence','reasons','swing_context')
+          'formation_conditions','scenario_conditions','opposing_evidence','reasons','swing_context',
+          'technical_outlook','wave_price_plan')
 LABELS = {'direction':'方向','grade':'評価','reference_levels':'構造水準',
           'invalidation':'撤回水準','waiting_conditions':'待つ条件',
           'formation_conditions':'成立条件','scenario_conditions':'確認段階',
-          'opposing_evidence':'反対根拠','reasons':'主根拠','swing_context':'スイング大局と仕掛け'}
+          'opposing_evidence':'反対根拠','reasons':'主根拠','swing_context':'スイング大局と仕掛け',
+          'technical_outlook':'テクニカル見通し','wave_price_plan':'波の価格計画'}
 
 
 def _brief(record):
@@ -23,6 +25,8 @@ def _brief(record):
              'scenario_conditions','reasons','opposing_evidence')}
     if 'swing_context' in record:
         result['swing_context'] = deepcopy(record['swing_context'])
+    for field in ('technical_outlook','wave_price_plan'):
+        if field in record:result[field]=deepcopy(record[field])
     return result
 
 
@@ -94,8 +98,12 @@ def render(rows, previous_clock, current_clock):
             if follow.get('base_close_withdrawal'):
                 text+='。前回固定水準の基準足終値による撤回条件を観測'
             if follow.get('trigger_close_withdrawal'):
-                text+=('。前回M15仕掛け計画の停止条件を観測（H4大局の撤回とは別）'
+                text+=('。前回の局所仕掛け停止・経路目標到達を観測（基準足の大局撤回とは別）'
+                       if follow.get('trigger_withdrawal_scope')=='local_entry_only' else
+                       '。前回M15仕掛け計画の停止条件を観測（H4大局の撤回とは別）'
                        if row['previous'].get('swing_context') else '。前回固定水準の確認足終値による撤回条件を観測')
+            if follow.get('base_objective_observation'):
+                text+='。前回の経路目標への到達を基準足で観測（約定・大局撤回ではない）'
             if current.get('swing_context'):
                 text+='。大局：'+current['swing_context']['summary']
             lines.append(text)

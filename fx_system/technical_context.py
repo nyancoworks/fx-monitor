@@ -73,7 +73,8 @@ def build_technical_context(record):
     from .swing_environment import METHOD
     from .swing_horizon import METHOD as HORIZON_METHOD
     from .swing_wave import METHOD as WAVE_METHOD
-    if record.get('method_version') in (METHOD, HORIZON_METHOD, WAVE_METHOD):
+    from .technical_scenario import METHOD as TECHNICAL_METHOD
+    if record.get('method_version') in (METHOD, HORIZON_METHOD, WAVE_METHOD, TECHNICAL_METHOD):
         result.update(schema='saved_technical_context_v2', role_basis='fx_monitor_adaptation_not_original_method_replication',
             roles={'environment':'価格構造・SB遅行・σ帯・帯幅',
                    'setup':'支持抵抗・通常Fib・DMA価格位置。投影は構造目標と別',

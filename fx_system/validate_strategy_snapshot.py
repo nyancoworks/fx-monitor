@@ -31,6 +31,17 @@ def validate_strategy_snapshot(snapshot):
         failures.append('scheduled strategy total mismatch')
     counts = Counter()
     for r in records:
+        from .technical_scenario import METHOD as TECHNICAL_METHOD, refresh
+        if r.get('method_version')==TECHNICAL_METHOD or 'technical_outlook' in r or 'wave_price_plan' in r:
+            from copy import deepcopy
+            if r.get('method_version')!=TECHNICAL_METHOD:
+                failures.append('scheduled technical wave method mismatch')
+            else:
+                try:
+                    if refresh(deepcopy(r))!=r:
+                        failures.append('scheduled technical wave assessment mismatch')
+                except (KeyError,TypeError,ValueError,AttributeError):
+                    failures.append('scheduled technical wave inputs invalid')
         from .swing_horizon import METHOD as HORIZON_METHOD, build_swing_context
         from .swing_wave import METHOD as WAVE_METHOD, build_wave
         if r.get('method_version') == WAVE_METHOD or 'swing_wave' in r:
@@ -41,7 +52,7 @@ def validate_strategy_snapshot(snapshot):
                     or r.get('swing_context') != build_swing_context(r)):
                 failures.append('scheduled swing context mismatch')
         from .swing_environment import METHOD, build_environment
-        if r.get('method_version') in (METHOD, HORIZON_METHOD,WAVE_METHOD) or 'swing_environment' in r:
+        if r.get('method_version') in (METHOD, HORIZON_METHOD,WAVE_METHOD,TECHNICAL_METHOD) or 'swing_environment' in r:
             environment = build_environment(r)
             if environment != r.get('swing_environment'):
                 failures.append('scheduled swing environment mismatch')
