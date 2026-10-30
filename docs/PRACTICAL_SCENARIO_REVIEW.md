@@ -1,5 +1,11 @@
 # Scenario maturity versus monitoring priority
 
+For v9 swing assessments, H4 wave response precedes M15 confirmation. A fresh
+M15 breakout alone cannot grant A or priority: an unconfirmed H4 wave remains
+B/directional monitoring with status `swing_wave_wait`, outside the priority
+list. See [swing horizon](SWING_HORIZON.md) for exact H4 price-response rules.
+Daytrade and legacy saved interpretations retain their previous rules.
+
 New assessments use concrete saved confirmation conditions for A/B maturity.
 An old reference pattern alone is insufficient for A. Conversely a concrete,
 verified reaction is not vetoed merely because any one lagging price-derived

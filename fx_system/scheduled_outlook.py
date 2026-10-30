@@ -249,6 +249,9 @@ def _one(pair, data, source_quality, evaluated_at):
             track["reference_levels"]={k:own_plan.get(k) for k in ('invalidation','structural_target','reference_rr')}
             track["reference_levels"]["executable_price"]=False
         track["trigger_price_reference"]=trigger_price_reference(data,track,evaluated_at)
+        if name == 'swing':
+            from .swing_wave import wave_inputs
+            track['swing_wave_inputs'] = wave_inputs(data, track, evaluated_at)
     strategy_tracks["swing"]["reaction_timestamp"]=m15.get("m15_last_timestamp")
     m5_pattern=_dict(data.get("m5_price_action_shadow"))
     day=strategy_tracks["daytrade"]
