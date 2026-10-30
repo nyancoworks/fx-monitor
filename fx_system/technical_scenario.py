@@ -111,7 +111,10 @@ def build_outlook(r):
     else:
         setup = 'unverified'
     if momentum=='opposed':out['cautions'].append('基準足MACDは逆行。局所反応だけで再開としない')
-    for tf, context in r.get('macro_context', {}).items():
+    # Payload JSON sorts mapping keys. Caution lists must retain the producer's
+    # published W1 -> D1 order regardless of dictionary insertion on restore.
+    for tf in ('w1','d1'):
+        context = r.get('macro_context', {}).get(tf, {})
         if isinstance(context,dict) and context.get('verified') is True and context.get('relation')=='countertrend':
             out['cautions'].append(tf+'上位足の構造は逆方向。波の伸びと転換を再評価')
     paths = {'continuation':'基準足のトレンド継続を主シナリオとし、途中の障害を越えた場合に波の拡張を見込む',

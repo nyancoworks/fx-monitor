@@ -72,6 +72,19 @@ def assess(t=None,strategy='swing',direction='long'):
 
 
 class TechnicalScenarioTests(unittest.TestCase):
+    def test_macro_caution_order_survives_sorted_json_and_lossless_export(self):
+        t=track();t['macro_context']={tf:{'verified':True,'relation':'countertrend'} for tf in ('w1','d1')}
+        r=assess(t);before=deepcopy(r)
+        reordered=json.loads(json.dumps(r,sort_keys=True))
+        self.assertEqual(refresh(reordered),before)
+        self.assertTrue(r['technical_outlook']['cautions'][0].startswith('w1'))
+        self.assertTrue(r['technical_outlook']['cautions'][1].startswith('d1'))
+        s=with_record(r);b=build_strategy_report_export(json.dumps(s).encode(),SOURCE)
+        self.assertEqual(b['status'],'saved')
+        v=restore_strategy_report_export(b,SOURCE,b['snapshot_git_blob_sha'])
+        saved=next(x for x in v['scheduled_outlook']['strategy_assessments'] if x['pair']=='EURUSD' and x['strategy']=='swing')
+        self.assertEqual(saved,r)
+
     def test_both_strategies_and_directions_use_wave_origin_and_conditional_projection(self):
         for strategy in ('swing','daytrade'):
             for direction in ('long','short'):
