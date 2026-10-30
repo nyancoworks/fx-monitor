@@ -14,7 +14,9 @@ def build_environment(record):
         return None
     clock = record.get('evaluated_at')
     structure = record.get('base_structure')
-    direction = {'HH_HL': 'long', 'LH_LL': 'short'}.get(structure)
+    from .technical_forecast import METHOD as FORECAST_METHOD
+    forecast = record.get('method_version')==FORECAST_METHOD
+    direction = record.get('direction') if forecast else {'HH_HL': 'long', 'LH_LL': 'short'}.get(structure)
     out = {'schema': 'saved_swing_environment_v1', 'evaluated_at': clock,
            'timeframe': 'h4', 'structure': structure, 'direction': direction,
            'state': 'primary_unverified', 'exclude_from_monitoring': False,

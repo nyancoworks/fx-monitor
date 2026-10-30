@@ -59,6 +59,9 @@ def _movement(r, period, role='base'):
 
 def build_outlook(r):
     """Role hierarchy, not summed votes or a simultaneous indicator checklist."""
+    from .technical_forecast import METHOD as FORECAST_METHOD, outlook
+    if r.get('method_version') == FORECAST_METHOD:
+        return outlook(r)
     out = {'schema':'technical_wave_outlook_v1', 'evaluated_at':r['evaluated_at'],
            'timeframe':r['reference_timeframe'], 'status':'unverified',
            'setup':'unverified', 'path':'大局の材料が不足。方向・到達を補完せず評価保留',
@@ -189,11 +192,12 @@ def assess(pair, strategy, track, clock):
     from .technical_context import attach_technical_context
     from .swing_environment import build_environment
     from .technical_evolution import METHOD as EVOLUTION_METHOD
+    from .technical_forecast import METHOD as FORECAST_METHOD
     r = {'pair':pair, 'strategy':strategy, 'direction':track.get('direction'),
          'evaluated_at':clock, 'reference_timeframe':track['base_timeframe'],
          'trigger_timeframe':track['trigger_timeframe'], 'base_structure':track.get('base_structure'),
          'base_quality_verified':track.get('base_verified') is True,
-         'method_version':EVOLUTION_METHOD if track.get('assessment_method')==EVOLUTION_METHOD else METHOD,
+         'method_version':track['assessment_method'] if track.get('assessment_method') in (EVOLUTION_METHOD,FORECAST_METHOD) else METHOD,
          'assessment':'evaluation_pending', 'grade':None,
          'grade_scope':'provisional_scenario_quality_not_permission', 'method_validated_for_profitability':False,
          'execution_authority':'none', 'price_basis':'saved_completed_candles_not_current_quote',
@@ -208,7 +212,7 @@ def assess(pair, strategy, track, clock):
          'trigger_price_reference':deepcopy(track.get('trigger_price_reference', {})),
          'technical_plan_inputs':deepcopy(track.get('technical_plan_inputs', {})),
          'entry_condition_inputs':deepcopy(track.get('condition_inputs', {}))}
-    if r['method_version']==EVOLUTION_METHOD:
+    if r['method_version'] in (EVOLUTION_METHOD,FORECAST_METHOD):
         r['base_evolution_inputs']=deepcopy(track.get('base_evolution_inputs',{}))
     r['currency_strength_context']=interpret(track.get('currency_strength_context'),pair,strategy,r['direction'],clock)
     if strategy=='swing':r['swing_environment']=build_environment(r)
@@ -223,6 +227,8 @@ def refresh(r):
     from .scenario_conditions import describe_conditions
     out=build_outlook(r); p=build_plan(r); r['technical_outlook']=out; r['wave_price_plan']=p
     from .technical_evolution import METHOD as EVOLUTION_METHOD, apply as apply_evolution, defer_priority
+    from .technical_forecast import METHOD as FORECAST_METHOD
+    forecast = r.get('method_version')==FORECAST_METHOD
     evolution = r.get('method_version')==EVOLUTION_METHOD
     if evolution:
         out=apply_evolution(r,out);r['technical_outlook']=out
@@ -231,7 +237,9 @@ def refresh(r):
     r['assessment']='review';r['grade']='C'
     if r.get('base_quality_verified') is not True:
         r['assessment']='evaluation_pending'
-    elif not sign or {'HH_HL':1,'LH_LL':-1}.get(r.get('base_structure'))!=sign:
+    elif forecast and out['forecast']['status']=='unverified':
+        r['assessment']='evaluation_pending'
+    elif not sign or not forecast and {'HH_HL':1,'LH_LL':-1}.get(r.get('base_structure'))!=sign:
         r['assessment']='skip';r['skip_reason']='base_direction_unconfirmed'
     elif r.get('swing_environment',{}).get('exclude_from_monitoring'):
         r['assessment']='skip';r['skip_reason']='h4_consolidation_excluded'
@@ -304,6 +312,9 @@ def refresh(r):
     mature=(out['status']=='continuation' and out['setup']=='resumption_context'
             and not out['cautions'] and not r['currency_strength_context'].get('material_opposition'))
     r['grade']=('A' if status=='technical_watch' and mature else 'B') if usable else None
+    if forecast and usable and out['forecast']['conviction']=='weak':
+        r['grade']='C'
+        if status=='technical_watch':status='technical_recheck'
     descriptions={'technical_watch':'基準足のテクニカル見通しと波の価格計画を監視。局所反応は仕掛け確認で、大局評価とは別',
                   'technical_recheck':'基準足の構造とテクニカル背景が競合。局所PAで上書きせず見通し再評価',
                   'entry_recheck':'局所セットアップ無効化で仕掛け停止。基準足の波の見通しは別に保持し、仕掛けを再評価',
@@ -311,6 +322,8 @@ def refresh(r):
                   'event_recheck':'重要発表をまたぐため基準足と見通しを再評価',
                   'evaluation_pending':'基準足・テクニカル・確定波の材料不足で評価保留',
                   'direction_watch':'有効なトレンド方向シナリオなし。新しい基準足を待つ'}
+    if forecast and status=='technical_recheck':
+        descriptions['technical_recheck']=out['path']+'。方向仮説の根拠が弱い、または重要な矛盾があり優先監視は保留'
     if evolution and status=='technical_recheck' and out['status']!='transition':
         descriptions['technical_recheck']=out['evolution']['summary']+'。方向監視を保持し、局所PAだけで優先候補にしない'
     r['practical_review']={'schema':'saved_practical_review_v3','status':status,'summary':descriptions[status],
@@ -339,6 +352,8 @@ def render_lines(r):
     obstacle=p.get('first_obstacle') or {}
     return ['', f"{r['pair'][:3]}/{r['pair'][3:]} {name}｜{'買い方向' if r['direction']=='long' else '売り方向'}｜{r['grade']}",
             '評価理由：'+r['grade_reason'], '見通し：'+o['path'],
+            *((['予測の根拠：'+'／'.join(o['forecast']['support'])]) if 'forecast' in o else []),
+            *((['反対経路：'+o['alternative_path']]) if 'alternative_path' in o else []),
             '主根拠：'+r.get('technical_context',{}).get('frames',{}).get('base',{}).get('summary','基準足の明細は未確認'),
             '重要な懸念：'+('／'.join(r['opposing_evidence']) or '追加の具体的な逆行は未観測。未確認事項は別'),
             f"押し戻り参考域：{fmt(pull.get('shallow'))}～{fmt(pull.get('deep'))}（通常Fib。DMA位置も併せて確認）",

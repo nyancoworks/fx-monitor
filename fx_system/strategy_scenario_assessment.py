@@ -17,8 +17,9 @@ def _number(value):return value if type(value) in (int,float) and math.isfinite(
 
 def assess_strategy(pair,strategy,track,evaluated_at):
     from .technical_scenario import METHOD, assess
+    from .technical_forecast import METHOD as FORECAST_METHOD
     from .technical_evolution import METHOD as EVOLUTION_METHOD
-    if isinstance(track,dict) and track.get('assessment_method') in (METHOD,EVOLUTION_METHOD):
+    if isinstance(track,dict) and track.get('assessment_method') in (METHOD,EVOLUTION_METHOD,FORECAST_METHOD):
         return assess(pair,strategy,track,evaluated_at)
     t=_dict(track);direction=t.get('direction');explain=_dict(t.get('scenario_explanation'))
     levels=_dict(t.get('reference_levels'));plan=_dict(t.get('reference_plan'))

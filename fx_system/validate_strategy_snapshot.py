@@ -32,10 +32,11 @@ def validate_strategy_snapshot(snapshot):
     counts = Counter()
     for r in records:
         from .technical_scenario import METHOD as TECHNICAL_METHOD, refresh
+        from .technical_forecast import METHOD as FORECAST_METHOD
         from .technical_evolution import METHOD as EVOLUTION_METHOD
-        if r.get('method_version') in (TECHNICAL_METHOD,EVOLUTION_METHOD) or 'technical_outlook' in r or 'wave_price_plan' in r:
+        if r.get('method_version') in (TECHNICAL_METHOD,EVOLUTION_METHOD,FORECAST_METHOD) or 'technical_outlook' in r or 'wave_price_plan' in r:
             from copy import deepcopy
-            if r.get('method_version') not in (TECHNICAL_METHOD,EVOLUTION_METHOD):
+            if r.get('method_version') not in (TECHNICAL_METHOD,EVOLUTION_METHOD,FORECAST_METHOD):
                 failures.append('scheduled technical wave method mismatch')
             else:
                 try:
@@ -53,7 +54,7 @@ def validate_strategy_snapshot(snapshot):
                     or r.get('swing_context') != build_swing_context(r)):
                 failures.append('scheduled swing context mismatch')
         from .swing_environment import METHOD, build_environment
-        if r.get('method_version') in (METHOD, HORIZON_METHOD,WAVE_METHOD,TECHNICAL_METHOD,EVOLUTION_METHOD) or 'swing_environment' in r:
+        if r.get('method_version') in (METHOD, HORIZON_METHOD,WAVE_METHOD,TECHNICAL_METHOD,EVOLUTION_METHOD,FORECAST_METHOD) or 'swing_environment' in r:
             environment = build_environment(r)
             if environment != r.get('swing_environment'):
                 failures.append('scheduled swing environment mismatch')
@@ -93,9 +94,12 @@ def validate_strategy_snapshot(snapshot):
         if 'practical_review' in r:
             from copy import deepcopy
             from .practical_review import review
-            checked=review(deepcopy(r),monitor_wait=r['practical_review'].get('schema')!='saved_practical_review_v1')
-            if (checked['practical_review']!=r['practical_review'] or checked['grade']!=r.get('grade')):
-                failures.append('scheduled practical review mismatch')
+            try:
+                checked=review(deepcopy(r),monitor_wait=r['practical_review'].get('schema')!='saved_practical_review_v1')
+                if (checked['practical_review']!=r['practical_review'] or checked['grade']!=r.get('grade')):
+                    failures.append('scheduled practical review mismatch')
+            except (KeyError,TypeError,ValueError,AttributeError):
+                failures.append('scheduled practical review inputs invalid')
         if 'decision_brief' in r:
             from .decision_brief import build_brief
             if r['decision_brief']!=build_brief(r):

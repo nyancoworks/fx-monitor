@@ -26,5 +26,5 @@ class LegacyRangeTests(unittest.TestCase):
         self.assertEqual(len(o['strategy_assessments']),32)
         self.assertTrue(all(r.get('scenario_type')!='range_reversal' for r in o['strategy_assessments']))
         r=next(r for r in o['strategy_assessments'] if r['pair']=='EURUSD' and r['strategy']=='daytrade')
-        self.assertIsNone(r['direction']);self.assertEqual(r['assessment'],'skip')
+        self.assertIsNone(r['direction']);self.assertEqual(r['assessment'],'evaluation_pending')
         self.assertEqual(validate_strategy_snapshot({'evaluated_at':CLOCK,'scheduled_outlook':o}),[])
