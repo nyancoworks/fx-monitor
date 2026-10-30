@@ -206,12 +206,14 @@ class TechnicalScenarioTests(unittest.TestCase):
             self.assertTrue(validate_strategy_snapshot(broken),field)
 
     def test_production_default_is_new_method_even_when_no_data(self):
+        from fx_system.technical_evolution import METHOD as CURRENT_METHOD
         o=build_scheduled_outlook({}, {}, evaluated_at=CLOCK)
         self.assertEqual(len(o['strategy_assessments']),32)
-        self.assertEqual({r['method_version'] for r in o['strategy_assessments']},{METHOD})
+        self.assertEqual({r['method_version'] for r in o['strategy_assessments']},{CURRENT_METHOD})
         self.assertTrue(all(r['assessment']=='evaluation_pending' for r in o['strategy_assessments']))
 
     def test_scheduled_dispatch_calendar_export_and_restore_all32_new_assessments(self):
+        from fx_system.technical_evolution import METHOD as CURRENT_METHOD
         from fx_system.scheduled_outlook import _one
         def row(pair, data, quality, clock):
             result=_one(pair,{}, {},clock)
@@ -226,7 +228,7 @@ class TechnicalScenarioTests(unittest.TestCase):
         s={'evaluated_at':CLOCK,'scheduled_outlook':o}
         self.assertEqual(validate_strategy_snapshot(s),[])
         self.assertEqual(len(o['strategy_assessments']),32)
-        self.assertEqual({r['method_version'] for r in o['strategy_assessments']},{METHOD})
+        self.assertEqual({r['method_version'] for r in o['strategy_assessments']},{CURRENT_METHOD})
         b=build_strategy_report_export(json.dumps(s).encode(),SOURCE)
         self.assertEqual(b['status'],'saved')
         v=restore_strategy_report_export(b,SOURCE,b['snapshot_git_blob_sha'])

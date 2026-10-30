@@ -48,7 +48,8 @@ def observe_frozen_condition(record, pair, through):
     base_seconds = {'h1': 3600, 'h4': 14400}.get(record.get('reference_timeframe'))
     levels = record.get('reference_levels', {})
     from .technical_scenario import METHOD as TECHNICAL_METHOD
-    technical = record.get('method_version')==TECHNICAL_METHOD
+    from .technical_evolution import METHOD as EVOLUTION_METHOD
+    technical = record.get('method_version') in (TECHNICAL_METHOD,EVOLUTION_METHOD)
     stop, target, level = levels.get('invalidation'), levels.get('scenario_target',levels.get('structural_target')), plan.get('level')
     sign = 1 if record.get('direction') == 'long' else -1 if record.get('direction') == 'short' else 0
     if (not seconds or not base_seconds or not sign or type(through) is not int

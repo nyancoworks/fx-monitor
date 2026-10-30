@@ -21,3 +21,6 @@ def refresh_strategy_indicators(data, verified, indicator_frames, quality, setup
     data['dinapoli_research']=dinapoli_diagnostics(indicator_frames,setup)
     data['dinapoli_indicator_reference']={tf:indicator_reference(indicator_frames[tf]) for tf in TIMEFRAMES}
     data['indicator_context_version']=2
+    from .technical_evolution import observe
+    data['base_evolution_inputs']={tf:observe(indicator_frames[tf],tf,quality.get('evaluated_at'),
+        quality.get('timeframes',{}).get(tf,{}).get('ok') is True) for tf in ('h4','h1')}
