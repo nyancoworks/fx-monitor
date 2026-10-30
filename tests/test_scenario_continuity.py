@@ -17,6 +17,22 @@ def view():
 
 
 class ContinuityTests(unittest.TestCase):
+    def test_forecast_summary_retains_decisions_without_duplicate_observations(self):
+        from fx_system.scenario_continuity import _brief
+        record={'technical_outlook':{'evolution':{'momentum':'directional_building'},
+            'forecast':{'direction':'long','phase':'continuation','primary_path':'synthetic path',
+                'alternative_path':'synthetic alternative','support':['support'], 'cautions':['caution'],
+                'background':{'large':'x'*100000},'timing':{'observations':'x'*100000},
+                'evolution':{'momentum':'directional_building'}}},
+            'wave_price_plan':{'thesis_invalidation':100,'first_obstacle':{'price':120}}}
+        before=deepcopy(record);brief=_brief(record);f=brief['technical_outlook']['forecast']
+        self.assertEqual(record,before)
+        for key in ('background','timing','evolution'):self.assertNotIn(key,f)
+        for key in ('direction','phase','primary_path','alternative_path','support','cautions'):
+            self.assertEqual(f[key],record['technical_outlook']['forecast'][key])
+        self.assertEqual(brief['technical_outlook']['evolution'],record['technical_outlook']['evolution'])
+        self.assertEqual(brief['wave_price_plan'],record['wave_price_plan'])
+
     def test_clock_alone_does_not_change_scenario_and_inputs_are_immutable(self):
         old=view();new=deepcopy(old);new['scheduled_outlook']['strategy_assessments'][0]['scenario_conditions']['observed_at']=200
         before=deepcopy((old,new));row=compare_views(new,old)[0]
