@@ -188,11 +188,13 @@ def assess(pair, strategy, track, clock):
     from .strategy_strength import interpret
     from .technical_context import attach_technical_context
     from .swing_environment import build_environment
+    from .technical_evolution import METHOD as EVOLUTION_METHOD
     r = {'pair':pair, 'strategy':strategy, 'direction':track.get('direction'),
          'evaluated_at':clock, 'reference_timeframe':track['base_timeframe'],
          'trigger_timeframe':track['trigger_timeframe'], 'base_structure':track.get('base_structure'),
          'base_quality_verified':track.get('base_verified') is True,
-         'method_version':METHOD, 'assessment':'evaluation_pending', 'grade':None,
+         'method_version':EVOLUTION_METHOD if track.get('assessment_method')==EVOLUTION_METHOD else METHOD,
+         'assessment':'evaluation_pending', 'grade':None,
          'grade_scope':'provisional_scenario_quality_not_permission', 'method_validated_for_profitability':False,
          'execution_authority':'none', 'price_basis':'saved_completed_candles_not_current_quote',
          'reasons':[], 'opposing_evidence':[], 'uncertainties':[], 'waiting_conditions':[],
@@ -206,6 +208,8 @@ def assess(pair, strategy, track, clock):
          'trigger_price_reference':deepcopy(track.get('trigger_price_reference', {})),
          'technical_plan_inputs':deepcopy(track.get('technical_plan_inputs', {})),
          'entry_condition_inputs':deepcopy(track.get('condition_inputs', {}))}
+    if r['method_version']==EVOLUTION_METHOD:
+        r['base_evolution_inputs']=deepcopy(track.get('base_evolution_inputs',{}))
     r['currency_strength_context']=interpret(track.get('currency_strength_context'),pair,strategy,r['direction'],clock)
     if strategy=='swing':r['swing_environment']=build_environment(r)
     attach_technical_context(r)
@@ -218,6 +222,10 @@ def refresh(r):
     """Recompute prices, priority and grade, including after calendar enrichment."""
     from .scenario_conditions import describe_conditions
     out=build_outlook(r); p=build_plan(r); r['technical_outlook']=out; r['wave_price_plan']=p
+    from .technical_evolution import METHOD as EVOLUTION_METHOD, apply as apply_evolution, defer_priority
+    evolution = r.get('method_version')==EVOLUTION_METHOD
+    if evolution:
+        out=apply_evolution(r,out);r['technical_outlook']=out
     sign=1 if r.get('direction')=='long' else -1 if r.get('direction')=='short' else 0
     r.pop('skip_reason',None)
     r['assessment']='review';r['grade']='C'
@@ -290,6 +298,8 @@ def refresh(r):
             else 'event_recheck' if events else 'technical_recheck' if out['status']=='transition'
             else 'entry_recheck' if entry_paused
             else 'price_plan_recheck' if not margin else 'technical_watch')
+    if evolution and status=='technical_watch' and defer_priority(out):
+        status='technical_recheck'
     # A concerns the base technical thesis, not completion of a local candle pattern.
     mature=(out['status']=='continuation' and out['setup']=='resumption_context'
             and not out['cautions'] and not r['currency_strength_context'].get('material_opposition'))
@@ -301,6 +311,8 @@ def refresh(r):
                   'event_recheck':'重要発表をまたぐため基準足と見通しを再評価',
                   'evaluation_pending':'基準足・テクニカル・確定波の材料不足で評価保留',
                   'direction_watch':'有効なトレンド方向シナリオなし。新しい基準足を待つ'}
+    if evolution and status=='technical_recheck' and out['status']!='transition':
+        descriptions['technical_recheck']=out['evolution']['summary']+'。方向監視を保持し、局所PAだけで優先候補にしない'
     r['practical_review']={'schema':'saved_practical_review_v3','status':status,'summary':descriptions[status],
         'events':events,'a_blockers':out['cautions'],'reference_margin_sufficient':margin,
         'entry_status':'paused' if entry_paused else 'timing_reference' if fresh else 'unverified',

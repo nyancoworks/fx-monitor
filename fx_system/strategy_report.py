@@ -85,7 +85,7 @@ def render_strategy_report(snapshot, *, include_all_reviews=False, complete_evid
               if selection_version in (2,3,4) else
               'A/B/Cはシナリオの優位性・完成度。同評価・同じ確認段階と反対根拠の候補間で保存価格の余地を比較し、比較条件が異なる候補の掲載枠は維持する。'),
              '参考RRは保存価格基準で、スプレッド・手数料・滑りを含まない。']
-    if any(r.get('method_version')=='contextual_scenario_review_v10_technical_wave' for r in rows):
+    if any(r.get('method_version') in ('contextual_scenario_review_v10_technical_wave','contextual_scenario_review_v11_technical_evolution') for r in rows):
         lines[2]='A/B/Cは基準足のテクニカル見通しと波の価格計画の完成度。局所PAの観測や売買許可とは別。見通し→押し戻り→経路目標・条件付き拡張→仕掛け確認の順に読む。同じ確認段階と反対根拠の候補だけを比較し、RRだけで順位を上げない。'
     if selection_version>=3:
         lines.append('優先掲載は価格計画と確認足が評価可能な監視候補。値幅不足・発表をまたぐ候補は再評価待ちとして保存し、掲載外を見送りとはしない。')
@@ -94,7 +94,8 @@ def render_strategy_report(snapshot, *, include_all_reviews=False, complete_evid
     if not shown: lines.append('掲載する検討候補なし。見送りと評価保留の内訳は上記。')
     for r in shown:
         from .technical_scenario import METHOD as TECHNICAL_METHOD, render_lines
-        if r.get('method_version')==TECHNICAL_METHOD:
+        from .technical_evolution import METHOD as EVOLUTION_METHOD
+        if r.get('method_version') in (TECHNICAL_METHOD,EVOLUTION_METHOD):
             lines.extend(render_lines(r))
             strength=r.get('currency_strength_context', {})
             if strength.get('summary'):lines.append('通貨強弱：'+strength['summary'])

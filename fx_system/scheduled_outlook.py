@@ -251,6 +251,7 @@ def _one(pair, data, source_quality, evaluated_at):
         track["trigger_price_reference"]=trigger_price_reference(data,track,evaluated_at)
         from .technical_scenario import plan_inputs
         track['technical_plan_inputs'] = plan_inputs(data, track, evaluated_at)
+        track['base_evolution_inputs'] = _dict(data.get('base_evolution_inputs')).get(track['base_timeframe'], {})
         if name == 'swing':
             from .swing_wave import wave_inputs
             track['swing_wave_inputs'] = wave_inputs(data, track, evaluated_at)
@@ -371,7 +372,7 @@ def _one(pair, data, source_quality, evaluated_at):
     }
 
 def build_scheduled_outlook(pairs, quality, *, evaluated_at, economic_calendar=None,
-                            assessment_method='contextual_scenario_review_v10_technical_wave'):
+                            assessment_method='contextual_scenario_review_v11_technical_evolution'):
     pairs,quality=_dict(pairs),_dict(quality)
     rows=[]
     for pair in PAIR_KEYS:
