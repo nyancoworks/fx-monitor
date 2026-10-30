@@ -134,7 +134,7 @@ class EvolutionTests(unittest.TestCase):
         self.assertTrue(validate_strategy_snapshot(broken))
 
     def test_default32_dispatch_and_calendar_cannot_promote_deepening(self):
-        def row(pair,data,quality,clock):
+        def row(pair,data,quality,clock,method=None):
             out=_one(pair,{}, {},clock)
             for strategy in ('swing','daytrade'):
                 t=temporal_track(strategy,hist=(-.1,-.2,-.3))
@@ -142,7 +142,7 @@ class EvolutionTests(unittest.TestCase):
                          reference_plan={},reference_levels={},scenario_explanation={})
                 out['strategy_tracks'][strategy]=t
             return out
-        with patch('fx_system.scheduled_outlook._one',side_effect=row):o=build_scheduled_outlook({}, {},evaluated_at=CLOCK)
+        with patch('fx_system.scheduled_outlook._one',side_effect=row):o=build_scheduled_outlook({}, {},evaluated_at=CLOCK,assessment_method=METHOD)
         self.assertEqual(len(o['strategy_assessments']),32)
         self.assertEqual({r['method_version'] for r in o['strategy_assessments']},{METHOD})
         before=deepcopy(o);o=enrich_outlook(o,{'observed_at_utc':CLOCK,'complete':True,'events':[]})

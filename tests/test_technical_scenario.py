@@ -206,7 +206,7 @@ class TechnicalScenarioTests(unittest.TestCase):
             self.assertTrue(validate_strategy_snapshot(broken),field)
 
     def test_production_default_is_new_method_even_when_no_data(self):
-        from fx_system.technical_evolution import METHOD as CURRENT_METHOD
+        from fx_system.technical_forecast import METHOD as CURRENT_METHOD
         o=build_scheduled_outlook({}, {}, evaluated_at=CLOCK)
         self.assertEqual(len(o['strategy_assessments']),32)
         self.assertEqual({r['method_version'] for r in o['strategy_assessments']},{CURRENT_METHOD})
@@ -215,7 +215,7 @@ class TechnicalScenarioTests(unittest.TestCase):
     def test_scheduled_dispatch_calendar_export_and_restore_all32_new_assessments(self):
         from fx_system.technical_evolution import METHOD as CURRENT_METHOD
         from fx_system.scheduled_outlook import _one
-        def row(pair, data, quality, clock):
+        def row(pair, data, quality, clock, method=None):
             result=_one(pair,{}, {},clock)
             for strategy in ('swing','daytrade'):
                 t=track(strategy);t.update(state='waiting_trigger',reference_timeframe=t['base_timeframe'],
@@ -223,7 +223,7 @@ class TechnicalScenarioTests(unittest.TestCase):
                 result['strategy_tracks'][strategy]=t
             return result
         with patch('fx_system.scheduled_outlook._one',side_effect=row):
-            o=build_scheduled_outlook({}, {}, evaluated_at=CLOCK,economic_calendar={
+            o=build_scheduled_outlook({}, {}, evaluated_at=CLOCK,assessment_method=CURRENT_METHOD,economic_calendar={
                 'observed_at_utc':CLOCK,'complete':False,'events':[]})
         s={'evaluated_at':CLOCK,'scheduled_outlook':o}
         self.assertEqual(validate_strategy_snapshot(s),[])

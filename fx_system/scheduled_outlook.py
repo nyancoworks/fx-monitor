@@ -77,7 +77,7 @@ def _strategy_tracks(structural, tfs, published, valid_clock, m15, m5_use):
                       "advisory_only":True}
     return tracks
 
-def _one(pair, data, source_quality, evaluated_at):
+def _one(pair, data, source_quality, evaluated_at, assessment_method=None):
     data, source_quality = _dict(data), _dict(source_quality)
     dq = _dict(data.get("decision_quality"))
     tfs = _dict(dq.get("timeframes"))
@@ -229,6 +229,9 @@ def _one(pair, data, source_quality, evaluated_at):
     for name,source in (("swing",_dict(data.get("h4_setup_shadow"))),
                         ("daytrade",setup)):
         track=strategy_tracks[name]
+        from .technical_forecast import METHOD as FORECAST_METHOD, prepare_track
+        if assessment_method == FORECAST_METHOD:
+            prepare_track(data,track,evaluated_at)
         matches=(track["base_verified"] and track["direction"] in ("long","short")
                  and source.get("direction")==track["direction"]
                  and (source.get("status")=="watch_only" if name=="swing" else source.get("stage")=="screening"))
@@ -372,13 +375,13 @@ def _one(pair, data, source_quality, evaluated_at):
     }
 
 def build_scheduled_outlook(pairs, quality, *, evaluated_at, economic_calendar=None,
-                            assessment_method='contextual_scenario_review_v11_technical_evolution'):
+                            assessment_method='contextual_scenario_review_v12_technical_forecast'):
     pairs,quality=_dict(pairs),_dict(quality)
     rows=[]
     for pair in PAIR_KEYS:
-        try: rows.append(_one(pair,pairs.get(pair),quality.get(pair),evaluated_at))
+        try: rows.append(_one(pair,pairs.get(pair),quality.get(pair),evaluated_at,assessment_method))
         except (ValueError,KeyError,TypeError,AttributeError,OverflowError):
-            rows.append(_one(pair,{}, {},evaluated_at))
+            rows.append(_one(pair,{}, {},evaluated_at,assessment_method))
     strength = build_contexts(pairs, evaluated_at) if type(evaluated_at) is int and evaluated_at > 0 else {}
     for row in rows:
         for strategy, track in row['strategy_tracks'].items():
