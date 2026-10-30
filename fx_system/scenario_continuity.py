@@ -27,6 +27,14 @@ def _brief(record):
         result['swing_context'] = deepcopy(record['swing_context'])
     for field in ('technical_outlook','wave_price_plan'):
         if field in record:result[field]=deepcopy(record[field])
+    # Full observations remain in the immutable assessment/export. Comparison
+    # rows retain forecasts, concerns, evolution and prices, without duplicating
+    # raw DMA/RCI detail or the already retained evolution object a second time.
+    forecast=result.get('technical_outlook',{}).get('forecast')
+    if isinstance(forecast,dict):
+        for field in ('background','timing','evolution'):
+            forecast.pop(field,None)
+        forecast['evidence_scope']='comparison_summary_full_evidence_in_original_assessment'
     return result
 
 
