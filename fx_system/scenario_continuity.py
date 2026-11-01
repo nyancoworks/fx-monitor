@@ -34,6 +34,14 @@ def _brief(record):
     if isinstance(forecast,dict):
         for field in ('background','timing','evolution'):
             forecast.pop(field,None)
+        # Adjacent v12 generations otherwise repeat every long path/caution
+        # twice per side. Keep the actual values on technical_outlook and make
+        # the projection explicit instead of inflating the bounded history.
+        for field, parent in (('cautions','cautions'),('primary_path','path'),
+                              ('alternative_path','alternative_path')):
+            if forecast.get(field)==result['technical_outlook'].get(parent):
+                forecast.pop(field,None)
+        forecast['summary_fields_basis']='matching_paths_and_cautions_retained_on_parent_technical_outlook'
         forecast['evidence_scope']='comparison_summary_full_evidence_in_original_assessment'
     return result
 
