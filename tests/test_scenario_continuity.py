@@ -17,6 +17,19 @@ def view():
 
 
 class ContinuityTests(unittest.TestCase):
+    def test_adjacent_forecast_paths_keep_equal_values_on_parent(self):
+        from fx_system.scenario_continuity import _brief
+        outlook={'path':'primary'*1000,'alternative_path':'alternative'*1000,'cautions':['risk'*1000]}
+        outlook['forecast']={'primary_path':outlook['path'],'alternative_path':outlook['alternative_path'],
+                             'cautions':outlook['cautions'],'direction':'short','phase':'pullback_expected'}
+        original={'technical_outlook':outlook};before=deepcopy(original)
+        brief=_brief(original)['technical_outlook']
+        self.assertEqual(original,before)
+        for child,parent in [('primary_path','path'),('alternative_path','alternative_path'),('cautions','cautions')]:
+            self.assertNotIn(child,brief['forecast']);self.assertEqual(brief[parent],outlook['forecast'][child])
+        changed=deepcopy(original);changed['technical_outlook']['forecast']['primary_path']='distinct hypothesis'
+        self.assertEqual(_brief(changed)['technical_outlook']['forecast']['primary_path'],'distinct hypothesis')
+
     def test_forecast_summary_retains_decisions_without_duplicate_observations(self):
         from fx_system.scenario_continuity import _brief
         record={'technical_outlook':{'evolution':{'momentum':'directional_building'},
