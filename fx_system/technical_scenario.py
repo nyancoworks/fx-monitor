@@ -216,6 +216,7 @@ def assess(pair, strategy, track, clock):
         r['base_evolution_inputs']=deepcopy(track.get('base_evolution_inputs',{}))
     if r['method_version']==FORECAST_METHOD:
         r['contextual_review_version']=1
+        r['entry_review_version']=1
         r['trigger_structure_input']=deepcopy(track.get('trigger_structure_input',{}))
     r['currency_strength_context']=interpret(track.get('currency_strength_context'),pair,strategy,r['direction'],clock)
     if strategy=='swing':r['swing_environment']=build_environment(r)
@@ -232,6 +233,8 @@ def refresh(r):
     from .technical_evolution import METHOD as EVOLUTION_METHOD, apply as apply_evolution, defer_priority
     from .technical_forecast import METHOD as FORECAST_METHOD
     forecast = r.get('method_version')==FORECAST_METHOD
+    if 'entry_review_version' in r and (not forecast or r['entry_review_version']!=1):
+        raise ValueError('unsupported entry review interpretation')
     evolution = r.get('method_version')==EVOLUTION_METHOD
     if evolution:
         out=apply_evolution(r,out);r['technical_outlook']=out
@@ -311,6 +314,11 @@ def refresh(r):
             else 'price_plan_recheck' if not margin else 'technical_watch')
     if evolution and status=='technical_watch' and defer_priority(out):
         status='technical_recheck'
+    entry_undefined=(forecast and r.get('entry_review_version')==1
+        and r['scenario_conditions'].get('status') not in
+        ('waiting','awaiting_breakout','awaiting_retest','conditions_observed'))
+    if status=='technical_watch' and entry_undefined:
+        status='entry_recheck'
     # A concerns the base technical thesis, not completion of a local candle pattern.
     mature=(out['status']=='continuation' and out['setup']=='resumption_context'
             and not out['cautions'] and not r['currency_strength_context'].get('material_opposition'))
@@ -327,6 +335,8 @@ def refresh(r):
                   'direction_watch':'有効なトレンド方向シナリオなし。新しい基準足を待つ'}
     if forecast and status=='technical_recheck':
         descriptions['technical_recheck']=out['path']+'。方向仮説の根拠が弱い、または重要な矛盾があり優先監視は保留'
+    if forecast and r.get('entry_review_version')==1 and status=='entry_recheck' and entry_undefined and not entry_paused:
+        descriptions['entry_recheck']='方向仮説は保持するが仕掛け条件を具体化できず再評価待ち：'+r['scenario_conditions'].get('summary','条件未確認')
     if evolution and status=='technical_recheck' and out['status']!='transition':
         descriptions['technical_recheck']=out['evolution']['summary']+'。方向監視を保持し、局所PAだけで優先候補にしない'
     r['practical_review']={'schema':'saved_practical_review_v3','status':status,'summary':descriptions[status],

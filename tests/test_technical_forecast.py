@@ -32,6 +32,21 @@ def assess(t,strategy='swing'):
 
 
 class ForecastTests(unittest.TestCase):
+    def test_out_of_plan_condition_cannot_be_priority_even_with_headroom(self):
+        from fx_system.strategy_report import report_records
+        for strategy in ('swing','daytrade'):
+            t=track(strategy)
+            for bar in t['condition_inputs']['bars'][:-1]:bar['high']=130
+            r=assess(t,strategy)
+            self.assertEqual(r['scenario_conditions']['status'],'unavailable')
+            self.assertTrue(r['practical_review']['reference_margin_sufficient'])
+            self.assertEqual(r['practical_review']['status'],'entry_recheck')
+            self.assertEqual(r['grade'],'B');self.assertEqual(report_records({'strategy_assessments':[r]}),[])
+            self.assertEqual(r['direction'],'long')
+            legacy=deepcopy(r);legacy.pop('entry_review_version');refresh(legacy)
+            self.assertEqual(legacy['practical_review']['status'],'technical_watch')
+            self.assertEqual(refresh(deepcopy(legacy)),legacy)
+
     def test_real_pipeline_rebuilds_direction_wave_and_conditions_from_synthetic_candles(self):
         from fx_system.core import technical
         from fx_system.indicator_refresh import refresh_strategy_indicators
