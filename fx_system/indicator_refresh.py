@@ -21,6 +21,11 @@ def refresh_strategy_indicators(data, verified, indicator_frames, quality, setup
     data['dinapoli_research']=dinapoli_diagnostics(indicator_frames,setup)
     data['dinapoli_indicator_reference']={tf:indicator_reference(indicator_frames[tf]) for tf in TIMEFRAMES}
     data['indicator_context_version']=2
+    from .span_model import inputs
+    data['span_model_version']=1
+    data['span_model_inputs']={tf:inputs(verified[tf],tf,quality.get('evaluated_at'),
+        quality.get('timeframes',{}).get(tf,{}).get('ok') is True)
+        for tf in ('h4','h1','m15','m5')}
     from .technical_evolution import observe
     data['base_evolution_inputs']={tf:observe(indicator_frames[tf],tf,quality.get('evaluated_at'),
         quality.get('timeframes',{}).get(tf,{}).get('ok') is True) for tf in ('h4','h1')}

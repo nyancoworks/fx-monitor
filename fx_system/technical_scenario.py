@@ -217,6 +217,7 @@ def assess(pair, strategy, track, clock):
     if r['method_version']==FORECAST_METHOD:
         r['contextual_review_version']=1
         r['entry_review_version']=1
+        if track.get('span_model_version')==1:r['span_model_version']=1
         r['trigger_structure_input']=deepcopy(track.get('trigger_structure_input',{}))
     r['currency_strength_context']=interpret(track.get('currency_strength_context'),pair,strategy,r['direction'],clock)
     if strategy=='swing':r['swing_environment']=build_environment(r)
@@ -235,6 +236,8 @@ def refresh(r):
     forecast = r.get('method_version')==FORECAST_METHOD
     if 'entry_review_version' in r and (not forecast or r['entry_review_version']!=1):
         raise ValueError('unsupported entry review interpretation')
+    if 'span_model_version' in r and (not forecast or type(r['span_model_version']) is not int or r['span_model_version']!=1):
+        raise ValueError('unsupported span model interpretation')
     evolution = r.get('method_version')==EVOLUTION_METHOD
     if evolution:
         out=apply_evolution(r,out);r['technical_outlook']=out
@@ -319,6 +322,10 @@ def refresh(r):
         ('waiting','awaiting_breakout','awaiting_retest','conditions_observed'))
     if status=='technical_watch' and entry_undefined:
         status='entry_recheck'
+    span_trigger=out.get('forecast',{}).get('span_model',{}).get('trigger',{})
+    span_entry_paused=(r.get('span_model_version')==1 and span_trigger.get('state')=='cloud_failure')
+    if status=='technical_watch' and span_entry_paused:
+        status='entry_recheck'
     # A concerns the base technical thesis, not completion of a local candle pattern.
     mature=(out['status']=='continuation' and out['setup']=='resumption_context'
             and not out['cautions'] and not r['currency_strength_context'].get('material_opposition'))
@@ -337,6 +344,8 @@ def refresh(r):
         descriptions['technical_recheck']=out['path']+'。方向仮説の根拠が弱い、または重要な矛盾があり優先監視は保留'
     if forecast and r.get('entry_review_version')==1 and status=='entry_recheck' and entry_undefined and not entry_paused:
         descriptions['entry_recheck']='方向仮説は保持するが仕掛け条件を具体化できず再評価待ち：'+r['scenario_conditions'].get('summary','条件未確認')
+    if span_entry_paused and status=='entry_recheck' and not entry_undefined and not entry_paused:
+        descriptions['entry_recheck']='方向仮説は保持し、確認足の雲の反対側で続く終値を受けて仕掛け回復待ち：'+span_trigger['summary']
     if evolution and status=='technical_recheck' and out['status']!='transition':
         descriptions['technical_recheck']=out['evolution']['summary']+'。方向監視を保持し、局所PAだけで優先候補にしない'
     r['practical_review']={'schema':'saved_practical_review_v3','status':status,'summary':descriptions[status],
@@ -369,6 +378,8 @@ def render_lines(r):
     return ['', f"{r['pair'][:3]}/{r['pair'][3:]} {name}｜{'買い方向' if r['direction']=='long' else '売り方向'}｜{r['grade']}",
             '評価理由：'+r['grade_reason'], '見通し：'+o['path'],
             *((['予測の根拠：'+'／'.join(o['forecast']['support'])]) if 'forecast' in o else []),
+            *((['確認足のスパン：'+o['forecast']['span_model']['trigger']['summary']])
+              if 'span_model' in o.get('forecast',{}) else []),
             *((['反対経路：'+o['alternative_path']]) if 'alternative_path' in o else []),
             *((['確認足の位置付け：'+r['judgment_review']['trigger']['summary'],
                 '強弱との関係：'+r['judgment_review']['currency_strength']['explanation']]) if 'judgment_review' in r else []),

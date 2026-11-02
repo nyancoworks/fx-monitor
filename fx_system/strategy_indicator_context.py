@@ -115,6 +115,9 @@ def strategy_indicator_context(data, track, *, evaluated_at=None):
                       'meaning': 'ディナポリ係数MACDとPreferred Stochasticの参考計算。algorithmでCQG Original修正版と旧保存値を区別。外部チャート一致は未検証。勢い・転換の参考として保持'})
         if application:
             notes[-1]['status']='provisional_reference' if ref_ok else 'unverified'
+        if data.get('span_model_version')==1:
+            from .span_model import note
+            notes.append(note(_dict(data.get('span_model_inputs')).get(tf,{})))
         result[role] = {'timeframe': tf, 'status': 'reference', 'observations': notes}
     context = {'frames': result, 'affects_selection': False,
             'interpretation': '一致点と対立点を個別に示す。多数決・単純加点・新しいAND条件に使わない',
