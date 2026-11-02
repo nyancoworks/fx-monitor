@@ -32,6 +32,19 @@ def _brief(record):
     # raw DMA/RCI detail or the already retained evolution object a second time.
     forecast=result.get('technical_outlook',{}).get('forecast')
     if isinstance(forecast,dict):
+        # Span summaries already appear in the saved paths/support/cautions.
+        # Keep role states and actual relations in comparisons, with complete
+        # wording retained in each immutable assessment rather than twice more.
+        if record.get('span_model_version')==1:
+            span_summaries={frame.get('summary') for frame in forecast.get('span_model',{}).values()
+                            if isinstance(frame,dict)}
+            # The role states/relations below retain this evidence. Avoid also
+            # copying its verbose producer summary into comparison support.
+            forecast['support']=[s for s in forecast.get('support',[]) if s not in span_summaries]
+            for frame in forecast.get('span_model',{}).values():
+                if isinstance(frame,dict):
+                    frame.pop('summary',None)
+                    frame.pop('cross_meaning',None)
         for field in ('background','timing','evolution'):
             forecast.pop(field,None)
         # Adjacent v12 generations otherwise repeat every long path/caution

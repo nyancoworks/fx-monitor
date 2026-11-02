@@ -145,6 +145,9 @@ def forecast(record):
                   background={'dma':deepcopy(positions),
                               'sma':deepcopy(notes.get('sma_context',{})),
                               'meaning':'DMA7x5は中間の回復、SMA100/200は補助背景。短期足で過大評価しない'})
+    if record.get('span_model_version')==1:
+        from .span_model import apply
+        apply(record,result)
     return result
 
 
@@ -171,6 +174,8 @@ def prepare_track(data, track, clock):
     from .rci_track_context import rci_track_context
     tf=track['base_timeframe']
     record={'evaluated_at':clock, 'reference_timeframe':tf, 'base_quality_verified':track['base_verified'],
+            'trigger_timeframe':track['trigger_timeframe'],
+            'span_model_version':1,
             'base_structure':track['base_structure'], 'strategy':'swing' if tf=='h4' else 'daytrade',
             'indicator_context':strategy_indicator_context(data,track,evaluated_at=clock),
             'rci_observation':rci_track_context(data,track,clock),
@@ -178,5 +183,6 @@ def prepare_track(data, track, clock):
             'technical_plan_inputs':{'bar':deepcopy(data.get(tf,{}).get('candles',[{}])[-1])
                                     if data.get(tf,{}).get('candles') else {}}}
     f=forecast(record)
+    track['span_model_version']=1
     track['direction']=f['direction']
     track['state']='unassessed' if not track['base_verified'] else 'waiting_structure' if not f['direction'] else 'watch' if track['trigger_verified'] else 'waiting_trigger'
