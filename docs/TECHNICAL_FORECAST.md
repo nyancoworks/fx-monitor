@@ -1,3 +1,5 @@
+> 旧版保存の仕様・復元記録です。現行の新規生成は [標準テクニカル構成](STANDARD_TECHNICAL_PROFILE.md) を参照してください。旧係数・DMA・スパンモデルを新規判断へ戻しません。
+
 # テクニカル方向予測 v12
 
 新規評価の押し戻り解釈と監視掲載は[テクニカルの利点を活かす判断](TECHNICAL_INTERPRETATION.md)を参照。`technical_interpretation_version=1`では、背景内の短期逆行と転換を混同せず、大局撤回距離との比率だけで監視から除外しない。

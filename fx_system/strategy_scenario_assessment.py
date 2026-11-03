@@ -16,6 +16,9 @@ def _number(value):return value if type(value) in (int,float) and math.isfinite(
 
 
 def assess_strategy(pair,strategy,track,evaluated_at):
+    from .standard_technicals import METHOD as STANDARD_METHOD, assess as standard_assess
+    if isinstance(track,dict) and track.get('assessment_method')==STANDARD_METHOD:
+        return standard_assess(pair,strategy,track,evaluated_at)
     from .technical_scenario import METHOD, assess
     from .technical_forecast import METHOD as FORECAST_METHOD
     from .technical_evolution import METHOD as EVOLUTION_METHOD

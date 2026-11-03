@@ -19,11 +19,8 @@ from .watchlist import build_watchlist
 from .monitoring_scenarios import build_monitoring_scenarios
 from .saved_economic_calendar import build_outlook_with_saved_calendar
 from .indicator_inputs import contiguous_indicator_frames
-from .monitoring_macro import build_reference, unavailable as unavailable_macro_reference
 from .h4_setup import h4_setup_diagnostic
 from .zones import propose_h1_zone
-from .advisory_indicators import advisory_snapshot
-from .indicator_research import research_snapshot
 from .setup_comparison import compare_setups
 from .m15_entry_shadow import m15_entry_shadow
 from .m5_price_action import observe_m5_price_action
@@ -31,8 +28,7 @@ from .m5_counterpressure import assess_m5_counterpressure
 from .m5_rci_momentum import observe_m5_rci, m5_history_diagnostic
 from .h1_rci_shadow import h1_rci_shadow
 from .multitimeframe_shadow import multitimeframe_shadow
-from .dinapoli_research import dma_snapshot, confirmed_fibonacci
-from .indicator_refresh import dinapoli_diagnostics, refresh_strategy_indicators
+from .indicator_refresh import refresh_strategy_indicators
 from .storage_paths import storage_root
 
 ROOT=pathlib.Path(__file__).resolve().parents[1]
@@ -336,10 +332,6 @@ def _refresh(ny=None):
         result["pairs"][name]["decision_quality"]=decision_quality
         result["pairs"][name]["acquisition"]=acquisition
         result["pairs"][name]["technical"]={tf:technical(rows) for tf,rows in decision_frames.items() if tf in ("h1","h4","d1","w1")}
-        result["pairs"][name]["advisory_indicators"]={tf:advisory_snapshot(decision_frames[tf]) for tf in ("w1","d1","h4","h1","m5")}
-        result["pairs"][name]["dinapoli_research"]=dinapoli_diagnostics(decision_frames,setup)
-        # Non-gating indicator research from reverified closed candles only.
-        result["pairs"][name]["indicator_research"]={tf:research_snapshot(decision_frames[tf]) for tf in ("w1","d1","h4","h1","m15")}
 
         # Screening and execution are separate stages. H1 selects setups;
         # a current, confirmed M5 trigger is evaluated at decision time.
@@ -459,18 +451,11 @@ def _refresh(ny=None):
         data["decision_quality"]=quality
         indicator_frames, input_quality = contiguous_indicator_frames(verified, quality)
         data["indicator_input_quality"] = input_quality
-        data["monitoring_macro_reference"] = (build_reference(ny.value, name, final_now, ny_context)
-            if ny is not None and ny.value is not None else
-            unavailable_macro_reference("verified_archive_unavailable", final_now))
         # Publish the verified NY17 macro candles, not the retired native D1 placeholders.
         for macro_tf in ("d1","w1"):
             data[macro_tf]={"candles":verified[macro_tf][-100:],
                             "quality":quality["timeframes"][macro_tf]}
         data["h4_setup_shadow"]=h4_setup_diagnostic(verified)
-        data["h4_setup_shadow"]["dinapoli"]= {
-            **dma_snapshot(verified["h4"]),
-            "confirmed_fibonacci": confirmed_fibonacci(verified["h4"], data["h4_setup_shadow"].get("direction")),
-        }
         data["setup_comparison"]=compare_setups(setup,data["h4_setup_shadow"],quality)
         data["m15_entry_shadow"]=m15_entry_shadow(verified,data["h4_setup_shadow"],quality)
         h1_structure=data["technical"].get("h1",{}).get("structure")
@@ -484,9 +469,8 @@ def _refresh(ny=None):
         setup["zone_proposal"]=propose_h1_zone(verified["h1"],setup.get("direction"),setup.get("invalidation"))
         data["setup"]=setup
         data["technical"]={tf:technical(indicator_frames[tf]) for tf in ("m5","m15","h1","h4","d1","w1")}
-        data["advisory_indicators"]={tf:advisory_snapshot(indicator_frames[tf]) for tf in ("w1","d1","h4","h1","m5")}
-        # Reference only: reuse the already validated contiguous indicator frames.
-        # No new provider calls, no new entry gates, and no candidate selection change.
+        # Current standard-only profile from verified retained candles.
+        # No new provider requests or changes to the collection budget.
         refresh_strategy_indicators(data,verified,indicator_frames,quality,setup)
         q=result["quality"][name]
         q.update({"ok":quality["ready"] and all(quality["timeframes"][tf]["ok"] for tf in ("m5","h1","h4","d1")),"decision_data_ready":quality["ready"],

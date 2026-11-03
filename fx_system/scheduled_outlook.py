@@ -80,6 +80,9 @@ def _strategy_tracks(structural, tfs, published, valid_clock, m15, m5_use):
 
 def _one(pair, data, source_quality, evaluated_at, assessment_method=None):
     data, source_quality = _dict(data), _dict(source_quality)
+    if data.get('standard_technical_version')==1:
+        from .standard_technicals import pair_row
+        return pair_row(pair,data,source_quality,evaluated_at)
     dq = _dict(data.get("decision_quality"))
     tfs = _dict(dq.get("timeframes"))
     published = _dict(source_quality.get("timeframes"))
@@ -396,7 +399,8 @@ def build_scheduled_outlook(pairs, quality, *, evaluated_at, economic_calendar=N
     strength = build_contexts(pairs, evaluated_at) if type(evaluated_at) is int and evaluated_at > 0 else {}
     for row in rows:
         for strategy, track in row['strategy_tracks'].items():
-            track['assessment_method'] = assessment_method
+            from .standard_technicals import METHOD as STANDARD_METHOD
+            track['assessment_method'] = STANDARD_METHOD if track.get('standard_technical_version')==1 else assessment_method
             track['currency_strength_context'] = strength.get(row['pair'], {}).get(strategy)
     grade_counts={grade:sum(row["scheduled_grade"]==grade for row in rows)
                   for grade in ("A","B","C","D")}
