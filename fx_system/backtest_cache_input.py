@@ -19,7 +19,10 @@ def batches_from_cache(raw, *, expected_git_blob, evaluated_at):
     for pair in PAIRS:
         item=cache[pair];provenance=item.get('bar_provenance',{})
         for tf,seconds in (('m5',300),('h1',3600)):
-            rows=item.get(tf,[])
+            # The warehouse keeps its existing rolling transfer window. Longer
+            # local indicator retention must not enlarge storage request work;
+            # earlier originals already remain in the immutable warehouse.
+            rows=item.get(tf,[])[-500:]
             if not rows:missing.append({'pair':pair,'timeframe':tf})
             for original in rows:
                 ts=original.get('timestamp')

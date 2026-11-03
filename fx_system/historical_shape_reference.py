@@ -176,7 +176,9 @@ def build_references(cache, outlook, clock):
             record.update(status='not_candidate')
         else:
             source = cache.get(pair, {})
-            rows = source.get('h1', [])
+            # Preserve this optional reference's existing 500-bar window while
+            # the independent standard-indicator cache retains a longer prefix.
+            rows = source.get('h1', [])[-500:]
             provenance = source.get('bar_provenance', {})
             if (not rows or not isinstance(provenance, dict) or
                     any(not isinstance(r, dict) or provenance.get('h1:' + str(r.get('timestamp'))) != 'Twelve Data' for r in rows)):

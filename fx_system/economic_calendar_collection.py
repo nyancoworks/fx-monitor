@@ -1,4 +1,4 @@
-"""Bounded keyless collection in an existing private refresh; disabled by default.
+"""Bounded authenticated collection in an existing private refresh; disabled by default.
 
 No schedules, retries, redirect following, orders or public payload output.
 """
@@ -83,12 +83,14 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def _get(url, *, clock):
-    # No authentication or caller-supplied URL; one attempt, bounded response.
+    # Key stays in a header, never a URL or log. No redirects or retries.
     opener = urllib.request.build_opener(_NoRedirect)
     started = time.monotonic()
+    headers={'User-Agent': 'FX-Monitor-Calendar/1.0'}
+    api_key=os.environ.get('FC_API_KEY','').strip()
+    if api_key:headers['X-API-Key']=api_key
     try:
-        response = opener.open(urllib.request.Request(url, headers={
-            'User-Agent': 'FX-Monitor-Calendar/1.0'}), timeout=5)
+        response = opener.open(urllib.request.Request(url, headers=headers), timeout=5)
     except urllib.error.HTTPError as error:
         response = error
     with response:
@@ -166,6 +168,17 @@ def prepare_calendar(root, *, run_id, clock=time.time, get=None, persist=None):
     # Reserve this run before I/O. Interrupted/duplicate stages never retry it.
     _write(manifest_path, _json(manifest), original=True)
     files = [manifest_path]
+    if get is None and not os.environ.get('FC_API_KEY','').strip():
+        # Current provider requires an account key. Do not spend the existing
+        # request budget on predictable anonymous 401s or overwrite old input.
+        manifest.update(status='unavailable',reason='api_key_missing')
+        _write(manifest_path,_json(manifest))
+        attempt={'schema':'economic_calendar_collection_result_v1','run_id':run_id,
+                 'observed_at_utc':int(clock()),'status':'unavailable',
+                 'requests':0,'reason':'api_key_missing'}
+        _write(collection_path,_json(attempt));files.append(collection_path)
+        writer(root,files)
+        return {'status':'unavailable','requests':0}
     envelopes = {}
     for name, suffix in (('status', 'status'), ('calendar', 'calendar?' + query)):
         receipt = {'endpoint': name, 'status': 'attempting'}
@@ -204,6 +217,8 @@ def prepare_calendar(root, *, run_id, clock=time.time, get=None, persist=None):
     attempt = {'schema': 'economic_calendar_collection_result_v1', 'run_id': run_id,
                'observed_at_utc': int(clock()), 'status': outcome,
                'requests': len(manifest['requests'])}
+    if outcome=='unavailable' and any(r.get('http_status') in (401,403) for r in manifest['requests']):
+        attempt['reason']='api_authentication_failed'
     _write(collection_path, _json(attempt)); files.append(collection_path)
     writer(root, files)
     return {'status': outcome, 'requests': len(manifest['requests'])}

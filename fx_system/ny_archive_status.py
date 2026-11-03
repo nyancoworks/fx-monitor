@@ -55,7 +55,8 @@ def main():
     target = Path(args.snapshot)
     value = annotate(json.loads(target.read_bytes()), restored, saved,
                      restore_ok=restore_ok, save_ok=save_ok)
-    target.write_text(json.dumps(value, ensure_ascii=False, indent=2))
+    # Keep every value, but do not inflate the immutable snapshot with whitespace.
+    target.write_text(json.dumps(value, ensure_ascii=False, separators=(',', ':'), allow_nan=False))
 
 
 if __name__ == "__main__":

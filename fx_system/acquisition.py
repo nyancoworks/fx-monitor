@@ -4,6 +4,7 @@ from email.utils import parsedate_to_datetime
 from .core import aggregate
 from .data_quality import evaluate_data
 from .provenance import derived_source, key
+from .indicator_history import RETAINED_BARS
 
 def h1_recovery_needed(cached, provenance, now):
     frames,_=evaluate_data(cached,provenance,now)
@@ -29,7 +30,7 @@ def rebuild_verified_h1(h1, m5, provenance, now):
             continue
         merged[stamp]=bar
         sources[key("h1",stamp)]=source
-    return sorted(merged.values(),key=lambda b:b["timestamp"])[-500:],sources
+    return sorted(merged.values(),key=lambda b:b["timestamp"])[-RETAINED_BARS['h1']:],sources
 
 def retry_after_seconds(value, now):
     """Honor delta-seconds and HTTP dates; never shorten a provider cooldown."""

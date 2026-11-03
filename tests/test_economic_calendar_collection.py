@@ -76,6 +76,36 @@ class CollectionTests(unittest.TestCase):
             again=prepare_calendar(root,run_id='123',clock=lambda:CLOCK,get=self.fake_get(calls),persist=lambda *a:None)
             self.assertEqual(again['requests'],0); self.assertEqual(len(calls),2)
 
+    def test_missing_key_is_explicit_zero_requests_and_preserves_saved_reference(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);self.config(root)
+            previous=root/RELATIVE_PATH;previous.parent.mkdir(parents=True,exist_ok=True)
+            previous.write_bytes(b'previous saved input')
+            with patch.dict(os.environ,{'FC_API_KEY':''}), \
+                 patch('fx_system.economic_calendar_collection._get') as fetch:
+                result=prepare_calendar(root,run_id='123',clock=lambda:CLOCK,persist=lambda *a:None)
+                fetch.assert_not_called()
+            self.assertEqual(result,{'status':'unavailable','requests':0})
+            receipt=json.loads((root/COLLECTION_PATH).read_bytes())
+            self.assertEqual(receipt['reason'],'api_key_missing')
+            self.assertEqual(receipt['requests'],0)
+            self.assertEqual(previous.read_bytes(),b'previous saved input')
+
+    def test_transport_sends_key_only_in_header_not_url(self):
+        class Response:
+            code=200
+            def __enter__(self):return self
+            def __exit__(self,*args):pass
+            def read1(self,size):return b''
+        opener=__import__('unittest.mock',fromlist=['Mock']).Mock()
+        opener.open.return_value=Response()
+        with patch.dict(os.environ,{'FC_API_KEY':'synthetic-test-key-not-a-real-key'}), \
+             patch('urllib.request.build_opener',return_value=opener):
+            _get(BASE_URL+'status',clock=lambda:CLOCK)
+        request=opener.open.call_args.args[0]
+        self.assertEqual(request.get_header('X-api-key'),'synthetic-test-key-not-a-real-key')
+        self.assertNotIn('synthetic-test-key-not-a-real-key',request.full_url)
+
     def test_status_failure_still_saves_calendar_with_unverified_source(self):
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder); self.config(root); calls=[]

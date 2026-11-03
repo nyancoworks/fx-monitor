@@ -204,8 +204,8 @@ def refresh(r):
     r['base_structure']=i['structure'];f=forecast(base,i['structure']);direction=f['direction'];r['direction']=direction;sign=1 if direction=='long' else -1
     for name in ('w1','d1'):
         context=r.get('macro_context',{}).get(name,{})
-        if context.get('verified') is not True or context.get('super_bollinger',{}).get('status')!='calculated':f['cautions'].append(name.upper()+'上位背景は資料不足')
-        elif context.get('super_bollinger',{}).get('centerline_direction')==('down' if direction=='long' else 'up'):
+        if context.get('verified') is not True or (context.get('super_bollinger') or {}).get('status')!='calculated':f['cautions'].append(name.upper()+'上位背景は資料不足')
+        elif (context.get('super_bollinger') or {}).get('centerline_direction')==('down' if direction=='long' else 'up'):
             f['cautions'].append(name.upper()+'上位SB背景が予測方向と競合。伸びの制約に注意');f['material_cautions'].append(name+'_background_opposed')
     p=wave(base.get('bars',[]),direction);rows=base.get('bars',[]);recent=trigger.get('bars',[])
     active=(len(rows)>=2 and p.get('retest_objective') and all(sign*(b['close']-p['retest_objective']['price'])>0 for b in rows[-2:]) and f['evolution']['momentum']=='directional_building')
