@@ -20,6 +20,7 @@ from .monitoring_scenarios import build_monitoring_scenarios
 from .saved_economic_calendar import build_outlook_with_saved_calendar
 from .indicator_inputs import contiguous_indicator_frames
 from .indicator_refresh import refresh_strategy_indicators
+from .indicator_history import RETAINED_BARS, extend_from_archive, indicator_health
 from .storage_paths import storage_root
 
 ROOT=pathlib.Path(__file__).resolve().parents[1]
@@ -216,8 +217,7 @@ def _refresh(ny=None):
                         merged={r["timestamp"]:r for r in cached.get(tf,[])}
                         merged.update({r["timestamp"]:r for r in rows})
                         provenance=record(provenance,tf,rows,'Twelve Data')
-                        # Retain enough D1 for 35 completed weekly candles, while keeping JSON manageable.
-                        raw[tf]=sorted(merged.values(),key=lambda r:r["timestamp"])[-500:]
+                        raw[tf]=sorted(merged.values(),key=lambda r:r["timestamp"])[-RETAINED_BARS[tf]:]
                         cached[tf]=raw[tf]
                     except (requests.RequestException,ValueError,RuntimeError) as exc:
                         requests_this_minute+=1
@@ -261,7 +261,7 @@ def _refresh(ny=None):
                         missing=[b for b in rescue if b["timestamp"] not in existing]
                         existing.update({b["timestamp"]:b for b in missing})
                         provenance=record(provenance,tf,missing,'Yahoo')
-                        raw[tf]=sorted(existing.values(),key=lambda b:b["timestamp"])[-500:]
+                        raw[tf]=sorted(existing.values(),key=lambda b:b["timestamp"])[-RETAINED_BARS[tf]:]
                         cached[tf]=raw[tf]
                         errors[tf+"_yahoo_filled"]=len(missing)
                         print("YAHOO_RESCUE",json.dumps({"pair":name,"timeframe":tf,"filled":len(missing),"attempt":yahoo_attempts}),flush=True)
@@ -288,7 +288,7 @@ def _refresh(ny=None):
                         missing=[b for b in bars if b["timestamp"] not in existing]
                         existing.update({b["timestamp"]:{k:v for k,v in b.items() if k!="tick_count"} for b in missing})
                         provenance=record(provenance,'m5',missing,'Dukascopy bid')
-                        raw["m5"]=sorted(existing.values(),key=lambda b:b["timestamp"])[-500:]
+                        raw["m5"]=sorted(existing.values(),key=lambda b:b["timestamp"])[-RETAINED_BARS['m5']:]
                         errors["m5_fallback_filled_bars"]=len(missing)
                         cached["m5"]=raw["m5"]
                         errors["m5_source"]="Dukascopy bid fallback for previous complete hour; provider boundary"
@@ -382,7 +382,7 @@ def _refresh(ny=None):
             raw=data["decision_data"]["raw"]
             merged={b["timestamp"]:b for b in raw["m5"]}
             merged.update({b["timestamp"]:b for b in rows})
-            raw["m5"]=sorted(merged.values(),key=lambda b:b["timestamp"])[-500:]
+            raw["m5"]=sorted(merged.values(),key=lambda b:b["timestamp"])[-RETAINED_BARS['m5']:]
             cache[name]["m5"]=raw["m5"]
             provenance=data["decision_data"]["provenance"]
             provenance=record(provenance,"m5",rows,"Twelve Data")
@@ -422,6 +422,9 @@ def _refresh(ny=None):
         data["decision_quality"]=quality
         indicator_frames, input_quality = contiguous_indicator_frames(verified, quality)
         data["indicator_input_quality"] = input_quality
+        indicator_frames, data['indicator_history'] = extend_from_archive(
+            indicator_frames, ny.value if ny is not None else None, name,
+            ny_context or {}, quality, final_now)
         # Publish the verified NY17 macro candles, not the retired native D1 placeholders.
         for macro_tf in ("d1","w1"):
             data[macro_tf]={"candles":verified[macro_tf][-100:],
@@ -430,6 +433,7 @@ def _refresh(ny=None):
         # Current standard-only profile from verified retained candles.
         # No new provider requests or changes to the collection budget.
         refresh_strategy_indicators(data,verified,indicator_frames,quality,{})
+        data['standard_technical_health'] = indicator_health(data['standard_technical_frames'])
         q=result["quality"][name]
         q.update({"ok":quality["ready"] and all(quality["timeframes"][tf]["ok"] for tf in ("m5","h1","h4","d1")),"decision_data_ready":quality["ready"],
                   "intraday_monitoring_ready":quality["intraday_monitoring_ready"],

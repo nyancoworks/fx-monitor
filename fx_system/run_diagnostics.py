@@ -69,6 +69,19 @@ def build_diagnostics(snapshot_bytes, source, *, validation_log='', returncode=N
                                 for k, v in acquisition.get(tf, {}).items() if k in allowed}
                             for tf in ('m5', 'h1')},
             'sources': inventory}
+        health = data.get('standard_technical_health')
+        if isinstance(health, dict):
+            pairs[pair]['standard_technicals'] = {
+                tf: {k: v for k, v in health.get(tf, {}).items()
+                     if k in ('input_count', 'sma200_required', 'slope_required', 'shortfall',
+                              'sma200_available', 'slope_available', 'verified')
+                     and type(v) in (int, bool)} for tf in ('h4', 'm15', 'h1', 'm5')}
+        reuse = data.get('indicator_history', {})
+        if reuse:
+            pairs[pair]['indicator_history'] = {
+                k: bounded(v) if isinstance(v, str) else v for k, v in reuse.items()
+                if k in ('status', 'retained_h1', 'input_h1', 'added_h1')
+                and type(v) in (str, int)}
     result = {'schema': 'private_run_diagnostics_v1', 'source': dict(source),
         'snapshot_git_blob_sha': hashlib.sha1(b'blob '+str(len(snapshot_bytes)).encode()+b'\0'+snapshot_bytes).hexdigest(),
         'validation': validation, 'pairs': pairs, 'truncated': False}

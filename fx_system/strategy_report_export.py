@@ -8,6 +8,7 @@ from copy import deepcopy
 import gzip
 import hashlib
 import json
+import lzma
 import re
 import zlib
 
@@ -98,6 +99,12 @@ def build_strategy_report_export(snapshot_bytes, source):
             'payload_base64': base64.b64encode(gzip.compress(raw, mtime=0)).decode('ascii')}
         if compact_rows:
             saved['payload_layout']='standard_inputs_v3' if table_layout else 'canonical_rows_v2'
+        if len(_json(saved)) > MAX_EXPORT_BYTES:
+            # Larger full-prefix inputs must remain lossless. Use a bounded XZ
+            # alternative only when the existing gzip envelope exceeds its cap.
+            # Old saved gzip envelopes keep their original exact read path.
+            saved['encoding']='xz_base64_json'
+            saved['payload_base64']=base64.b64encode(lzma.compress(raw,preset=6)).decode('ascii')
         return saved if len(_json(saved)) <= MAX_EXPORT_BYTES else bundle
     except Exception:
         # Derived report failure must never suppress the original FX save.
@@ -118,13 +125,19 @@ def restore_strategy_report_export(bundle, source, snapshot_blob_sha):
                 or bundle.get('snapshot_git_blob_sha') != snapshot_blob_sha
                 or not isinstance(snapshot_blob_sha, str)
                 or re.fullmatch('[0-9a-f]{40}', snapshot_blob_sha) is None
-                or bundle.get('encoding') != 'gzip_base64_json'
+                or bundle.get('encoding') not in ('gzip_base64_json','xz_base64_json')
                 or len(_json(bundle)) > MAX_EXPORT_BYTES):
             raise ValueError
         compressed = base64.b64decode(bundle['payload_base64'], validate=True)
-        decoder = zlib.decompressobj(16 + zlib.MAX_WBITS)
-        raw = decoder.decompress(compressed, MAX_PAYLOAD_BYTES+1)
-        if (len(raw) > MAX_PAYLOAD_BYTES or decoder.unconsumed_tail or not decoder.eof
+        if bundle['encoding']=='xz_base64_json':
+            decoder=lzma.LZMADecompressor(format=lzma.FORMAT_XZ,memlimit=64*1024*1024)
+            raw=decoder.decompress(compressed,max_length=MAX_PAYLOAD_BYTES+1)
+            unconsumed=False
+        else:
+            decoder = zlib.decompressobj(16 + zlib.MAX_WBITS)
+            raw = decoder.decompress(compressed, MAX_PAYLOAD_BYTES+1)
+            unconsumed=bool(decoder.unconsumed_tail)
+        if (len(raw) > MAX_PAYLOAD_BYTES or unconsumed or not decoder.eof
                 or decoder.unused_data or len(raw) != bundle.get('payload_byte_length')
                 or hashlib.sha256(raw).hexdigest() != bundle.get('payload_sha256')):
             raise ValueError

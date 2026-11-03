@@ -1,5 +1,19 @@
 # Optional economic calendar context
 
+## Current authentication requirement (reviewed 2026-11-04 JST)
+
+Finance Calendar now requires a verified account and API key for programmatic
+requests: https://www.financecalendar.com/api/key/. Configure the existing
+repository Actions secret `FC_API_KEY`; the refresh sends it only in the
+`X-API-Key` header. Do not put it in source, URLs, diagnostics or chat. The
+earlier keyless activation notes below are historical, not the current contract.
+Without this secret the existing refresh makes zero calendar GETs and records
+`api_key_missing`, retaining the old dated reference as stale/unverified.
+HTTP 401/403 records `api_authentication_failed`. With a key, the existing
+maximum two GETs per refresh and no retries remain unchanged. Key setup,
+authentication success and publisher coverage are separate checks; no account
+creation, paid plan, new endpoint or increased frequency is included.
+
 Dated official policy documents are handled separately from event calendars;
 see [POLICY_REFERENCE.md](POLICY_REFERENCE.md) for the optional offline input.
 

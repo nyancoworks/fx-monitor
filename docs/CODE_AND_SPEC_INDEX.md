@@ -4,7 +4,7 @@
 
 | 役割 | コード・文書 |
 | --- | --- |
-| 取得・確定足品質・指標準備 | `main.py`、`data_quality.py`、`indicator_inputs.py`、`indicator_refresh.py` |
+| 取得・確定足品質・指標準備 | `main.py`、`data_quality.py`、`indicator_inputs.py`、`indicator_history.py`、`indicator_refresh.py` |
 | 現行指標・予測・価格計画・32評価 | `standard_technicals.py`、`technical_entry.py`、`scheduled_outlook.py` |
 | 同ペアの戦略関係・掲載・本文 | `pair_market_context.py`、`strategy_report.py`、`REPORT_SELECTION.md` |
 | 保存・完全復元・履歴・前回条件 | `strategy_report_export.py`、`saved_standard_inputs.py`、`scenario_continuity.py`、`scenario_followthrough.py`、`diagnostics/monitoring_result_history.py`、`PRIVATE_REPORT_READING.md` |
