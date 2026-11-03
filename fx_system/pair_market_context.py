@@ -2,7 +2,7 @@
 from copy import deepcopy
 
 
-def build(records, clock):
+def build(records, clock, *, version=1):
     pairs={}
     for r in records:pairs.setdefault(r['pair'],{})[r['strategy']]=r
     result=[]
@@ -67,10 +67,35 @@ def build(records, clock):
                          'target':r.get('reference_levels',{}).get('scenario_target')}
                      for key,r,f in (('swing',s,fs),('daytrade',d,fd))},
             'resolution':('主監視側の局所反応に加え、反対側の見通しの回復・撤回を確認する。' if primary else '方向選択待ち。両戦略の局所反応と基準足の見通しの変化・撤回を比較する。')+'片側の撤回だけで他方の成立としない。両方を同時に仕掛ける提案ではない'})
+    if version==2:
+        for context in result:
+            tracks=pairs[context['pair']];s=tracks['swing'];d=tracks['daytrade']
+            fs=s['technical_outlook']['forecast'];fd=d['technical_outlook']['forecast']
+            def price(x):return f'{x:.8f}'.rstrip('0').rstrip('.') if type(x) in (int,float) and x>0 else '未確認'
+            def withdrawal(r):
+                x=r.get('invalidation',{}).get('price')
+                if type(x) not in (int,float) or x<=0:return r['reference_timeframe'].upper()+'撤回水準未確認（価格を補完しない）'
+                return r['reference_timeframe'].upper()+'確定終値'+price(x)+('以下' if r['direction']=='long' else '以上')
+            def plan(r):
+                w=r.get('wave_price_plan',{});obs=r.get('obstacle_path_review',{}).get('active_obstacle',w.get('first_obstacle')) or {}
+                return '途中障害'+price(obs.get('price'))+'、経路目標'+price(r.get('reference_levels',{}).get('scenario_target'))
+            def reaction(r):
+                c=r.get('scenario_conditions',{})
+                return ('局所条件観測済み：' if c.get('status')=='conditions_observed' else '局所確認待ち：' if c.get('status') in ('waiting','awaiting_breakout','awaiting_retest') else '計画再評価：')+str(c.get('summary','確認材料不足'))
+            context['evidence']={k:{'phase':f['phase'],'momentum':f.get('evolution',{}).get('momentum'),
+                'dma25':deepcopy(f.get('background',{}).get('dma',{}).get('25x5',{})),
+                'structure':r.get('base_structure'),'monitoring':r.get('practical_review',{}).get('status')}
+                for k,r,f in (('swing',s,fs),('daytrade',d,fd))}
+            context['why_wait']='H4：'+fs['primary_path']+'。H1：'+fd['primary_path']+'。局所条件の観測と基準足の方向再開は別'
+            context['decision_branches']=[
+                {'role':'swing_recovery','summary':'スイングの'+direction(s)+'回復を検討：'+reaction(s)+'。H1逆方向予測の弱まりを確認し、'+withdrawal(d)+'ならそのH1仮説は撤回。H1撤回だけでH4再開とはせず、'+plan(s)+'で反応を確認'},
+                {'role':'countermove_continuation','summary':'調整が続く対案：'+reaction(d)+'。H1のDMA位置の回復持続とMACDの'+direction(d)+'側の勢い再開を再評価。'+plan(d)+'を参照し、局所反応だけでH4の方向を反転しない'},
+                {'role':'swing_withdrawal','summary':'スイング仮説の撤回：'+withdrawal(s)+'。その場合は旧回復計画を取り下げ、価格構造・SB・DMA・MACD経過を再評価。反対売買の成立を自動認定しない'}]
+            context['resolution']=context['why_wait']+'。'+'／'.join(b['summary'] for b in context['decision_branches'])
     return result
 
 
 def attach(outlook):
-    outlook['pair_context_version']=1
-    outlook['pair_market_context']=build(outlook['strategy_assessments'],outlook['evaluated_at'])
+    outlook['pair_context_version']=2
+    outlook['pair_market_context']=build(outlook['strategy_assessments'],outlook['evaluated_at'],version=2)
     return outlook

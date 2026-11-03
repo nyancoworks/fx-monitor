@@ -22,6 +22,19 @@ def records():
 
 
 class PairMarketContextTests(unittest.TestCase):
+    def test_concrete_branches_use_saved_conditions_and_distinct_withdrawals(self):
+        rows=records();c=build(rows,CLOCK,version=2)[0]
+        self.assertEqual(len(c['decision_branches']),3)
+        text=c['resolution']
+        for r in rows:
+            self.assertIn(r['scenario_conditions']['summary'],text)
+            self.assertIn(str(r['invalidation']['price']).rstrip('0').rstrip('.'),text)
+        self.assertIn('H1確定終値',text);self.assertIn('H4確定終値',text)
+        self.assertIn('H1撤回だけでH4再開とはせず',text)
+        self.assertNotIn('decision_branches',build(rows,CLOCK)[0])
+        rows[0]['invalidation']['price']=None
+        self.assertIn('撤回水準未確認',build(rows,CLOCK,version=2)[0]['resolution'])
+
     def test_upper_background_and_lower_recovery_choose_primary_not_two_equal_calls(self):
         rows=records();before=deepcopy(rows);c=build(rows,CLOCK)[0]
         self.assertEqual(c['preferred_strategy'],'swing')
