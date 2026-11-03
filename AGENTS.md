@@ -4,7 +4,7 @@
 - Keep private state in the separately configured data checkout. Public workflow output is limited to fixed status metadata; inspect failure paths and artifacts as well as stdout.
 - Preserve discretionary analysis for 16 pairs x swing/daytrade. No orders, permissions or position management. A/B/C is scenario assessment, not proven profitability.
 - Current production profile: Super Bollinger, standard EMA MACD (12,26,9), standard Fibonacci, SMA50/200, RCI9/26/52 plus price structure. Use trigger RCI9 recovery for timing; candle lower-wick/strong bullish-body observation is optional in bullish pullbacks, never an independent PA gate or score. No Span Model, DMA, Preferred Stochastic, SMA100 or DiNapoli MACD in new judgments. Retain old interpreters only for exact historical restoration. No indicator votes or fixed collective AND rules.
-- Do not enable collection, manually dispatch Actions, add market requests or increase schedules without owner authorization. Default collection remains disabled while migration is incomplete.
+- Do not enable collection, manually dispatch Actions, add market requests or increase schedules without owner authorization. Preserve the accepted READY state and existing collection schedule.
 - Validate code locally first. Distinguish local tests, CI, data transfer verification and natural scheduled operation.
 - Keep full historical originals and private research evidence in their original private source; never rewrite a frozen detection or source identity.
 

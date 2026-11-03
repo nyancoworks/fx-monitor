@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import math
 from collections import Counter
-from .core import INTERVALS, MIN_BARS, assess, aggregate, weekly, screen_setup, confirm_m5_entry, expected_closed_timestamp
+from .core import INTERVALS, MIN_BARS, assess, aggregate, weekly, expected_closed_timestamp
 from .provenance import key
 
 SOURCE = "Twelve Data"
@@ -106,19 +106,6 @@ def evaluate_pair(data, now, *, ny_context=None):
     evidence=data.get("decision_data",{})
     frames,quality=evaluate_data(evidence.get("raw",{}),evidence.get("provenance",{}),now)
     return apply_ny_quality(frames,quality,ny_context,now) if ny_context is not None else (frames,quality)
-
-def evaluate_screening(data, now, *, ny_context=None):
-    """Fresh read-time screening; stored setup/grade is never reused."""
-    frames,quality=evaluate_pair(data,now,ny_context=ny_context)
-    setup=screen_setup(frames,now) if quality["ready"] else {
-        "grade":"C","stage":"screening","entry_confirmed":False,
-        "reason":"Decision data quality unverified","data_quality_reasons":quality["reasons"]}
-    entry=confirm_m5_entry(setup,frames["m5"],now)
-    setup={**setup,"m5_entry_check":entry}
-    from .input_assessment import assess_input_layers
-    setup["input_assessment"] = assess_input_layers(frames,quality,now)
-    return frames,quality,setup
-
 
 
 def apply_ny_quality(frames, quality, context, now):

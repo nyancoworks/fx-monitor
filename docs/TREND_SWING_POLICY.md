@@ -1,6 +1,8 @@
+> 旧保存版の解釈・検証記録です。現行の新規生成は[標準テクニカル構成](STANDARD_TECHNICAL_PROFILE.md)を参照してください。以下の旧仕様を新規判断へ適用しません。
+
 # Trend-only swing context v1
 
-新規生成は[technical wave plan v11](TECHNICAL_WAVE_PLAN.md)を使用する。以下の環境除外は維持し、旧v9のH4 PA必須条件は新規生成では置き換える。
+以下は旧保存版の環境除外・H4 PA条件の説明です。現行v13へ適用しません。
 The environment policy introduced `contextual_scenario_review_v7_trend_swing`.
 Historical swing v9 added H4 wave maturity before M15 priority; see
 [swing horizon](SWING_HORIZON.md). This is an

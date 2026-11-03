@@ -1,5 +1,7 @@
 # Concrete scenario confirmation conditions
 
+現行v13の`basis=rci9_turn_v1`は、RCI9の極端域からの反転を確定足で観測する。`level`・`formation_price`・`formation_rr`はnullで、価格の成立水準を捏造しない。PAパターンは必須にせず、買いの下ヒゲ/大陽線は補足のみ。条件観測は約定・方向反転・利益保証ではない。以下の価格反応ルートは旧保存版の解釈として維持する。
+
 `strategy_assessments[].scenario_conditions` supplements the existing saved
 assessment with a price level, confirmation timeframe, reaction, observation
 stage and withdrawal conditions. It never authorizes orders or changes A/B/C.
