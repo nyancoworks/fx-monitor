@@ -14,6 +14,7 @@ def _ordered_reviews(outlook, *, selection_version=4):
     if type(selection_version) is not int or selection_version not in (1, 2, 3, 4):
         raise ValueError('unsupported saved report selection version')
     priority = {(c['pair'], c['strategy']): i for i, c in enumerate(outlook.get('strategy_candidates', []))}
+    canonical_order={(r['pair'],r['strategy']):i for i,r in enumerate(outlook['strategy_assessments'])}
     reviews = [r for r in outlook['strategy_assessments'] if r['assessment'] == 'review']
     def presentation_pending(record):
         if selection_version == 1:
@@ -26,7 +27,8 @@ def _ordered_reviews(outlook, *, selection_version=4):
         if selection_version<3:return 0
         return {'technical_watch':0,'reaction_confirmed':0,'confirmation_wait':0,'planned_price_wait':0,'price_plan_recheck':1,'event_recheck':2}.get(r.get('practical_review',{}).get('status'),1)
     ordered = sorted(reviews, key=lambda r: (practicality(r), 'ABC'.index(r['grade']), presentation_pending(r),
-                  priority.get((r['pair'], r['strategy']), len(priority))))
+                  (canonical_order[(r['pair'],r['strategy'])] if r.get('technical_order_version')==1
+                   else priority.get((r['pair'], r['strategy']), len(priority)))))
     groups = {}
     for index, record in enumerate(ordered):
         group, ratio, _ = saved_plan_comparison(record)
