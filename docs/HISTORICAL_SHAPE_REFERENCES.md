@@ -1,3 +1,5 @@
+> 旧保存版の解釈・検証記録です。現行の新規生成は[標準テクニカル構成](STANDARD_TECHNICAL_PROFILE.md)を参照してください。以下の旧仕様を新規判断へ適用しません。
+
 # Optional saved historical shape references
 
 The existing scheduled producer adds `historical_shape_references` using its

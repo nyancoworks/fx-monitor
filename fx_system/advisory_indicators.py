@@ -1,7 +1,7 @@
 """Calculation-only moving averages and standard-deviation bands.
 
-These are research diagnostics, not screening, grade, or execution gates.
-Super Bollinger naming/conventions require user confirmation before formal use.
+Shared numerical helpers for the current Super Bollinger calculation and
+historical interpretation. No strategy or trade permission is defined here.
 """
 from __future__ import annotations
 import math
@@ -28,20 +28,6 @@ def sma_series(values, period):
     return out
 
 
-def ema_series(values, period):
-    """SMA-seeded EMA, matching the legacy JS emaSeries warmup."""
-    _validate(values, period)
-    out = [None] * len(values)
-    if len(values) < period:
-        return out
-    v = sum(values[:period]) / period
-    out[period - 1] = v
-    k = 2 / (period + 1)
-    for i in range(period, len(values)):
-        v = values[i] * k + v * (1 - k)
-        out[i] = v
-    return out
-
 
 def stddev_bands(values, period=21, multipliers=(1, 2, 3)):
     """SMA-centered population-standard-deviation bands, full windows only.
@@ -67,18 +53,3 @@ def stddev_bands(values, period=21, multipliers=(1, 2, 3)):
                                        "lower": center - k * deviation}
                               for k in multipliers}})
     return out
-
-
-def advisory_snapshot(rows):
-    """Last completed-candle values; caller must supply verified closed bars."""
-    closes = [r["close"] for r in sorted(rows, key=lambda r: r["timestamp"])]
-    if not closes:
-        return {"status": "insufficient", "candles": 0, "advisory_only": True}
-    ema = {str(p): ema_series(closes, p)[-1] for p in (10, 20, 30)}
-    sma = {str(p): sma_series(closes, p)[-1] for p in (10, 20, 30)}
-    bands = stddev_bands(closes)[-1]
-    return {"status": "ok" if bands is not None else "insufficient",
-            "candles": len(closes), "ema": ema, "sma": sma,
-            "stddev_bands_21": bands, "advisory_only": True,
-            "basis": "caller_supplied_completed_candles",
-            "super_bollinger_verified": False}
