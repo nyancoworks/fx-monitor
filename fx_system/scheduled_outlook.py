@@ -5,6 +5,7 @@ live executable pricing. No network access or synthetic candles.
 """
 from __future__ import annotations
 import math
+from copy import deepcopy
 from .monitor_pairs import PAIR_KEYS
 from .strategy_explanation import explain_strategy_track
 from .rci_track_context import rci_track_context
@@ -254,6 +255,9 @@ def _one(pair, data, source_quality, evaluated_at, assessment_method=None):
         track["trigger_price_reference"]=trigger_price_reference(data,track,evaluated_at)
         from .technical_scenario import plan_inputs
         track['technical_plan_inputs'] = plan_inputs(data, track, evaluated_at)
+        if assessment_method==FORECAST_METHOD and name=='swing':
+            track['forecast_wave_version']=1
+            track['forecast_wave_inputs']=deepcopy(data.get('forecast_wave_inputs',{}))
         track['base_evolution_inputs'] = _dict(data.get('base_evolution_inputs')).get(track['base_timeframe'], {})
         if name == 'swing':
             from .swing_wave import wave_inputs

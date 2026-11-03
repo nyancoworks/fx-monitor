@@ -21,6 +21,9 @@ def refresh_strategy_indicators(data, verified, indicator_frames, quality, setup
     data['dinapoli_research']=dinapoli_diagnostics(indicator_frames,setup)
     data['dinapoli_indicator_reference']={tf:indicator_reference(indicator_frames[tf]) for tf in TIMEFRAMES}
     data['indicator_context_version']=2
+    from .forecast_wave import inputs as wave_inputs
+    data['forecast_wave_inputs']=wave_inputs(verified['h4'],quality.get('evaluated_at'),
+        quality.get('timeframes',{}).get('h4',{}).get('ok') is True)
     from .span_model import inputs
     data['span_model_version']=1
     data['span_model_inputs']={tf:inputs(verified[tf],tf,quality.get('evaluated_at'),

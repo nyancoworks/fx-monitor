@@ -134,6 +134,10 @@ def build_outlook(r):
 
 def build_plan(r):
     i = r.get('technical_plan_inputs', {}); tf = r['reference_timeframe']
+    selection=None
+    if r.get('forecast_wave_version')==1:
+        from .forecast_wave import plan
+        i,selection=plan(r)
     sec = {'h4':14400, 'h1':3600}[tf]; clock = r['evaluated_at']
     out = {'schema':'technical_wave_plan_v1', 'evaluated_at':clock, 'timeframe':tf,
            'status':'unverified', 'thesis_invalidation':None, 'local_setup_failure':None,
@@ -142,6 +146,9 @@ def build_plan(r):
            'anchor_basis':'confirmed_base_timeframe_impulse_not_local_trigger_extremes',
            'projection_is_conditional':True, 'time_to_target':'not_estimated',
            'reason':'確認済み基準足の波・アンカー不足。遠い目標を補完しない'}
+    if selection is not None:
+        out['wave_selection']=deepcopy(selection.get('selection',{}))
+        out['reason']=selection['reason']
     if not isinstance(i,dict):return out
     b = i.get('bar', {}); p = i.get('projection', {}); start=p.get('start_pivot', {}); end=p.get('end_pivot', {})
     sign = 1 if r.get('direction')=='long' else -1 if r.get('direction')=='short' else 0
@@ -174,6 +181,8 @@ def build_plan(r):
     ext = [origin+sign*width*ratio for ratio in (1.272,1.618)]
     # Never roll the goal farther because price has reached the projection.
     status = 'invalidated' if sign*(c-origin)<=0 else 'objective_reached' if sign*(c-ext[1])>=0 else 'available'
+    if selection is not None and selection.get('selection',{}).get('thesis_breached_at') is not None:
+        status='invalidated'
     out.update(status=status, thesis_invalidation=origin,
                local_setup_failure=max(local,key=lambda a:a['timestamp'])['price'] if local else None,
                first_obstacle=deepcopy(obstacle), retest_objective=deepcopy(end),
@@ -183,6 +192,9 @@ def build_plan(r):
                               'kind':'standard_fibonacci_retracement_reference'},
                start_pivot=deepcopy(start), end_pivot=deepcopy(end), wave_width=width,
                reason='基準足の確定波を起点に押し戻り→終点再試し→突破後拡張を分離。最寄り障害を最終目標に固定しない')
+    if selection is not None:
+        out['anchor_basis']='forecast_direction_dma25x5_cycle_confirmed_h4_parent_wave'
+        out['reason']=selection['reason']+'。内側の高安は途中障害・局所無効化と区別'
     if r.get('price_path_review_version')==1:
         from .technical_evolution import describe
         evolution=describe(r)
@@ -231,6 +243,9 @@ def assess(pair, strategy, track, clock):
         r['entry_review_version']=1
         r['price_path_review_version']=1
         if track.get('span_model_version')==1:r['span_model_version']=1
+        if track.get('forecast_wave_version')==1:
+            r['forecast_wave_version']=1
+            r['forecast_wave_inputs']=deepcopy(track.get('forecast_wave_inputs',{}))
         r['trigger_structure_input']=deepcopy(track.get('trigger_structure_input',{}))
     r['currency_strength_context']=interpret(track.get('currency_strength_context'),pair,strategy,r['direction'],clock)
     if strategy=='swing':r['swing_environment']=build_environment(r)
@@ -244,6 +259,12 @@ def refresh(r):
     """Recompute prices, priority and grade, including after calendar enrichment."""
     from .scenario_conditions import describe_conditions
     out=build_outlook(r); p=build_plan(r); r['technical_outlook']=out; r['wave_price_plan']=p
+    if r.get('forecast_wave_version')==1:
+        selected=p.get('wave_selection',{})
+        if selected.get('background_relation')=='opposed':
+            out['cautions'].append('親波を形成したDMA背景と現在の背景区間が競合。親波を参照しても再開確定とはしない')
+        if selected.get('history_left_censored'):
+            out['cautions'].append('H4背景区間の開始が保有履歴の外側。選んだ起点は観測範囲内の参考で、真のトレンド起点とは断定しない')
     from .technical_evolution import METHOD as EVOLUTION_METHOD, apply as apply_evolution, defer_priority
     from .technical_forecast import METHOD as FORECAST_METHOD
     forecast = r.get('method_version')==FORECAST_METHOD
@@ -253,6 +274,9 @@ def refresh(r):
         raise ValueError('unsupported span model interpretation')
     if 'price_path_review_version' in r and (not forecast or type(r['price_path_review_version']) is not int or r['price_path_review_version']!=1):
         raise ValueError('unsupported price path interpretation')
+    if 'forecast_wave_version' in r and (not forecast or r.get('strategy')!='swing'
+            or type(r['forecast_wave_version']) is not int or r['forecast_wave_version']!=1):
+        raise ValueError('unsupported forecast wave interpretation')
     evolution = r.get('method_version')==EVOLUTION_METHOD
     if evolution:
         out=apply_evolution(r,out);r['technical_outlook']=out
@@ -297,6 +321,9 @@ def refresh(r):
                                           'confirmation':'verified_saved_base_close'}] if positive(stop) else [],
                  'observation':{'closed_at':baseclosed,'saved_close':p['reference_close']} if withdrawn else None}
     r['invalidation']={'price':stop,'scope':'base_wave_thesis', 'observed':p['status']=='invalidated'}
+    breach=p.get('wave_selection',{})
+    if p['status']=='invalidated' and breach.get('thesis_breached_at') is not None:
+        r['expiry']['observation']={'closed_at':breach['thesis_breached_at'],'saved_close':breach['thesis_breach_close']}
     # PA supplies timing only. Its success/failure never defines the base thesis.
     r['market_phase']='pullback_wait' if out['status']=='retracement_then_continuation' else 'transition_context' if out['status']=='transition' else 'directional_structure_wait'
     r['scenario_conditions']=describe_conditions(r,r.get('entry_condition_inputs'))
@@ -365,6 +392,12 @@ def refresh(r):
         descriptions['entry_recheck']='方向仮説は保持し、確認足の雲の反対側で続く終値を受けて仕掛け回復待ち：'+span_trigger['summary']
     if p.get('path_stage')=='extension_wait' and status=='price_plan_recheck':
         descriptions['price_plan_recheck']='波の終点到達後。突破の終値維持・方向側の勢い継続が未確認のため、拡張目標を有効化せず価格計画の再評価待ち'
+    if r.get('forecast_wave_version')==1 and fresh and p.get('retest_objective') and positive(target):
+        crossed=sign*(price-p['retest_objective']['price'])>=0
+        if crossed and p.get('path_stage')=='retest' and status=='price_plan_recheck':
+            descriptions['price_plan_recheck']='確認足では親波の終点を通過済み。基準足の突破・勢い継続を確認するまで旧目標を延ばさず再評価待ち'
+    if r.get('forecast_wave_version')==1 and status=='evaluation_pending' and p['status']=='unverified':
+        descriptions['evaluation_pending']='H4親波の価格計画を保留：'+p['reason']
     if evolution and status=='technical_recheck' and out['status']!='transition':
         descriptions['technical_recheck']=out['evolution']['summary']+'。方向監視を保持し、局所PAだけで優先候補にしない'
     r['practical_review']={'schema':'saved_practical_review_v3','status':status,'summary':descriptions[status],
@@ -396,6 +429,8 @@ def render_lines(r):
     obstacle=p.get('first_obstacle') or {}
     return ['', f"{r['pair'][:3]}/{r['pair'][3:]} {name}｜{'買い方向' if r['direction']=='long' else '売り方向'}｜{r['grade']}",
             '評価理由：'+r['grade_reason'], '見通し：'+o['path'],
+            *((['狙う波：H4のDMA25x5背景区間に対応する確定親波。直近の小波とは区別',
+                '波の選定：'+p['reason']]) if r.get('forecast_wave_version')==1 else []),
             *((['価格経路：'+{'retest':'波の終点再試し','extension_wait':'終点突破後の確認待ち。拡張目標は未有効化',
                'extension_active':'終点突破・勢い継続を確認した条件付き拡張','withdrawn':'波の撤回または経路終了'}[p['path_stage']]])
               if 'path_stage' in p else []),
