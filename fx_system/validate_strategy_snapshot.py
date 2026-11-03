@@ -33,7 +33,7 @@ def validate_strategy_snapshot(snapshot):
         failures.append('scheduled pair market context version missing')
     if 'pair_context_version' in outlook:
         from .pair_market_context import build
-        if (type(outlook['pair_context_version']) is not int or outlook['pair_context_version'] not in (1,2)
+        if (type(outlook['pair_context_version']) is not int or outlook['pair_context_version'] not in (1,2,3)
                 or outlook.get('pair_market_context')!=build(records,clock,version=outlook['pair_context_version'])):
             failures.append('scheduled pair market context mismatch')
     counts = Counter()
@@ -41,7 +41,13 @@ def validate_strategy_snapshot(snapshot):
         from .technical_scenario import METHOD as TECHNICAL_METHOD, refresh
         from .technical_forecast import METHOD as FORECAST_METHOD
         from .technical_evolution import METHOD as EVOLUTION_METHOD
-        if r.get('method_version') in (TECHNICAL_METHOD,EVOLUTION_METHOD,FORECAST_METHOD) or 'technical_outlook' in r or 'wave_price_plan' in r:
+        from .standard_technicals import METHOD as STANDARD_METHOD, refresh as standard_refresh
+        if r.get('method_version')==STANDARD_METHOD:
+            from copy import deepcopy
+            try:
+                if standard_refresh(deepcopy(r))!=r:failures.append('standard technical assessment mismatch')
+            except (KeyError,TypeError,ValueError,AttributeError):failures.append('standard technical inputs invalid')
+        elif r.get('method_version') in (TECHNICAL_METHOD,EVOLUTION_METHOD,FORECAST_METHOD) or 'technical_outlook' in r or 'wave_price_plan' in r:
             from copy import deepcopy
             if r.get('method_version') not in (TECHNICAL_METHOD,EVOLUTION_METHOD,FORECAST_METHOD):
                 failures.append('scheduled technical wave method mismatch')

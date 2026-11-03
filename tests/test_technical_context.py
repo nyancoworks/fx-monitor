@@ -149,15 +149,15 @@ class TechnicalContextTests(unittest.TestCase):
         s['scheduled_outlook']['strategy_assessments'][0]['technical_context']['summary']='invented'
         self.assertIn('scheduled technical context mismatch',validate_strategy_snapshot(s))
 
-    def test_production_dma_diagnostics_includes_m15(self):
+    def test_production_standard_indicators_replace_dma_diagnostics(self):
         from fx_system.indicator_refresh import refresh_strategy_indicators
         frames={tf:candles(tf) for tf in ('w1','d1','h4','h1','m15','m5')}
         result={}
         refresh_strategy_indicators(result,frames,frames,{'timeframes':{tf:{} for tf in frames}}, {'direction':'long'})
-        self.assertTrue(result['dinapoli_research']['m15']['dma'])
-        self.assertEqual(result['super_bollinger_context']['m15']['status'],'calculated')
-        self.assertEqual(result['super_bollinger_context']['m5']['status'],'calculated')
-        self.assertEqual(result['indicator_context_version'],2)
+        self.assertNotIn('dinapoli_research',result)
+        self.assertEqual(result['standard_technical_frames']['m15']['super_bollinger']['status'],'calculated')
+        self.assertEqual(result['standard_technical_frames']['m5']['macd']['parameters'],[12,26,9])
+        self.assertEqual(set(result['standard_technical_frames']['m5']['sma']),{'50','200'})
 
 
 if __name__=='__main__':unittest.main()

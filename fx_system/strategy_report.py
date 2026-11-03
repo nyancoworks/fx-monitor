@@ -49,7 +49,7 @@ def report_records(outlook, *, selection_version=4):
     ordered = _ordered_reviews(outlook, selection_version=selection_version)
     if selection_version>=3:
         ordered=[r for r in ordered if 'practical_review' not in r or r['practical_review'].get('status') in ('technical_watch','reaction_confirmed','confirmation_wait','planned_price_wait')]
-    if outlook.get('pair_context_version') in (1,2):
+    if outlook.get('pair_context_version') in (1,2,3):
         preferred={p['pair']:p['preferred_strategy'] for p in outlook['pair_market_context'] if p['preferred_strategy']}
         eligible={(r['pair'],r['strategy']) for r in ordered}
         ordered=[r for r in ordered if r['pair'] not in preferred
@@ -104,13 +104,18 @@ def render_strategy_report(snapshot, *, include_all_reviews=False, complete_evid
     if any(r.get('practical_review', {}).get('status') == 'swing_wave_wait' for r in rows):
         lines.append('H4の波の反応待ちのスイングは方向監視のみ。M15の一時反応だけでは優先候補にしない。')
     if not shown: lines.append('掲載する検討候補なし。見送りと評価保留の内訳は上記。')
-    for context in (outlook.get('pair_market_context',[]) if outlook.get('pair_context_version') in (1,2) else []):
+    for context in (outlook.get('pair_market_context',[]) if outlook.get('pair_context_version') in (1,2,3) else []):
         if any(r['pair']==context['pair'] for r in shown):
             lines.extend(['',context['pair']+'の統合判断：'+context['summary'],context['resolution']])
             for strategy in ('swing','daytrade'):
                 plan=context['plans'][strategy]
                 lines.append(('主監視' if strategy==context['preferred_strategy'] else '対案' if context['preferred_strategy'] else '比較経路')+'：'+strategy+'／'+str(plan['condition_status'])+'／'+str(plan['wait'])+'／撤回 '+plan['timeframe'].upper()+'確定終値 '+_number((plan['withdrawal'] or {}).get('price'))+('以下' if plan['direction']=='long' else '以上')+'／目標 '+_number(plan['target']))
     for r in shown:
+        from .standard_technicals import METHOD as STANDARD_METHOD, render_lines as standard_lines
+        if r.get('method_version')==STANDARD_METHOD:
+            lines.extend(standard_lines(r))
+            lines.extend(calendar_lines(r,_clock))
+            continue
         from .technical_scenario import METHOD as TECHNICAL_METHOD, render_lines
         from .technical_forecast import METHOD as FORECAST_METHOD
         from .technical_evolution import METHOD as EVOLUTION_METHOD

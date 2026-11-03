@@ -119,7 +119,7 @@ def describe_conditions(record, inputs):
     conditions = []; observed = False; breakout_at = None
     # New interpretations preserve the transition route even if one local
     # candle pulls back. Frozen records without this marker keep their route.
-    transition_first = record.get('contextual_review_version') == 1 and phase == 'transition_context'
+    transition_first = (record.get('contextual_review_version') == 1 or record.get('method_version')=='contextual_scenario_review_v13_standard_technicals') and phase == 'transition_context'
     if (phase == 'pullback_wait' or local_pullback) and not transition_first:
         route = 'pullback_rejection'
         anchor_bars = bars[-3:-1]

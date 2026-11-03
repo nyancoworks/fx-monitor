@@ -7,6 +7,8 @@ def _number(x):
 
 
 def review(record, *, monitor_wait=True):
+    from .standard_technicals import METHOD as STANDARD_METHOD, refresh as standard_refresh
+    if record.get('method_version')==STANDARD_METHOD:return standard_refresh(record)
     from .technical_scenario import METHOD as TECHNICAL_METHOD, refresh
     from .technical_forecast import METHOD as FORECAST_METHOD
     from .technical_evolution import METHOD as EVOLUTION_METHOD

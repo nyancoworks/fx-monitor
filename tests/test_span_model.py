@@ -115,7 +115,7 @@ class SpanModelTests(unittest.TestCase):
         self.assertEqual(a,b)
         self.assertEqual(calculate(a),calculate(json.loads(json.dumps(b,sort_keys=True))))
 
-    def test_production_refresh_context_and_track_share_the_same_inputs(self):
+    def test_production_no_longer_generates_span_inputs(self):
         from fx_system.indicator_refresh import refresh_strategy_indicators
         from fx_system.strategy_indicator_context import strategy_indicator_context
         from fx_system.technical_forecast import prepare_track
@@ -127,15 +127,9 @@ class SpanModelTests(unittest.TestCase):
         data['h4_setup_shadow']={'dinapoli':{**dma_snapshot(frames['h4']),
              'confirmed_fibonacci':confirmed_fibonacci(frames['h4'],'long')}}
         refresh_strategy_indicators(data,frames,frames,q,{})
-        self.assertEqual(data['span_model_version'],1)
-        for strategy in ('swing','daytrade'):
-            t=track(strategy);prepare_track(data,t,CLOCK)
-            self.assertEqual(t['span_model_version'],1)
-            context=strategy_indicator_context(data,t,evaluated_at=CLOCK)
-            for role in ('base','trigger'):
-                n=context['frames'][role]['observations'][-1]
-                self.assertEqual(n['inputs'],data['span_model_inputs'][t[role+'_timeframe']])
-                self.assertEqual(n['observation'],calculate(n['inputs']))
+        self.assertNotIn('span_model_version',data)
+        self.assertNotIn('span_model_inputs',data)
+        self.assertEqual(data['standard_technical_version'],1)
 
     def test_comparison_drops_duplicate_wording_but_keeps_role_states_and_original(self):
         r=assess(span_track());original=deepcopy(r)
