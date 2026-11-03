@@ -143,7 +143,7 @@ class SpanModelTests(unittest.TestCase):
         for role in ('base','trigger'):
             self.assertNotIn('summary',projection[role])
             self.assertEqual(projection[role]['state'],'directional_position_held')
-            self.assertIn('lagging_cloud_location',projection[role])
+            self.assertIn('lagging_cloud_location',r['technical_outlook']['forecast']['span_model'][role])
         self.assertEqual(r,original)
 
     def test_both_strategies_directions_held_cloud_does_not_change_prices_or_add_votes(self):

@@ -27,7 +27,7 @@ def _brief(record):
         result['swing_context'] = deepcopy(record['swing_context'])
     for field in ('technical_outlook','wave_price_plan'):
         if field in record:result[field]=deepcopy(record[field])
-    if record.get('price_path_review_version')==1:
+    if isinstance(result.get('wave_price_plan'),dict):
         plan=result.get('wave_price_plan',{})
         # Comparison retains actual stages, confirmation states and all prices.
         # Constant method explanations stay in the immutable full assessment.
@@ -55,8 +55,14 @@ def _brief(record):
                 if isinstance(frame,dict):
                     frame.pop('summary',None)
                     frame.pop('cross_meaning',None)
-        for field in ('background','timing','evolution'):
+        # Comparison needs direction, phase, paths and contradictions. The full
+        # producer support list remains in the immutable assessment/export;
+        # copying it on both sides can crowd out actual frozen-condition events.
+        for field in ('background','timing','evolution','support'):
             forecast.pop(field,None)
+        if isinstance(forecast.get('span_model'),dict):
+            forecast['span_model']={role:{'state':frame.get('state','unverified')}
+                                    for role,frame in forecast['span_model'].items() if isinstance(frame,dict)}
         # Adjacent v12 generations otherwise repeat every long path/caution
         # twice per side. Keep the actual values on technical_outlook and make
         # the projection explicit instead of inflating the bounded history.
