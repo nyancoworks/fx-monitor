@@ -27,6 +27,16 @@ def _brief(record):
         result['swing_context'] = deepcopy(record['swing_context'])
     for field in ('technical_outlook','wave_price_plan'):
         if field in record:result[field]=deepcopy(record[field])
+    if record.get('price_path_review_version')==1:
+        plan=result.get('wave_price_plan',{})
+        # Comparison retains actual stages, confirmation states and all prices.
+        # Constant method explanations stay in the immutable full assessment.
+        plan.pop('reason',None)
+        for key in ('schema','anchor_basis','time_to_target','evaluated_at','timeframe'):
+            plan.pop(key,None)
+        plan.get('extension_confirmation',{}).pop('meaning',None)
+        zone=plan.get('extension_zone')
+        if isinstance(zone,dict):zone.pop('requires',None)
     # Full observations remain in the immutable assessment/export. Comparison
     # rows retain forecasts, concerns, evolution and prices, without duplicating
     # raw DMA/RCI detail or the already retained evolution object a second time.
