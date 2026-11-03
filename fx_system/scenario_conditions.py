@@ -196,6 +196,13 @@ def describe_conditions(record, inputs):
 
 def validate_conditions(record):
     """Check saved condition evidence without putting raw bars into history."""
+    if record.get('scenario_conditions',{}).get('basis')=='rci9_turn_v1':
+        from .technical_entry import describe
+        if (record.get('method_version')!='contextual_scenario_review_v13_standard_technicals'
+                or type(record.get('technical_entry_version')) is not int or record['technical_entry_version']!=1):
+            return ['technical timing version invalid']
+        try:return [] if describe(record)==record['scenario_conditions'] else ['technical timing evidence mismatch']
+        except (KeyError,TypeError,ValueError):return ['technical timing inputs invalid']
     if 'scenario_conditions' not in record:
         return []
     plan = record['scenario_conditions']

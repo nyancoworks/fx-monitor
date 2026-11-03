@@ -75,6 +75,27 @@ class StandardTechnicalTests(unittest.TestCase):
         self.assertIsNone(r['standard_inputs']['base']['sma']['200']['value'])
         self.assertEqual(r['technical_outlook']['forecast']['status'],'available')
 
+    def test_local_pause_is_separate_from_thesis_and_old_profile_restores(self):
+        d,q,_=inputs()
+        o=build_scheduled_outlook({'EURUSD':d},{'EURUSD':q},evaluated_at=CLOCK)
+        r=next(r for r in o['strategy_assessments'] if r['pair']=='EURUSD' and r['strategy']=='swing')
+        local=r['wave_price_plan']['local_setup_failure'];origin=r['invalidation']['price']
+        self.assertGreater(local,origin)
+        t=r['standard_inputs']['trigger'];bars=deepcopy(t['bars']);price=(local+origin)/2
+        for b in bars[-5:]:b.update(open=price,high=price+.1,low=price-.1,close=price)
+        r['standard_inputs']['trigger']=frame(bars,'m15',CLOCK,True)
+        refresh(r)
+        self.assertEqual(r['assessment'],'review');self.assertEqual(r['invalidation']['price'],origin)
+        self.assertEqual(r['practical_review']['status'],'entry_recheck')
+        self.assertEqual(r['practical_review']['entry_status'],'paused')
+        pending=deepcopy(r);b=pending['standard_inputs']['base']
+        pending['standard_inputs']['base']=frame(b['bars'],'h4',CLOCK,False)
+        refresh(pending);self.assertEqual(pending['assessment'],'evaluation_pending')
+        self.assertNotEqual(pending['practical_review']['entry_status'],'paused')
+        old=deepcopy(r);old['standard_technical_version']=1;old['practical_review'].pop('entry_status')
+        refresh(old);self.assertNotIn('entry_status',old['practical_review'])
+        self.assertEqual(refresh(deepcopy(old)),old)
+
     def test_invalid_quality_does_not_become_market_skip(self):
         d,q,_=inputs();q['timeframes']['h4']['ok']=False
         o=build_scheduled_outlook({'EURUSD':d},{'EURUSD':q},evaluated_at=CLOCK)

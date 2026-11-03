@@ -1,0 +1,60 @@
+"""RCI timing, with one optional bullish candle observation; no PA strategy."""
+from copy import deepcopy
+from statistics import median
+import math
+
+BASIS='rci9_turn_v1'
+
+def turn_observed(value,previous,direction):
+    if direction not in ('long','short') or not all(type(x) in (int,float) and math.isfinite(x) and -100<=x<=100 for x in (value,previous)):return None
+    return min(value,previous)<=-80 and value>previous if direction=='long' else max(value,previous)>=80 and value<previous
+
+
+def describe(record):
+    clock=record['evaluated_at'];tf=record['trigger_timeframe'];direction=record.get('direction')
+    result={'schema':'scenario_conditions_v1','evaluated_at':clock,'timeframe':tf,'direction':direction,
+        'status':'unavailable','route':'technical_rci_recovery','conditions':[],
+        'observed_at':None,'observed_close':None,'formation_price':None,'formation_rr':None,
+        'advisory_only':True,'profitability_validated':False,'basis':BASIS,
+        'scope':'technical_timing_not_candle_pattern_or_fill','level':None}
+    def unavailable(text,status='unavailable'):
+        return {**result,'status':status,'reason':text,'summary':text}
+    if record.get('expiry',{}).get('status')=='withdrawn':return unavailable('旧経路は終了。新しい価格計画を待つ','withdrawn')
+    if record.get('assessment')!='review':return unavailable('主要材料の不足または方向未確定で条件を具体化できない','not_applicable')
+    f=record['standard_inputs']['trigger'];sec={'m5':300,'m15':900}[tf];rci=f.get('rci',{}).get('9',{})
+    rows=f.get('bars',[]);closed=f.get('closed_at');value,previous=rci.get('value'),rci.get('previous')
+    observed=turn_observed(value,previous,direction)
+    if (f.get('verified') is not True or f.get('evaluated_at')!=clock or f.get('timeframe')!=tf
+            or type(closed) is not int or not 0<=clock-closed<sec or not rows or observed is None):
+        return unavailable('同時刻の確定確認足・RCI9の位置と傾きを確認できない')
+    price=rows[-1]['close'];levels=record['reference_levels'];stop,target=levels.get('invalidation'),levels.get('scenario_target')
+    if (type(stop) not in (int,float) or type(target) not in (int,float)
+            or not (stop<price<target if direction=='long' else target<price<stop)):
+        return unavailable('方向仮説は保持するが、経路目標・撤回と確認足価格の関係を再評価する')
+    text=tf.upper()+'のRCI9が'+('−80以下から上向く押し目回復' if direction=='long' else '＋80以上から下向く戻りの収束')+'を確定足で確認する。ローソク足パターンは必須にしない'
+    return {**result,'status':'conditions_observed' if observed else 'waiting',
+        'reason':('RCI9反転のタイミングを観測' if observed else 'RCI9の極端域からの反転待ち')+'。方向背景・価格経路・局所停止は別途評価',
+        'summary':text,'conditions':[{'kind':'rci9_extreme_recovery','period':9,
+            'extreme':-80 if direction=='long' else 80,'movement':'rising' if direction=='long' else 'falling'}],
+        'observed_at':closed if observed else None,'observed_close':price if observed else None,
+        'evidence':{'rci9':value,'previous_rci9':previous,'closed_at':closed},
+        'withdrawal_conditions':deepcopy(record.get('expiry',{}).get('withdrawal_conditions',[]))}
+
+
+def candle_reference(record):
+    f=record['standard_inputs']['trigger'];rows=f.get('bars',[]);rci=f.get('rci',{}).get('9',{})
+    out={'status':'not_applicable','required_for_timing':False,'guarantee':False,
+         'summary':'ローソク足は独立した仕掛け条件に使用しない'}
+    if (record.get('direction')!='long' or record.get('assessment')!='review' or not rows
+            or f.get('verified') is not True or f.get('evaluated_at')!=record['evaluated_at']
+            or type(f.get('closed_at')) is not int or not 0<=record['evaluated_at']-f['closed_at']<{'m5':300,'m15':900}[record['trigger_timeframe']]):return out
+    value,previous=rci.get('value'),rci.get('previous')
+    if turn_observed(value,previous,'long') is not True:return out
+    b=rows[-1];body=abs(b['close']-b['open']);lower=min(b['open'],b['close'])-b['low'];upper=b['high']-max(b['open'],b['close'])
+    previous_bodies=[abs(p['close']-p['open']) for p in rows[-5:-1]]
+    long_wick=lower>max(body,upper)
+    strong_bull=bool(previous_bodies and b['close']>b['open'] and body>median(previous_bodies) and body>lower+upper)
+    return {**out,'status':'observed' if long_wick or strong_bull else 'not_observed',
+        'body':body,'lower_wick':lower,'upper_wick':upper,'long_lower_wick':long_wick,'strong_bullish_body':strong_bull,
+        'definition':'参考分類：下ヒゲが実体/上ヒゲより長い、または陽線実体が前4本中央値とヒゲ合計を上回る。優位性未検証',
+        'summary':'RCI9の極端域からの上向きに、'+('下ヒゲまたは強い陽線の補足反応を観測' if long_wick or strong_bull else '補足の下ヒゲ/強い陽線は未観測')+'。必須条件・満点評価・約定・利益保証ではない'}

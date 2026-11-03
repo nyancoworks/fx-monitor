@@ -50,12 +50,13 @@ def observe_frozen_condition(record, pair, through):
     from .technical_scenario import METHOD as TECHNICAL_METHOD
     from .technical_forecast import METHOD as FORECAST_METHOD
     from .technical_evolution import METHOD as EVOLUTION_METHOD
-    technical = record.get('method_version') in (TECHNICAL_METHOD,EVOLUTION_METHOD,FORECAST_METHOD)
+    technical = record.get('method_version') in (TECHNICAL_METHOD,EVOLUTION_METHOD,FORECAST_METHOD,'contextual_scenario_review_v13_standard_technicals')
+    rci_timing=plan.get('basis')=='rci9_turn_v1'
     stop, target, level = levels.get('invalidation'), levels.get('scenario_target',levels.get('structural_target')), plan.get('level')
     sign = 1 if record.get('direction') == 'long' else -1 if record.get('direction') == 'short' else 0
     if (not seconds or not base_seconds or not sign or type(through) is not int
-            or not 0 < through-clock <= 31*86400 or not all(positive(v) for v in (stop, target, level))
-            or not sign * (target - level) > 0 or not sign * (level - stop) > 0):
+            or not 0 < through-clock <= 31*86400 or not all(positive(v) for v in (stop, target))
+            or not rci_timing and (not positive(level) or not sign*(target-level)>0 or not sign*(level-stop)>0)):
         return {**out, 'status': 'saved_price_plan_unavailable'}
     out.update(original_level=level, original_target=target, original_invalidation=stop,
                confirmation_timeframe=record['trigger_timeframe'],
@@ -160,16 +161,32 @@ def observe_frozen_condition(record, pair, through):
             break
     if plan['status'] == 'conditions_observed':
         return {**out, 'status': 'already_observed_at_save'}
+    rci_history={}
+    if rci_timing:
+        prefix=record.get('standard_inputs',{}).get('trigger',{}).get('bars',[])
+        if not prefix:return {**out,'status':'saved_condition_unverified'}
+        rci_history={b['timestamp']:b['close'] for b in prefix}
+        for b in _aggregate(rows,seconds,prefix[-1]['timestamp']+seconds,through):rci_history[b['timestamp']]=b['close']
+        out['rci9_unverified_candles']=0
     breakout = plan.get('breakout_observed_at') if plan['status'] == 'awaiting_retest' else None
     for bar in confirmation:
         withdrawals = [out[k] for k in ('base_close_withdrawal','trigger_close_withdrawal') if out[k]]
         if any(w['closed_at'] <= bar['closed_at'] for w in withdrawals):
             break
         close, opened = bar['close'], bar['open']
-        touched = bar['low'] <= level if sign == 1 else bar['high'] >= level
-        reclaimed = sign * (close-level) > 0
+        touched = not rci_timing and (bar['low']<=level if sign==1 else bar['high']>=level)
+        reclaimed = not rci_timing and sign*(close-level)>0
         route = plan['route']
-        if route in ('pullback_rejection', 'range_edge_rejection'):
+        if rci_timing:
+            from .indicator_research import rci_series
+            from .technical_entry import turn_observed
+            stamps=[bar['timestamp']-(9-i)*seconds for i in range(10)]
+            if any(t not in rci_history for t in stamps):
+                out['rci9_unverified_candles']+=1
+                continue
+            values=rci_series([rci_history[t] for t in stamps],9)
+            observed=turn_observed(values[-1],values[-2],record['direction']) is True
+        elif route in ('pullback_rejection', 'range_edge_rejection'):
             observed = touched and reclaimed and sign*(close-opened) > 0
         elif route == 'continuation_breakout':
             observed = reclaimed
@@ -192,5 +209,7 @@ def observe_frozen_condition(record, pair, through):
                 'costs_included': False, 'is_entry_or_fill': False,
                 'base_close_coverage_complete': out['base_close_coverage_complete']}
             return {**out, 'status': 'frozen_condition_observed'}
+    if rci_timing and out['rci9_unverified_candles']:
+        return {**out,'status':'saved_condition_unverified'}
     return {**out, 'status': 'close_based_withdrawal_observed' if out['base_close_withdrawal'] or out['trigger_close_withdrawal'] else
             'frozen_condition_not_seen_in_whole_candles' if confirmation else 'awaiting_whole_future_candles'}

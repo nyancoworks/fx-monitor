@@ -178,7 +178,7 @@ def wave(rows,direction):
 
 def assess(pair,strategy,track,clock):
     r={'pair':pair,'strategy':strategy,'evaluated_at':clock,'method_version':METHOD,
-       'standard_technical_version':1,'standard_inputs':deepcopy(track['standard_inputs']),
+       'standard_technical_version':2,'technical_entry_version':1,'standard_inputs':deepcopy(track['standard_inputs']),
        'currency_strength_context':deepcopy(track.get('currency_strength_context')),
        'macro_context':deepcopy(track.get('macro_context',{})),
        'execution_authority':'none','advisory_only':True,'reference_timeframe':track['base_timeframe'],
@@ -187,8 +187,10 @@ def assess(pair,strategy,track,clock):
 
 
 def refresh(r):
-    if r.get('method_version')!=METHOD or type(r.get('standard_technical_version')) is not int or r['standard_technical_version']!=1:
+    if r.get('method_version')!=METHOD or type(r.get('standard_technical_version')) is not int or r['standard_technical_version'] not in (1,2):
         raise ValueError('unsupported standard technical profile')
+    if 'technical_entry_version' in r and (type(r['technical_entry_version']) is not int or r['technical_entry_version']!=1):
+        raise ValueError('unsupported technical entry interpretation')
     i=r['standard_inputs'];base=i['base'];trigger=i['trigger'];clock=r['evaluated_at'];tf=r['reference_timeframe'];tt=r['trigger_timeframe']
     if i['evaluated_at']!=clock or base['evaluated_at']!=clock or trigger['evaluated_at']!=clock:raise ValueError('standard input clocks mismatch')
     for tfname,fdata in ((tf,base),(tt,trigger)):
@@ -221,7 +223,12 @@ def refresh(r):
     r['expiry']={'status':'withdrawn' if p['status']=='objective_reached' else 'reference_recheck','time_expiry':{'status':'not_defined'},'withdrawal_conditions':[{'condition':'base_wave_invalidation','price':p['thesis_invalidation'],'relation':'<=' if sign==1 else '>=','basis_timeframe':tf,'confirmation':'verified_saved_base_close'}] if p['thesis_invalidation'] else []}
     r['market_phase']='transition_context' if f['conviction']=='weak' else 'pullback_wait' if f['phase']!='continuation' else 'directional_structure_wait'
     r['entry_condition_inputs']=condition_inputs({tt:{'candles':recent}},{'base_verified':quality,'trigger_verified':trigger.get('verified') is True,'direction':direction,'trigger_timeframe':tt},clock)
-    r['scenario_conditions']=describe_conditions(r,r['entry_condition_inputs'])
+    if r.get('technical_entry_version')==1:
+        from .technical_entry import describe as technical_conditions,candle_reference
+        r['scenario_conditions']=technical_conditions(r)
+        r['candle_reference']=candle_reference(r)
+    else:
+        r['scenario_conditions']=describe_conditions(r,r['entry_condition_inputs'])
     fresh=trigger.get('verified') is True and recent and 0<=clock-trigger.get('closed_at',0)<SECONDS[tt]
     price=recent[-1]['close'] if fresh else None;stop=p['thesis_invalidation']
     # Read ahead obstacles at trigger close; old/passed levels are not front barriers.
@@ -230,28 +237,41 @@ def refresh(r):
         ahead=[a for a in p.get('obstacles',[]) if sign*(a['price']-price)>0]
         front=min(ahead,key=lambda a:sign*(a['price']-price))['price'] if ahead else None
         r['reference_levels']['structural_target']=front
-    from .obstacle_path import describe as describe_obstacle
-    r['obstacle_path_review']=describe_obstacle({'direction':direction,'reference_timeframe':tf,'trigger_timeframe':tt,
-        'evaluated_at':clock,'base_quality_verified':bool(quality),'entry_condition_inputs':r['entry_condition_inputs'],
-        'trigger_price_reference':{'status':'observed_reference' if fresh else 'unverified','timeframe':tt,
-            'evaluated_at':clock,'closed_at':trigger.get('closed_at'),'close':price},
-        'technical_plan_inputs':{'highs' if sign==1 else 'lows':p.get('obstacles',[])}},p)
-    reaction=r['obstacle_path_review']
-    if reaction['status']=='available':
-        f['cautions'].append(reaction['summary'])
-        if reaction['reaction']=='breakout_failed' or reaction['passed_level'] is not None:
-            f['material_cautions'].append('obstacle_reaction_requires_followup')
+    if r.get('technical_entry_version')==1:
+        original=p.get('first_obstacle')
+        r['price_path_context']={'original_obstacle':deepcopy(original),'current_front':front,
+            'passed_level':original['price'] if original and fresh and sign*(price-original['price'])>0 else None,
+            'scope':'confirmed_levels_and_close_positions_not_candle_patterns'}
+    else:
+        from .obstacle_path import describe as describe_obstacle
+        r['obstacle_path_review']=describe_obstacle({'direction':direction,'reference_timeframe':tf,'trigger_timeframe':tt,
+            'evaluated_at':clock,'base_quality_verified':bool(quality),'entry_condition_inputs':r['entry_condition_inputs'],
+            'trigger_price_reference':{'status':'observed_reference' if fresh else 'unverified','timeframe':tt,
+                'evaluated_at':clock,'closed_at':trigger.get('closed_at'),'close':price},
+            'technical_plan_inputs':{'highs' if sign==1 else 'lows':p.get('obstacles',[])}},p)
+        reaction=r['obstacle_path_review']
+        if reaction['status']=='available' and r.get('technical_entry_version')!=1:
+            f['cautions'].append(reaction['summary'])
+            if reaction['reaction']=='breakout_failed' or reaction['passed_level'] is not None:
+                f['material_cautions'].append('obstacle_reaction_requires_followup')
     p.pop('obstacles',None)  # Derived pivot list is reproducible from retained candles.
     risk=sign*(price-stop) if fresh and stop else None;reward=sign*(target-price) if fresh and target else None
     room=sign*(front-price) if front and fresh else reward
     defined=r['scenario_conditions']['status'] in ('waiting','awaiting_breakout','awaiting_retest','conditions_observed')
     events=[e for e in r.get('economic_calendar_context',{}).get('events',[]) if e.get('impact')=='high' and e.get('time_precision')=='minute' and type(e.get('scheduled_at_utc')) is int and base.get('closed_at',clock)<=e['scheduled_at_utc']<=(clock//3600+1)*3600 and not e.get('timing_conflict') and e.get('status') not in ('cancelled','canceled')]
+    local=p.get('local_setup_failure')
+    local_paused=bool(r['assessment']=='review' and r['standard_technical_version']==2 and fresh and local and sign*(price-local)<=0)
     status=('evaluation_pending' if r['assessment']=='evaluation_pending' else 'direction_watch' if r['assessment']=='skip' else
             'event_recheck' if events else 'technical_recheck' if f['conviction']=='weak' or f['phase']=='pullback_deepening' else
-            'price_plan_recheck' if not risk or risk<=0 or not reward or reward<=0 or not room or room<=0 else 'entry_recheck' if not defined else 'technical_watch')
+            'entry_recheck' if local_paused else 'price_plan_recheck' if not risk or risk<=0 or not reward or reward<=0 or not room or room<=0 else 'entry_recheck' if not defined else 'technical_watch')
     r['grade']='C' if r['assessment']=='review' and f['conviction']=='weak' else 'A' if status=='technical_watch' and f['phase']=='continuation' and not f['material_cautions'] else 'B' if r['assessment']=='review' else None
     r['grade_reason']=f['primary_path']+'。'+{'technical_watch':'保存条件の反応と価格経路を監視','technical_recheck':'勢い・構造の再評価待ち','price_plan_recheck':'未確認の拡張や通過済み目標を追わず価格計画を再評価','entry_recheck':'局所条件を再評価','event_recheck':'発表後に再評価','direction_watch':'旧経路終了、新しい構造待ち','evaluation_pending':'方向・確定波の主要材料不足'}[status]
     r['practical_review']={'schema':'standard_practical_review_v1','status':status,'summary':r['grade_reason'],'reference_margin_sufficient':bool(risk and reward and reward>risk),'events':events}
+    if r['standard_technical_version']==2:
+        r['practical_review']['entry_status']='paused' if local_paused else 'timing_reference' if fresh else 'unverified'
+        if local_paused:
+            r['grade_reason']='確認足終値が局所セットアップ停止水準を通過。大局撤回とは別に仕掛けを再評価'
+            r['practical_review']['summary']=r['grade_reason']
     r['trigger_price_review']={'status':'observed_reference' if fresh else 'unverified','saved_close':price,'closed_at':trigger.get('closed_at'),'risk_distance':risk,'reward_distance':reward,'first_obstacle_reward':room,'reference_rr':round(reward/risk,2) if risk and risk>0 and reward and reward>0 else None,'formation_rr':None,'costs_included':False,'basis':'geometry_not_entry_risk'}
     r['currency_strength_context']=interpret(r.get('currency_strength_context'),r['pair'],r['strategy'],direction,clock)
     r['technical_outlook']={'forecast':f,'path':f['primary_path'],'alternative_path':f['alternative_path'],'evolution':f['evolution'],'cautions':f['cautions'],'status':'transition' if f['conviction']=='weak' else 'continuation' if f['phase']=='continuation' else 'retracement_then_continuation'}
@@ -299,6 +319,7 @@ def render_lines(r):
         '通常Fib押し戻り参考域：'+fmt((p.get('pullback_zone') or {}).get('shallow'))+'～'+fmt((p.get('pullback_zone') or {}).get('deep')),
         '通常Fib条件付き拡張：'+fmt((p.get('extension_zone') or {}).get('near'))+'～'+fmt((p.get('extension_zone') or {}).get('far'))+'（確定支持抵抗ではない）',
         '局所停止参考：'+fmt(p['local_setup_failure'])+'。大局撤回と別。実際の成立価格・損失幅・費用は未確定',
+        *((['ローソク足の補足：'+r['candle_reference']['summary']]) if r.get('candle_reference',{}).get('status') in ('observed','not_observed') else []),
         '使用指標：SB、通常MACD12/26/9、通常Fib、SMA50/200、RCI9/26/52']
 
 
