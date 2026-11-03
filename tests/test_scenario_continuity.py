@@ -17,6 +17,36 @@ def view():
 
 
 class ContinuityTests(unittest.TestCase):
+    def test_verbose_forecast_support_cannot_displace_frozen_condition_events(self):
+        import hashlib
+        from unittest.mock import patch
+        current=view()
+        prototype=current['scheduled_outlook']['strategy_assessments'][0]
+        records=[]
+        for index in range(16):
+            for strategy in ('swing','daytrade'):
+                r=deepcopy(prototype);r.update(pair='SYN'+str(index),strategy=strategy)
+                r['technical_outlook']={'path':'synthetic path','cautions':['synthetic caution'],
+                    'forecast':{'direction':'long','phase':'continuation','support':['synthetic support '*1000]}}
+                records.append(r)
+        current['scheduled_outlook']['strategy_assessments']=records
+        before=deepcopy(current)
+        raw=json.dumps({'evaluated_at':200,'pairs':{}}).encode()
+        blob=hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()
+        event={'status':'frozen_condition_not_seen_in_whole_candles',
+               'coverage':{'detail':'synthetic observed coverage '*100},'condition_observation':None}
+        with patch('fx_system.scenario_continuity.restore_strategy_report_export',return_value=current), \
+             patch('fx_system.scenario_followthrough.observe_frozen_condition',return_value=event):
+            result=build_continuity({'selection_version':4},{'source_repository':'synthetic','evaluated_at':200,'run_id':2},blob,
+                {'selection_version':4},{'source_repository':'synthetic','evaluated_at':100,'run_id':1},'a'*40,
+                current_snapshot_bytes=raw)
+        self.assertEqual(result['status'],'saved');self.assertEqual(len(result['rows']),32)
+        self.assertEqual(current,before)
+        for row in result['rows']:
+            self.assertEqual(row['previous_condition_followthrough'],event)
+            self.assertNotIn('support',row['current']['technical_outlook']['forecast'])
+        self.assertLess(len(json.dumps(result,ensure_ascii=False).encode()),512*1024)
+
     def test_adjacent_forecast_paths_keep_equal_values_on_parent(self):
         from fx_system.scenario_continuity import _brief
         outlook={'path':'primary'*1000,'alternative_path':'alternative'*1000,'cautions':['risk'*1000]}
@@ -40,8 +70,8 @@ class ContinuityTests(unittest.TestCase):
             'wave_price_plan':{'thesis_invalidation':100,'first_obstacle':{'price':120}}}
         before=deepcopy(record);brief=_brief(record);f=brief['technical_outlook']['forecast']
         self.assertEqual(record,before)
-        for key in ('background','timing','evolution'):self.assertNotIn(key,f)
-        for key in ('direction','phase','primary_path','alternative_path','support','cautions'):
+        for key in ('background','timing','evolution','support'):self.assertNotIn(key,f)
+        for key in ('direction','phase','primary_path','alternative_path','cautions'):
             self.assertEqual(f[key],record['technical_outlook']['forecast'][key])
         self.assertEqual(brief['technical_outlook']['evolution'],record['technical_outlook']['evolution'])
         self.assertEqual(brief['wave_price_plan'],record['wave_price_plan'])
