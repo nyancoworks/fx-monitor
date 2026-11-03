@@ -133,5 +133,27 @@ class PrivateMigrationTests(unittest.TestCase):
                 (root/'.private-run/123/archive.log').write_text('{"status":"persisted"}')
                 self.assertEqual(runtime.main(), 0)
 
+    def test_history_failure_exports_only_allowlisted_classification(self):
+        env = {'GITHUB_RUN_ID': '123', 'GITHUB_SHA': 'a'*40,
+               'GITHUB_REPOSITORY': runtime.CODE_REPOSITORY, 'GITHUB_REF': 'refs/heads/main'}
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            def child(*args, **kwargs):
+                log = kwargs['log']; log.parent.mkdir(parents=True, exist_ok=True)
+                log.write_text(json.dumps({'reason':'git_timeout', 'operation':'fetch',
+                                           'error':'PRIVATE_SECRET'}))
+                return 1
+            out = io.StringIO()
+            with patch.dict(os.environ, env), patch.object(sys, 'argv',
+                    ['runner', 'history', '--state', folder]), \
+                 patch.object(runtime, 'private_root', return_value=root), \
+                 patch.object(runtime, 'verify_ready'), \
+                 patch.object(runtime, 'run_private', side_effect=child), \
+                 contextlib.redirect_stdout(out):
+                self.assertEqual(runtime.main(), 1)
+            self.assertIn('FX_HISTORY_FAILURE', out.getvalue())
+            self.assertIn('git_timeout', out.getvalue())
+            self.assertNotIn('PRIVATE_SECRET', out.getvalue())
+
 
 if __name__ == '__main__': unittest.main()
