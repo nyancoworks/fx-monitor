@@ -487,6 +487,8 @@ def build_scheduled_outlook(pairs, quality, *, evaluated_at, economic_calendar=N
             "note":"Saved H4/H1 directional research, not current M15/M5 entry or execution clearance"}
 
 
+    from .pair_market_context import attach as attach_pair_context
+    attach_pair_context(outlook)
     if economic_calendar is not None:
         from .economic_calendar_context import enrich_outlook
         try:

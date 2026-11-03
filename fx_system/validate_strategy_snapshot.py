@@ -29,6 +29,13 @@ def validate_strategy_snapshot(snapshot):
         failures.append('scheduled strategy universe incomplete or duplicated')
     if outlook.get('strategy_assessment_count') != len(expected):
         failures.append('scheduled strategy total mismatch')
+    if 'pair_market_context' in outlook and 'pair_context_version' not in outlook:
+        failures.append('scheduled pair market context version missing')
+    if 'pair_context_version' in outlook:
+        from .pair_market_context import build
+        if (type(outlook['pair_context_version']) is not int or outlook['pair_context_version']!=1
+                or outlook.get('pair_market_context')!=build(records,clock)):
+            failures.append('scheduled pair market context mismatch')
     counts = Counter()
     for r in records:
         from .technical_scenario import METHOD as TECHNICAL_METHOD, refresh
