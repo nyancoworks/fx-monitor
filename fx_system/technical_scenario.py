@@ -244,6 +244,7 @@ def assess(pair, strategy, track, clock):
         r['price_path_review_version']=1
         if track.get('span_model_version')==1:r['span_model_version']=1
         if track.get('technical_interpretation_version')==1:r['technical_interpretation_version']=1
+        if track.get('technical_order_version')==1:r['technical_order_version']=1
         if track.get('forecast_wave_version')==1:
             r['forecast_wave_version']=1
             r['forecast_wave_inputs']=deepcopy(track.get('forecast_wave_inputs',{}))
@@ -276,6 +277,8 @@ def refresh(r):
     if 'price_path_review_version' in r and (not forecast or type(r['price_path_review_version']) is not int or r['price_path_review_version']!=1):
         raise ValueError('unsupported price path interpretation')
     contextual=r.get('technical_interpretation_version')==1
+    if 'technical_order_version' in r and (not contextual or type(r['technical_order_version']) is not int or r['technical_order_version']!=1):
+        raise ValueError('unsupported technical presentation order')
     if 'technical_interpretation_version' in r and (not forecast or type(r['technical_interpretation_version']) is not int or not contextual):
         raise ValueError('unsupported technical interpretation')
     if 'forecast_wave_version' in r and (not forecast or r.get('strategy')!='swing'

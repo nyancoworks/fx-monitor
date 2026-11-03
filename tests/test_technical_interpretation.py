@@ -14,11 +14,21 @@ from test_strategy_strength import CLOCK
 
 
 def contextual(strategy='swing',direction='long',**kwargs):
-    t=track(strategy,direction,**kwargs);t['technical_interpretation_version']=1
+    t=track(strategy,direction,**kwargs);t['technical_interpretation_version']=1;t['technical_order_version']=1
     return t
 
 
 class TechnicalInterpretationTests(unittest.TestCase):
+    def test_legacy_pa_candidate_order_cannot_rank_new_equal_context_reviews(self):
+        from fx_system.strategy_report import _ordered_reviews
+        a=assess(contextual());b=deepcopy(a);b['pair']='GBPUSD'
+        outlook={'strategy_assessments':[a,b],
+                 'strategy_candidates':[{'pair':'GBPUSD','strategy':'swing','priority':'pattern_observed'},
+                                        {'pair':'EURUSD','strategy':'swing','priority':'directional_watch'}]}
+        self.assertEqual([r['pair'] for r in _ordered_reviews(outlook)],['EURUSD','GBPUSD'])
+        for r in outlook['strategy_assessments']:r.pop('technical_order_version')
+        self.assertEqual([r['pair'] for r in _ordered_reviews(outlook)],['GBPUSD','EURUSD'])
+
     def test_thesis_distance_alone_cannot_suppress_defined_monitoring_or_promote_a(self):
         for strategy in ('swing','daytrade'):
             for direction in ('long','short'):
@@ -26,7 +36,7 @@ class TechnicalInterpretationTests(unittest.TestCase):
                 t['technical_plan_inputs']['projection']['start_pivot']['price']=50 if direction=='long' else 170
                 stops=t['technical_plan_inputs']['lows' if direction=='long' else 'highs']
                 stops[0]['price']=50 if direction=='long' else 170
-                r=assess(t,strategy);legacy=deepcopy(r);legacy.pop('technical_interpretation_version');refresh(legacy)
+                r=assess(t,strategy);legacy=deepcopy(r);legacy.pop('technical_interpretation_version');legacy.pop('technical_order_version');refresh(legacy)
                 self.assertFalse(r['practical_review']['reference_margin_sufficient'])
                 self.assertEqual(r['practical_review']['status'],'technical_watch')
                 self.assertEqual(r['grade'],'B');self.assertEqual(legacy['practical_review']['status'],'price_plan_recheck')
@@ -104,6 +114,8 @@ class TechnicalInterpretationTests(unittest.TestCase):
         r=assess(contextual())
         for value in (True,2,'1'):
             broken=deepcopy(r);broken['technical_interpretation_version']=value
+            with self.assertRaises(ValueError):refresh(broken)
+            broken=deepcopy(r);broken['technical_order_version']=value
             with self.assertRaises(ValueError):refresh(broken)
 
     def test_all32_save_restore_reports_monitoring_as_waiting_not_entry_opportunity(self):
