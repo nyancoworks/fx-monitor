@@ -1,5 +1,7 @@
 # テクニカル方向予測 v12
 
+スイングの価格計画は[予測方向に対応するH4親波](FORECAST_PARENT_WAVE.md)を選定し、途中障害・局所停止・大局撤回を区別する。方向仮説と波の選定は別々に復元検証する。
+
 追加テクニカルのスパンモデルは[計算・役割・復元規約](SPAN_MODEL.md)を参照。`span_model_version=1`の新規保存だけに適用し、旧v12へ後付けしない。
 
 新規生成の両戦略は `contextual_scenario_review_v12_technical_forecast` を使用する。
