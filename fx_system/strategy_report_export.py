@@ -76,6 +76,10 @@ def build_strategy_report_export(snapshot_bytes, source):
             # read, rather than removing evidence or increasing size limits.
             packed_view = deepcopy(view)
             packed_view['scheduled_outlook']['rows'] = [{'pair':row['pair']} for row in projected['rows']]
+        table_layout = any(r.get('standard_technical_version') in (1,2) for r in projected['strategy_assessments'])
+        if table_layout:
+            from .saved_standard_inputs import pack
+            packed_view=pack(packed_view)
         raw = _json(packed_view)
         if len(raw) > MAX_PAYLOAD_BYTES:
             return bundle
@@ -93,7 +97,7 @@ def build_strategy_report_export(snapshot_bytes, source):
             'payload_sha256': hashlib.sha256(raw).hexdigest(), 'payload_byte_length': len(raw),
             'payload_base64': base64.b64encode(gzip.compress(raw, mtime=0)).decode('ascii')}
         if compact_rows:
-            saved['payload_layout']='canonical_rows_v2'
+            saved['payload_layout']='standard_inputs_v3' if table_layout else 'canonical_rows_v2'
         return saved if len(_json(saved)) <= MAX_EXPORT_BYTES else bundle
     except Exception:
         # Derived report failure must never suppress the original FX save.
@@ -126,9 +130,12 @@ def restore_strategy_report_export(bundle, source, snapshot_blob_sha):
             raise ValueError
         view = json.loads(raw)
         layout = bundle.get('payload_layout')
-        if layout not in (None,'canonical_rows_v2'):
+        if layout not in (None,'canonical_rows_v2','standard_inputs_v3'):
             raise ValueError
-        if layout=='canonical_rows_v2':
+        if layout=='standard_inputs_v3':
+            from .saved_standard_inputs import unpack
+            view=unpack(view,max_expanded_bytes=MAX_PAYLOAD_BYTES)
+        if layout in ('canonical_rows_v2','standard_inputs_v3'):
             outlook=view['scheduled_outlook']
             records=outlook['strategy_assessments']
             canonical={(r['pair'],r['strategy']):r for r in records}

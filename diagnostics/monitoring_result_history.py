@@ -51,16 +51,21 @@ def _validate(payload):
 
 def pack_generation(rows, *, evaluated_at):
     payload = _validate({'schema': SCHEMA, 'evaluated_at': evaluated_at, 'rows': deepcopy(rows)})
-    plain = _canonical(payload)
+    from fx_system.saved_standard_inputs import pack, SCHEMA as TABLE_SCHEMA
+    packed=pack(payload)
+    table_layout=packed.get('schema')==TABLE_SCHEMA
+    if table_layout and len(_canonical(payload))>16*1024*1024:
+        raise ValueError('expanded generation exceeds size limit')
+    plain = _canonical(packed)
     if len(plain) > MAX_PLAIN_BYTES:
         raise ValueError('generation exceeds size limit')
     compressed = gzip.compress(plain, compresslevel=6, mtime=0)
     encoded = base64.b64encode(compressed).decode('ascii')
     if len(encoded) > MAX_ENCODED_BYTES:
         raise ValueError('compressed generation exceeds size limit')
-    return {'evaluated_at': evaluated_at,
-            'sha256': hashlib.sha256(compressed).hexdigest(),
-            'gzip_base64': encoded}
+    result={'evaluated_at': evaluated_at, 'sha256':hashlib.sha256(compressed).hexdigest(), 'gzip_base64':encoded}
+    if table_layout:result['payload_layout']='standard_inputs_v1'
+    return result
 
 
 def restore_generation(generation):
@@ -77,8 +82,18 @@ def restore_generation(generation):
     plain = decoder.decompress(compressed, MAX_PLAIN_BYTES + 1)
     if len(plain) > MAX_PLAIN_BYTES or not decoder.eof or decoder.unused_data or decoder.unconsumed_tail:
         raise ValueError('invalid or oversized compressed generation')
-    payload = _validate(json.loads(plain))
-    if payload['evaluated_at'] != generation.get('evaluated_at') or _canonical(payload) != plain:
+    packed=json.loads(plain)
+    if _canonical(packed)!=plain:raise ValueError('generation encoding mismatch')
+    layout=generation.get('payload_layout')
+    if layout not in (None,'standard_inputs_v1'):raise ValueError('unknown history layout')
+    if layout=='standard_inputs_v1':
+        from fx_system.saved_standard_inputs import unpack
+        # Compressed decoded data stays capped at 4 MiB; exact reconstructed
+        # rows have a separate finite bound for the added standard candle inputs.
+        payload=unpack(packed,max_expanded_bytes=16*1024*1024)
+    else:payload=packed
+    payload=_validate(payload)
+    if payload['evaluated_at'] != generation.get('evaluated_at'):
         raise ValueError('generation identity mismatch')
     return payload
 
