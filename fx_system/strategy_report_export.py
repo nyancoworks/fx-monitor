@@ -62,6 +62,8 @@ def build_strategy_report_export(snapshot_bytes, source):
                 'canonical_assessment_field', 'strategy_assessment_count',
                 'assessment_counts', 'strategy_assessments')}}
         projected = view['scheduled_outlook']
+        if 'pair_context_version' in outlook:
+            for key in ('pair_context_version','pair_market_context'):projected[key]=deepcopy(outlook[key])
         projected['rows'] = [{key: deepcopy(row[key]) for key in ('pair', 'strategy_assessments')}
                              for row in outlook['rows']]
         projected['strategy_candidates'] = [{key: row[key] for key in ('pair', 'strategy')}
