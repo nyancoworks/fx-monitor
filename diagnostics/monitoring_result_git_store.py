@@ -1,11 +1,9 @@
 """Canonical monitoring history publisher; no optional research generation."""
 import json
 import hashlib
-import os
 from pathlib import Path
 import re
 import subprocess
-import tempfile
 import zlib
 from .monitoring_result_history import append_generation, restore_generation, latest_restorable
 
@@ -15,17 +13,26 @@ FILES = {'history.json', 'provenance.json'}
 MAX_BYTES = 13 * 1024 * 1024
 
 
+class HistoryGitError(ValueError):
+    def __init__(self, reason, operation):
+        self.reason = reason
+        self.operation = operation
+        super().__init__('history Git operation failed')
+
+
 def _git(repo, *args, stdin=None, optional=False, env=None):
     # Never surface stderr, credentials, remote URLs or command arguments.
     try:
         result = subprocess.run(['git','-C',str(repo),*args], input=stdin,
                                 capture_output=True, timeout=30, env=env)
-    except (OSError, subprocess.TimeoutExpired) as error:
-        raise ValueError('history Git operation unavailable') from error
+    except subprocess.TimeoutExpired as error:
+        raise HistoryGitError('git_timeout', args[0]) from error
+    except OSError as error:
+        raise HistoryGitError('git_unavailable', args[0]) from error
     if result.returncode and not optional:
-        raise ValueError('history Git operation failed or concurrent update rejected')
+        raise HistoryGitError('git_rejected', args[0])
     if len(result.stdout) > MAX_BYTES:
-        raise ValueError('history Git output exceeds limit')
+        raise HistoryGitError('git_output_limit', args[0])
     return result.stdout.decode('utf-8').strip()
 
 
@@ -40,7 +47,14 @@ def read_remote_history(repo):
     lines = listing.splitlines()
     if len(lines)!=1 or lines[0].split()[1]!=REF:
         raise ValueError('unexpected history ref')
-    _git(repo,'fetch','--no-tags','origin',REF)
+    # A fresh runner needs the current tree and two canonical blobs, not all
+    # ancestor commits or the retained legacy research blobs. Promisor reads
+    # hydrate history/provenance on demand; untouched followup objects stay on
+    # the remote and are preserved by their tree identity in the parented push.
+    _git(repo,'config','remote.origin.promisor','true')
+    _git(repo,'config','remote.origin.partialclonefilter','blob:none')
+    _git(repo,'fetch','--depth=1','--filter=blob:none','--no-tags',
+         '--no-recurse-submodules','origin',REF)
     head = _git(repo,'rev-parse','FETCH_HEAD')
     paths = set(_git(repo,'ls-tree','--name-only',head).splitlines())
     if paths not in (FILES, FILES | {'followup'}):
@@ -97,16 +111,16 @@ def publish_results(repo, rows, *, evaluated_at, source_run_id, source_commit, a
         return {'status':'unchanged','head':previous['head'],'generations':len(history)}
     blobs={name:_git(repo,'hash-object','-w','--stdin',stdin=_bytes(value))
            for name,value in [('history.json',history),('provenance.json',provenance)]}
-    # Keep existing immutable history-tree objects; only update canonical history/provenance.
-    with tempfile.TemporaryDirectory() as folder:
-        env = {**os.environ, 'GIT_INDEX_FILE': str(Path(folder)/'index')}
-        if previous['head']:
-            _git(repo, 'read-tree', previous['head'], env=env)
-        else:
-            _git(repo, 'read-tree', '--empty', env=env)
-        for path, blob in blobs.items():
-            _git(repo, 'update-index', '--add', '--cacheinfo', f'100644,{blob},{path}', env=env)
-        tree = _git(repo, 'write-tree', env=env)
+    # Edit only the root tree. Populating an index on a partial clone can hydrate
+    # every retained legacy blob even though none of those files is changed.
+    entries = {}
+    if previous['head']:
+        for line in _git(repo, 'ls-tree', previous['head']).splitlines():
+            metadata, path = line.split('\t', 1)
+            entries[path] = metadata
+    entries.update({path:'100644 blob '+blob for path,blob in blobs.items()})
+    tree = _git(repo, 'mktree', stdin=''.join(
+        entries[path]+'\t'+path+'\n' for path in sorted(entries)).encode())
     parent=['-p',previous['head']] if previous['head'] else []
     commit=_git(repo,'-c','user.name=github-actions[bot]',
                 '-c','user.email=41898286+github-actions[bot]@users.noreply.github.com',
@@ -149,7 +163,11 @@ def main():
             source_run_id=args.source_run_id,source_commit=args.source_commit,allow_create=args.allow_create,
             snapshot=snapshot,input_identity=identity,source_repository=args.source_repository)
     except (ValueError,KeyError,TypeError,OSError,zlib.error) as error:
-        print(json.dumps({'status':'failed','error_type':type(error).__name__,'entry_permission':False}))
+        failure = {'status':'failed','error_type':type(error).__name__,'entry_permission':False}
+        if isinstance(error, HistoryGitError):
+            failure['reason'] = error.reason
+            failure['operation'] = error.operation
+        print(json.dumps(failure))
         raise SystemExit(1)
     print(json.dumps({**result,'entry_permission':False}))
 

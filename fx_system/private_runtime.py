@@ -230,6 +230,19 @@ def main():
                              log=logs/(args.stage+'.log'), env=env)
         logs.mkdir(parents=True, exist_ok=True, mode=0o700)
         (logs/(args.stage+'.status.json')).write_text(json.dumps({'returncode': rc}))
+        if args.stage == 'history' and rc != 0:
+            # Only fixed classifications leave private storage, never messages,
+            # command arguments, remote URLs or captured stderr.
+            reason = operation = 'unclassified'
+            try:
+                failure = json.loads((logs/'history.log').read_text().strip())
+                if failure.get('reason') in ('git_timeout', 'git_unavailable', 'git_rejected', 'git_output_limit'):
+                    reason = failure['reason']
+                if failure.get('operation') in ('fetch', 'ls-remote', 'show', 'push', 'mktree', 'commit-tree', 'hash-object', 'rev-parse', 'ls-tree', 'cat-file', 'config'):
+                    operation = failure['operation']
+            except (ValueError, OSError, AttributeError):
+                pass
+            print('FX_HISTORY_FAILURE ' + json.dumps({'reason': reason, 'operation': operation}, sort_keys=True))
         if args.stage == 'backtest' and rc != 0:
             from .backtest_failure import safe_failure_line
             print(safe_failure_line((logs/'backtest.log').read_text(errors='replace')))
