@@ -88,7 +88,11 @@ def render_strategy_report(snapshot, *, include_all_reviews=False, complete_evid
     if any(r.get('method_version') in ('contextual_scenario_review_v10_technical_wave','contextual_scenario_review_v11_technical_evolution','contextual_scenario_review_v12_technical_forecast') for r in rows):
         lines[2]='A/B/Cは基準足のテクニカル見通しと波の価格計画の完成度。局所PAの観測や売買許可とは別。見通し→押し戻り→経路目標・条件付き拡張→仕掛け確認の順に読む。同じ確認段階と反対根拠の候補だけを比較し、RRだけで順位を上げない。'
     if selection_version>=3:
-        lines.append('優先掲載は価格計画と確認足が評価可能な監視候補。値幅不足・発表をまたぐ候補は再評価待ちとして保存し、掲載外を見送りとはしない。')
+        if any(r.get('technical_interpretation_version')==1 for r in rows):
+            lines[3]='大局撤回と目標までの保存価格の距離比は幾何学的参考。実際の仕掛け価格・損失幅・費用込みRRは未確定。'
+            lines.append('優先掲載はテクニカルから継続監視する方向と待ち条件。仕掛け完成・売買推奨ではない。大局撤回距離との比率だけでは除外せず、近い障害・未確定の仕掛け損失幅・費用を明示し、条件前に追わない。')
+        else:
+            lines.append('優先掲載は価格計画と確認足が評価可能な監視候補。値幅不足・発表をまたぐ候補は再評価待ちとして保存し、掲載外を見送りとはしない。')
     if any(r.get('practical_review', {}).get('status') == 'swing_wave_wait' for r in rows):
         lines.append('H4の波の反応待ちのスイングは方向監視のみ。M15の一時反応だけでは優先候補にしない。')
     if not shown: lines.append('掲載する検討候補なし。見送りと評価保留の内訳は上記。')

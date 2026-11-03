@@ -148,6 +148,9 @@ def forecast(record):
     if record.get('span_model_version')==1:
         from .span_model import apply
         apply(record,result)
+    if record.get('technical_interpretation_version')==1:
+        from .technical_interpretation import refine
+        refine(record,result)
     return result
 
 
@@ -176,6 +179,7 @@ def prepare_track(data, track, clock):
     record={'evaluated_at':clock, 'reference_timeframe':tf, 'base_quality_verified':track['base_verified'],
             'trigger_timeframe':track['trigger_timeframe'],
             'span_model_version':1,
+            'technical_interpretation_version':1,
             'base_structure':track['base_structure'], 'strategy':'swing' if tf=='h4' else 'daytrade',
             'indicator_context':strategy_indicator_context(data,track,evaluated_at=clock),
             'rci_observation':rci_track_context(data,track,clock),
@@ -184,5 +188,6 @@ def prepare_track(data, track, clock):
                                     if data.get(tf,{}).get('candles') else {}}}
     f=forecast(record)
     track['span_model_version']=1
+    track['technical_interpretation_version']=1
     track['direction']=f['direction']
     track['state']='unassessed' if not track['base_verified'] else 'waiting_structure' if not f['direction'] else 'watch' if track['trigger_verified'] else 'waiting_trigger'
