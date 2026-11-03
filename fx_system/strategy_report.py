@@ -49,7 +49,7 @@ def report_records(outlook, *, selection_version=4):
     ordered = _ordered_reviews(outlook, selection_version=selection_version)
     if selection_version>=3:
         ordered=[r for r in ordered if 'practical_review' not in r or r['practical_review'].get('status') in ('technical_watch','reaction_confirmed','confirmation_wait','planned_price_wait')]
-    if outlook.get('pair_context_version')==1:
+    if outlook.get('pair_context_version') in (1,2):
         preferred={p['pair']:p['preferred_strategy'] for p in outlook['pair_market_context'] if p['preferred_strategy']}
         eligible={(r['pair'],r['strategy']) for r in ordered}
         ordered=[r for r in ordered if r['pair'] not in preferred
@@ -104,7 +104,7 @@ def render_strategy_report(snapshot, *, include_all_reviews=False, complete_evid
     if any(r.get('practical_review', {}).get('status') == 'swing_wave_wait' for r in rows):
         lines.append('H4の波の反応待ちのスイングは方向監視のみ。M15の一時反応だけでは優先候補にしない。')
     if not shown: lines.append('掲載する検討候補なし。見送りと評価保留の内訳は上記。')
-    for context in (outlook.get('pair_market_context',[]) if outlook.get('pair_context_version')==1 else []):
+    for context in (outlook.get('pair_market_context',[]) if outlook.get('pair_context_version') in (1,2) else []):
         if any(r['pair']==context['pair'] for r in shown):
             lines.extend(['',context['pair']+'の統合判断：'+context['summary'],context['resolution']])
             for strategy in ('swing','daytrade'):
