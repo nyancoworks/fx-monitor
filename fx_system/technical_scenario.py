@@ -183,6 +183,18 @@ def build_plan(r):
                               'kind':'standard_fibonacci_retracement_reference'},
                start_pivot=deepcopy(start), end_pivot=deepcopy(end), wave_width=width,
                reason='基準足の確定波を起点に押し戻り→終点再試し→突破後拡張を分離。最寄り障害を最終目標に固定しない')
+    if r.get('price_path_review_version')==1:
+        from .technical_evolution import describe
+        evolution=describe(r)
+        points=r.get('base_evolution_inputs',{}).get('points',[])
+        sustained=(evolution['status']=='available' and len(points)==3
+                   and all(sign*(point['close']-finish)>0 for point in points[-2:]))
+        active=(sustained and evolution['momentum'] in ('directional_building','directional_stable'))
+        out['path_stage']=('withdrawn' if status!='available' else 'retest' if sign*(finish-c)>0
+                           else 'extension_active' if active else 'extension_wait')
+        out['extension_confirmation']={'sustained_base_closes':sustained,
+            'momentum':evolution['momentum'],'active':active and status=='available',
+            'meaning':'終点の方向側を基準足終値2本で保持し、既存MACD経過が方向側で改善/維持。到達保証ではない'}
     return out
 
 
@@ -217,6 +229,7 @@ def assess(pair, strategy, track, clock):
     if r['method_version']==FORECAST_METHOD:
         r['contextual_review_version']=1
         r['entry_review_version']=1
+        r['price_path_review_version']=1
         if track.get('span_model_version')==1:r['span_model_version']=1
         r['trigger_structure_input']=deepcopy(track.get('trigger_structure_input',{}))
     r['currency_strength_context']=interpret(track.get('currency_strength_context'),pair,strategy,r['direction'],clock)
@@ -238,6 +251,8 @@ def refresh(r):
         raise ValueError('unsupported entry review interpretation')
     if 'span_model_version' in r and (not forecast or type(r['span_model_version']) is not int or r['span_model_version']!=1):
         raise ValueError('unsupported span model interpretation')
+    if 'price_path_review_version' in r and (not forecast or type(r['price_path_review_version']) is not int or r['price_path_review_version']!=1):
+        raise ValueError('unsupported price path interpretation')
     evolution = r.get('method_version')==EVOLUTION_METHOD
     if evolution:
         out=apply_evolution(r,out);r['technical_outlook']=out
@@ -263,6 +278,8 @@ def refresh(r):
         c=p['reference_close'];end=p['retest_objective']['price'];ext=p['extension_zone']
         # The next path objective is not relabelled as observed structure.
         target=end if sign*(end-c)>0 else ext['near'] if sign*(ext['near']-c)>0 else ext['far']
+        if p.get('path_stage') in ('extension_wait','withdrawn'):
+            target=None
     stop=p.get('thesis_invalidation');obstacle=p.get('first_obstacle')
     r['reference_levels']={'invalidation':stop,'structural_target':obstacle['price'] if obstacle else None,
                            'scenario_target':target, 'target_kind':'conditional_wave_path', 'executable_price':False}
@@ -346,6 +363,8 @@ def refresh(r):
         descriptions['entry_recheck']='方向仮説は保持するが仕掛け条件を具体化できず再評価待ち：'+r['scenario_conditions'].get('summary','条件未確認')
     if span_entry_paused and status=='entry_recheck' and not entry_undefined and not entry_paused:
         descriptions['entry_recheck']='方向仮説は保持し、確認足の雲の反対側で続く終値を受けて仕掛け回復待ち：'+span_trigger['summary']
+    if p.get('path_stage')=='extension_wait' and status=='price_plan_recheck':
+        descriptions['price_plan_recheck']='波の終点到達後。突破の終値維持・方向側の勢い継続が未確認のため、拡張目標を有効化せず価格計画の再評価待ち'
     if evolution and status=='technical_recheck' and out['status']!='transition':
         descriptions['technical_recheck']=out['evolution']['summary']+'。方向監視を保持し、局所PAだけで優先候補にしない'
     r['practical_review']={'schema':'saved_practical_review_v3','status':status,'summary':descriptions[status],
@@ -377,6 +396,9 @@ def render_lines(r):
     obstacle=p.get('first_obstacle') or {}
     return ['', f"{r['pair'][:3]}/{r['pair'][3:]} {name}｜{'買い方向' if r['direction']=='long' else '売り方向'}｜{r['grade']}",
             '評価理由：'+r['grade_reason'], '見通し：'+o['path'],
+            *((['価格経路：'+{'retest':'波の終点再試し','extension_wait':'終点突破後の確認待ち。拡張目標は未有効化',
+               'extension_active':'終点突破・勢い継続を確認した条件付き拡張','withdrawn':'波の撤回または経路終了'}[p['path_stage']]])
+              if 'path_stage' in p else []),
             *((['予測の根拠：'+'／'.join(o['forecast']['support'])]) if 'forecast' in o else []),
             *((['確認足のスパン：'+o['forecast']['span_model']['trigger']['summary']])
               if 'span_model' in o.get('forecast',{}) else []),
