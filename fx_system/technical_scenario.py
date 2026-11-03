@@ -243,6 +243,7 @@ def assess(pair, strategy, track, clock):
         r['entry_review_version']=1
         r['price_path_review_version']=1
         if track.get('span_model_version')==1:r['span_model_version']=1
+        if track.get('technical_interpretation_version')==1:r['technical_interpretation_version']=1
         if track.get('forecast_wave_version')==1:
             r['forecast_wave_version']=1
             r['forecast_wave_inputs']=deepcopy(track.get('forecast_wave_inputs',{}))
@@ -274,6 +275,9 @@ def refresh(r):
         raise ValueError('unsupported span model interpretation')
     if 'price_path_review_version' in r and (not forecast or type(r['price_path_review_version']) is not int or r['price_path_review_version']!=1):
         raise ValueError('unsupported price path interpretation')
+    contextual=r.get('technical_interpretation_version')==1
+    if 'technical_interpretation_version' in r and (not forecast or type(r['technical_interpretation_version']) is not int or not contextual):
+        raise ValueError('unsupported technical interpretation')
     if 'forecast_wave_version' in r and (not forecast or r.get('strategy')!='swing'
             or type(r['forecast_wave_version']) is not int or r['forecast_wave_version']!=1):
         raise ValueError('unsupported forecast wave interpretation')
@@ -337,6 +341,7 @@ def refresh(r):
     front=obstacle['price'] if obstacle else target
     front_reward=sign*(front-price) if fresh and positive(front) else None
     margin=bool(risk and risk>0 and reward and reward>risk and front_reward and front_reward>risk)
+    monitorable=bool(fresh and risk and risk>0 and reward and reward>0 and front_reward and front_reward>0)
     entry_paused=bool(fresh and positive(p.get('local_setup_failure'))
                       and sign*(price-p['local_setup_failure'])<=0)
     # Projected RR must never conceal a nearer structural obstacle.
@@ -347,6 +352,7 @@ def refresh(r):
         'reference_rr':round(reward/risk,2) if risk and risk>0 and reward and reward>0 else None,
         'costs_included':False,'formation_price':None,'formation_rr':None,
         'basis':'base_wave_thesis_risk_not_local_trigger_stop'}
+    if contextual:r['trigger_price_review']['basis']='base_wave_geometry_not_entry_risk_or_rr'
     events=[];clock=r['evaluated_at']
     for e in r.get('economic_calendar_context',{}).get('events',[]):
         ts=e.get('scheduled_at_utc')
@@ -358,7 +364,9 @@ def refresh(r):
     status=('evaluation_pending' if r['assessment']=='evaluation_pending' else 'direction_watch' if not usable
             else 'event_recheck' if events else 'technical_recheck' if out['status']=='transition'
             else 'entry_recheck' if entry_paused
-            else 'price_plan_recheck' if not margin else 'technical_watch')
+            else 'price_plan_recheck' if not (monitorable if contextual else margin) else 'technical_watch')
+    if contextual and status=='technical_watch' and out.get('evolution',{}).get('momentum')=='counterpressure_deepening':
+        status='technical_recheck'
     if evolution and status=='technical_watch' and defer_priority(out):
         status='technical_recheck'
     entry_undefined=(forecast and r.get('entry_review_version')==1
@@ -368,11 +376,12 @@ def refresh(r):
         status='entry_recheck'
     span_trigger=out.get('forecast',{}).get('span_model',{}).get('trigger',{})
     span_entry_paused=(r.get('span_model_version')==1 and span_trigger.get('state')=='cloud_failure')
-    if status=='technical_watch' and span_entry_paused:
+    if status=='technical_watch' and span_entry_paused and not contextual:
         status='entry_recheck'
     # A concerns the base technical thesis, not completion of a local candle pattern.
     mature=(out['status']=='continuation' and out['setup']=='resumption_context'
             and not out['cautions'] and not r['currency_strength_context'].get('material_opposition'))
+    if contextual:mature=mature and margin
     r['grade']=('A' if status=='technical_watch' and mature else 'B') if usable else None
     if forecast and usable and out['forecast']['conviction']=='weak':
         r['grade']='C'
@@ -386,6 +395,12 @@ def refresh(r):
                   'direction_watch':'有効なトレンド方向シナリオなし。新しい基準足を待つ'}
     if forecast and status=='technical_recheck':
         descriptions['technical_recheck']=out['path']+'。方向仮説の根拠が弱い、または重要な矛盾があり優先監視は保留'
+    if contextual and status=='technical_recheck' and out['forecast']['conviction']!='weak':
+        descriptions['technical_recheck']=out['path']+'。逆行する勢いの拡大中は方向監視を保持し、再開の先取りを保留'
+    if contextual and status=='technical_watch':
+        descriptions['technical_watch']='テクニカル背景から方向と押し戻りの回復を監視。仕掛け価格・損失幅・費用込みの有効性は未確定'
+        if not margin:
+            descriptions['technical_watch']+='。大局撤回距離との比率は参考に留め、近い障害の反応と仕掛け計画を確認するまで追わない'
     if forecast and r.get('entry_review_version')==1 and status=='entry_recheck' and entry_undefined and not entry_paused:
         descriptions['entry_recheck']='方向仮説は保持するが仕掛け条件を具体化できず再評価待ち：'+r['scenario_conditions'].get('summary','条件未確認')
     if span_entry_paused and status=='entry_recheck' and not entry_undefined and not entry_paused:
@@ -404,9 +419,13 @@ def refresh(r):
         'events':events,'a_blockers':out['cautions'],'reference_margin_sufficient':margin,
         'entry_status':'paused' if entry_paused else 'timing_reference' if fresh else 'unverified',
         'margin_basis':'base_wave_risk_and_nearest_obstacle_before_costs','not_order_or_profitability':True}
+    if contextual:
+        r['practical_review']['monitoring_basis']='technical_context_and_defined_wait_not_assumed_entry_risk'
     r['grade_reason']=descriptions[status]
     r['reasons']=[out['path'],p['reason']]
     r['opposing_evidence']=list(out['cautions'])
+    if contextual and usable and not margin:
+        r['opposing_evidence'].append('目標/途中障害までの余地は大局撤回距離を上回ると未確認。実際の仕掛け価格・損失幅・費用は別途確認し、現価格を追わない')
     if r['currency_strength_context'].get('relation')=='opposed':r['opposing_evidence'].append(r['currency_strength_context']['summary'])
     r['uncertainties']=['到達時刻・保有期間・費用控除後の余地は未確認']
     r['waiting_conditions']=[out['path'],r['scenario_conditions']['summary']]
@@ -448,7 +467,9 @@ def render_lines(r):
             f"大局撤回：{r['reference_timeframe'].upper()}確定終値が{fmt(p.get('thesis_invalidation'))}を{'以下' if r['direction']=='long' else '以上'}。局所の仕掛け停止とは別",
             f"局所セットアップの参考無効化：{fmt(p.get('local_setup_failure'))}。大局撤回や固定SLに流用しない",
             '仕掛け確認：'+r['scenario_conditions']['summary'],
-            '価格余地：最初の障害までと波の大局撤回までを比較。'+('余地を確認（費用前）' if r['practical_review']['reference_margin_sufficient'] else '不足または未確認、追わず再評価'),
+            ('価格余地：大局撤回距離との比率は参考で、実際の仕掛けRRは未確定。障害の反応と成立価格・損失幅・費用を確認するまで追わない'
+             if r.get('technical_interpretation_version')==1 else
+             '価格余地：最初の障害までと波の大局撤回までを比較。'+('余地を確認（費用前）' if r['practical_review']['reference_margin_sufficient'] else '不足または未確認、追わず再評価')),
             f"保存確認足：{fmt(recent.get('saved_close'))}。現在値・約定価格ではない",
             '時間軸：'+('H4の複数セッションの波、M15は仕掛け確認' if r['strategy']=='swing' else 'H1の日中の波、M5は仕掛け確認')+'。到達時間・保有日数は予測しない',
             '未確認：到達・成立価格・費用控除後の余地。A/B/Cは売買許可や利益確率ではない']
