@@ -69,7 +69,7 @@ def build_strategy_report_export(snapshot_bytes, source):
         projected['strategy_candidates'] = [{key: row[key] for key in ('pair', 'strategy')}
                                              for row in outlook.get('strategy_candidates', [])]
         packed_view = view
-        compact_rows = any('technical_context' in r or r.get('standard_technical_version')==1 for r in projected['strategy_assessments'])
+        compact_rows = any('technical_context' in r or r.get('standard_technical_version') in (1,2) for r in projected['strategy_assessments'])
         if compact_rows:
             # Original canonical/row equality has already been validated. Save
             # each assessment once; reconstruct the identical projected rows on

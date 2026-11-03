@@ -11,7 +11,7 @@ from .core import PAIRS, INTERVALS, aggregate, assess, parse_row, technical, exp
 from .strength import compute_strength
 from .yahoo_provider import fetch_yahoo
 from .provenance import record, reconcile_existing, assess_feed_consistency, key as provenance_key
-from .data_quality import evaluate_screening
+from .data_quality import evaluate_pair
 from .acquisition import request_plan, h1_recovery_needed, rebuild_verified_h1, retry_after_seconds
 from .catchup import needs_m5_catchup
 from .minute_quota import MinuteQuota
@@ -19,15 +19,6 @@ from .watchlist import build_watchlist
 from .monitoring_scenarios import build_monitoring_scenarios
 from .saved_economic_calendar import build_outlook_with_saved_calendar
 from .indicator_inputs import contiguous_indicator_frames
-from .h4_setup import h4_setup_diagnostic
-from .zones import propose_h1_zone
-from .setup_comparison import compare_setups
-from .m15_entry_shadow import m15_entry_shadow
-from .m5_price_action import observe_m5_price_action
-from .m5_counterpressure import assess_m5_counterpressure
-from .m5_rci_momentum import observe_m5_rci, m5_history_diagnostic
-from .h1_rci_shadow import h1_rci_shadow
-from .multitimeframe_shadow import multitimeframe_shadow
 from .indicator_refresh import refresh_strategy_indicators
 from .storage_paths import storage_root
 
@@ -328,31 +319,11 @@ def _refresh(ny=None):
         frames={"m5":raw["m5"],"m15":aggregate(raw["m5"],300,900),"h1":raw["h1"],"h4":aggregate(raw["h1"],3600,14400),"d1":[],"w1":[]}
         result["pairs"][name]={tf:{"candles":rows[-100:],"quality":assess(rows,tf,evaluation_now)} for tf,rows in frames.items()}
         result["pairs"][name]["decision_data"]={"raw":{tf:raw[tf] for tf in ("m5","h1","d1")},"provenance":cached['bar_provenance']}
-        decision_frames,decision_quality,setup=evaluate_screening(result["pairs"][name],int(time.time()))
+        decision_frames,decision_quality=evaluate_pair(result["pairs"][name],int(time.time()))
         result["pairs"][name]["decision_quality"]=decision_quality
         result["pairs"][name]["acquisition"]=acquisition
         result["pairs"][name]["technical"]={tf:technical(rows) for tf,rows in decision_frames.items() if tf in ("h1","h4","d1","w1")}
 
-        # Screening and execution are separate stages. H1 selects setups;
-        # a current, confirmed M5 trigger is evaluated at decision time.
-        # All decision inputs are verified; macro/event promotion is still unimplemented.
-        # No structural TP is inferred from the latest close. A confirmed
-        # entry requires an independently verified target and fresh M5.
-        result["pairs"][name]["setup"]=setup
-        result["pairs"][name]["analysis_policy"]={
-            "context_timeframes":["d1","h4"],
-            "setup_timeframe":"h1",
-            "entry_trigger_timeframe":"m5",
-            "advisory_timeframes":["w1","d1","h4","h1","m5"],
-            "macro_timeframes":["w1","d1"],
-            "setup_context_timeframe":"h4",
-            "screening_mode":"independent_swing_daytrade_scenario_review",
-            "entry_requires_fresh_m5":True,
-            "entry_requires_fresh_trigger_timeframe":True,
-            "m5_requires_h4_h1_gate_and_multiple_closed_candles":True,
-            "chart_review_supported":True,
-            "note":"16 pairs x swing/daytrade are assessed independently. A/B/C describe scenario quality; saved prices and RR are references, not order permission."
-        }
         checks={tf:assess(rows,tf,evaluation_now) for tf,rows in frames.items()}
         # Retained-data checks are combined with verified decision-data readiness.
         required=("m5","h1","h4","d1")
@@ -447,7 +418,7 @@ def _refresh(ny=None):
         refreshed_m5=data["decision_data"]["raw"]["m5"]
         data["m5"]={"candles":refreshed_m5[-100:],"quality":assess(refreshed_m5,"m5",final_now)}
         ny_context=ny.context(name,final_now) if ny is not None else None
-        verified,quality,setup=evaluate_screening(data,final_now,ny_context=ny_context)
+        verified,quality=evaluate_pair(data,final_now,ny_context=ny_context)
         data["decision_quality"]=quality
         indicator_frames, input_quality = contiguous_indicator_frames(verified, quality)
         data["indicator_input_quality"] = input_quality
@@ -455,23 +426,10 @@ def _refresh(ny=None):
         for macro_tf in ("d1","w1"):
             data[macro_tf]={"candles":verified[macro_tf][-100:],
                             "quality":quality["timeframes"][macro_tf]}
-        data["h4_setup_shadow"]=h4_setup_diagnostic(verified)
-        data["setup_comparison"]=compare_setups(setup,data["h4_setup_shadow"],quality)
-        data["m15_entry_shadow"]=m15_entry_shadow(verified,data["h4_setup_shadow"],quality)
-        h1_structure=data["technical"].get("h1",{}).get("structure")
-        h1_direction={"HH_HL":"long","LH_LL":"short"}.get(h1_structure)
-        data["m5_price_action_shadow"]=observe_m5_price_action(verified["m5"],h1_direction)
-        data["m5_counterpressure_shadow"]=assess_m5_counterpressure(verified["m5"],h1_direction)
-        data["m5_history_diagnostic"]=m5_history_diagnostic(verified["m5"])
-        data["m5_rci_momentum_shadow"]=observe_m5_rci(verified["m5"],h1_direction)
-        data["h1_rci_shadow"]=h1_rci_shadow(verified["h1"],data["h4_setup_shadow"],quality)
-        data["multitimeframe_shadow"]=multitimeframe_shadow(data["h4_setup_shadow"],data["h1_rci_shadow"],data["m15_entry_shadow"],data["setup_comparison"],quality)
-        setup["zone_proposal"]=propose_h1_zone(verified["h1"],setup.get("direction"),setup.get("invalidation"))
-        data["setup"]=setup
         data["technical"]={tf:technical(indicator_frames[tf]) for tf in ("m5","m15","h1","h4","d1","w1")}
         # Current standard-only profile from verified retained candles.
         # No new provider requests or changes to the collection budget.
-        refresh_strategy_indicators(data,verified,indicator_frames,quality,setup)
+        refresh_strategy_indicators(data,verified,indicator_frames,quality,{})
         q=result["quality"][name]
         q.update({"ok":quality["ready"] and all(quality["timeframes"][tf]["ok"] for tf in ("m5","h1","h4","d1")),"decision_data_ready":quality["ready"],
                   "intraday_monitoring_ready":quality["intraday_monitoring_ready"],
@@ -511,19 +469,6 @@ def _refresh(ny=None):
         print("FINAL_QUALITY",json.dumps({"pair":name,"evaluated_at":final_now,
               "ready":q["ok"],"intraday_monitoring_ready":quality["intraday_monitoring_ready"],
               "reasons":quality["reasons"],"m5_publication":quality["m5_publication"]}),flush=True)
-    # Reporting-only M5/RCI coverage for all configured pairs. Never alter gates.
-    m5_coverage_rows=[{"pair":name,
-        "history":data.get("m5_history_diagnostic",{}),
-        "rci_status":data.get("m5_rci_momentum_shadow",{}).get("status","unverified")}
-        for name,data in result["pairs"].items()]
-    result["m5_rci_coverage"]={"pairs_total":len(m5_coverage_rows),
-        "rci_calculated":sum(x["rci_status"]=="calculated" for x in m5_coverage_rows),
-        "history_complete":sum(x["history"].get("status")=="complete" for x in m5_coverage_rows),
-        "history_gapped":sum(x["history"].get("status")=="gapped" for x in m5_coverage_rows),
-        "history_insufficient":sum(x["history"].get("status")=="insufficient" for x in m5_coverage_rows),
-        "history_invalid":sum(x["history"].get("status")=="invalid" for x in m5_coverage_rows),
-        "rows":m5_coverage_rows,"advisory_only":True}
-    print("M5_RCI_COVERAGE",json.dumps(result["m5_rci_coverage"],ensure_ascii=False),flush=True)
     result['refresh_elapsed_seconds']=round(time.monotonic()-refresh_started,2)
     result["signal_eligible_pairs"]=[name for name,q in result["quality"].items() if q.get("signal_eligible")]
     result["signal_eligible_count"]=len(result["signal_eligible_pairs"])
@@ -540,7 +485,6 @@ def _refresh(ny=None):
         "candidates":[{
             "pair":c["pair"],"strategy":c["strategy"],"direction":c["direction"],
             "priority":c["priority"],"timing":c["timing_assessment"],"macro":c["macro_context"],
-            "price_action":c["price_action"].get("pattern"),
             "rci9":c["rci9_context"].get("movement","unverified"),
             "next_check":c["next_check"]
         } for c in result["scheduled_outlook"]["strategy_candidates"] if (c['pair'],c['strategy']) in report_keys],
