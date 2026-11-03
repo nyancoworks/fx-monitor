@@ -245,6 +245,7 @@ def assess(pair, strategy, track, clock):
         if track.get('span_model_version')==1:r['span_model_version']=1
         if track.get('technical_interpretation_version')==1:r['technical_interpretation_version']=1
         if track.get('technical_order_version')==1:r['technical_order_version']=1
+        if track.get('obstacle_path_version')==1:r['obstacle_path_version']=1
         if track.get('forecast_wave_version')==1:
             r['forecast_wave_version']=1
             r['forecast_wave_inputs']=deepcopy(track.get('forecast_wave_inputs',{}))
@@ -277,6 +278,8 @@ def refresh(r):
     if 'price_path_review_version' in r and (not forecast or type(r['price_path_review_version']) is not int or r['price_path_review_version']!=1):
         raise ValueError('unsupported price path interpretation')
     contextual=r.get('technical_interpretation_version')==1
+    if 'obstacle_path_version' in r and (not contextual or type(r['obstacle_path_version']) is not int or r['obstacle_path_version']!=1):
+        raise ValueError('unsupported obstacle path interpretation')
     if 'technical_order_version' in r and (not contextual or type(r['technical_order_version']) is not int or r['technical_order_version']!=1):
         raise ValueError('unsupported technical presentation order')
     if 'technical_interpretation_version' in r and (not forecast or type(r['technical_interpretation_version']) is not int or not contextual):
@@ -312,6 +315,10 @@ def refresh(r):
         if p.get('path_stage') in ('extension_wait','withdrawn'):
             target=None
     stop=p.get('thesis_invalidation');obstacle=p.get('first_obstacle')
+    if r.get('obstacle_path_version')==1:
+        from .obstacle_path import describe as obstacle_path
+        r['obstacle_path_review']=obstacle_path(r,p)
+        obstacle=r['obstacle_path_review']['active_obstacle']
     r['reference_levels']={'invalidation':stop,'structural_target':obstacle['price'] if obstacle else None,
                            'scenario_target':target, 'target_kind':'conditional_wave_path', 'executable_price':False}
     r['reference_plan']={'reference_close':p['reference_close'], 'reference_close_timestamp':p['reference_close_timestamp'],
@@ -385,6 +392,7 @@ def refresh(r):
     mature=(out['status']=='continuation' and out['setup']=='resumption_context'
             and not out['cautions'] and not r['currency_strength_context'].get('material_opposition'))
     if contextual:mature=mature and margin
+    if r.get('obstacle_path_review',{}).get('passed_level') is not None:mature=False
     r['grade']=('A' if status=='technical_watch' and mature else 'B') if usable else None
     if forecast and usable and out['forecast']['conviction']=='weak':
         r['grade']='C'
@@ -427,6 +435,8 @@ def refresh(r):
     r['grade_reason']=descriptions[status]
     r['reasons']=[out['path'],p['reason']]
     r['opposing_evidence']=list(out['cautions'])
+    if r.get('obstacle_path_version')==1 and r['obstacle_path_review']['status']=='available':
+        r['opposing_evidence'].append(r['obstacle_path_review']['summary'])
     if contextual and usable and not margin:
         r['opposing_evidence'].append('目標/途中障害までの余地は大局撤回距離を上回ると未確認。実際の仕掛け価格・損失幅・費用は別途確認し、現価格を追わない')
     if r['currency_strength_context'].get('relation')=='opposed':r['opposing_evidence'].append(r['currency_strength_context']['summary'])
@@ -448,7 +458,7 @@ def render_lines(r):
     name='スイング' if r['strategy']=='swing' else 'デイトレード'
     fmt=lambda x:f'{x:.8f}'.rstrip('0').rstrip('.') if positive(x) else '未確認'
     z=p.get('extension_zone') or {}; pull=p.get('pullback_zone') or {}
-    obstacle=p.get('first_obstacle') or {}
+    obstacle=(r['obstacle_path_review']['active_obstacle'] if r.get('obstacle_path_version')==1 else p.get('first_obstacle')) or {}
     return ['', f"{r['pair'][:3]}/{r['pair'][3:]} {name}｜{'買い方向' if r['direction']=='long' else '売り方向'}｜{r['grade']}",
             '評価理由：'+r['grade_reason'], '見通し：'+o['path'],
             *((['狙う波：H4のDMA25x5背景区間に対応する確定親波。直近の小波とは区別',
@@ -465,6 +475,9 @@ def render_lines(r):
             '主根拠：'+r.get('technical_context',{}).get('frames',{}).get('base',{}).get('summary','基準足の明細は未確認'),
             '重要な懸念：'+('／'.join(r['opposing_evidence']) or '追加の具体的な逆行は未観測。未確認事項は別'),
             f"押し戻り参考域：{fmt(pull.get('shallow'))}～{fmt(pull.get('deep'))}（通常Fib。DMA位置も併せて確認）",
+            *((['障害の経過：'+r['obstacle_path_review']['summary'],
+                f"通過水準：{fmt(r['obstacle_path_review']['passed_level'])}（支持抵抗への転換候補。再試し・失敗を監視）"])
+               if r.get('obstacle_path_review',{}).get('passed_level') is not None else []),
             f"途中の構造障害：{fmt(obstacle.get('price'))}｜波の終点再試し：{fmt((p.get('retest_objective') or {}).get('price'))}",
             f"終点突破・勢い継続後の条件付き到達域：{fmt(z.get('near'))}～{fmt(z.get('far'))}（通常Fib投影、到達保証・確定支持抵抗ではない）",
             f"大局撤回：{r['reference_timeframe'].upper()}確定終値が{fmt(p.get('thesis_invalidation'))}を{'以下' if r['direction']=='long' else '以上'}。局所の仕掛け停止とは別",

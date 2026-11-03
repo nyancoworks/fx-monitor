@@ -190,5 +190,6 @@ def prepare_track(data, track, clock):
     track['span_model_version']=1
     track['technical_interpretation_version']=1
     track['technical_order_version']=1
+    track['obstacle_path_version']=1
     track['direction']=f['direction']
     track['state']='unassessed' if not track['base_verified'] else 'waiting_structure' if not f['direction'] else 'watch' if track['trigger_verified'] else 'waiting_trigger'
