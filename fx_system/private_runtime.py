@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import time
 
 CODE_ROOT = Path(__file__).resolve().parents[1]
 DATA_REPOSITORY = 'nyancoworks/fx-monitor-data'
@@ -130,12 +131,25 @@ def save_snapshot(root, run_id, source_commit):
     source = {'source_repository': CODE_REPOSITORY, 'source_commit': source_commit,
               'run_id': int(run_id), 'evaluated_at': snapshot['evaluated_at']}
     for name in ('data/source.json', 'data/currency-strength.json', 'data/run-diagnostics.json',
-                 'data/strategy-report.json', 'data/scenario-continuity.json'):
+                 'data/strategy-report.json', 'data/scenario-continuity.json', 'data/report-slot.json'):
         path = root/name
         if path.is_symlink() or not path.resolve().is_relative_to(root):
             raise ValueError('private derived file path invalid')
     compact = build_strength_export(snapshot_bytes, source)
     strategy_report = build_strategy_report_export(snapshot_bytes, source)
+    from .report_slot import build_slot
+    start_path = root/'.private-run'/run_id/'collection-start.json'
+    if start_path.is_symlink() or not start_path.resolve().is_relative_to(root):
+        raise ValueError('collection start evidence must remain private')
+    start = None
+    if start_path.exists() and start_path.stat().st_size <= 4096:
+        try:
+            start = json.loads(start_path.read_bytes())
+        except (ValueError, OSError):
+            pass
+    slot = build_slot(start, source, strategy_report['snapshot_git_blob_sha'])
+    (root/'data/report-slot.json').write_text(json.dumps(slot,sort_keys=True)+'\n')
+    (root/'data/report-slot.json').chmod(0o600)
     from .scenario_continuity import build_continuity
     previous_bundle=previous_source=previous_blob=None
     try:
@@ -173,9 +187,9 @@ def save_snapshot(root, run_id, source_commit):
     (root/'data/strategy-report.json').write_text(json.dumps(strategy_report, ensure_ascii=False,
                                                           sort_keys=True, allow_nan=False) + '\n')
     (root/'data/strategy-report.json').chmod(0o600)
-    git(root, 'add', '--', 'data/cache.json', 'data/latest.json', 'data/source.json', 'data/currency-strength.json', 'data/run-diagnostics.json', 'data/strategy-report.json', 'data/scenario-continuity.json')
+    git(root, 'add', '--', 'data/cache.json', 'data/latest.json', 'data/source.json', 'data/currency-strength.json', 'data/run-diagnostics.json', 'data/strategy-report.json', 'data/scenario-continuity.json', 'data/report-slot.json')
     staged = git(root, 'diff', '--cached', '--name-only').splitlines()
-    if not set(staged) <= {'data/cache.json', 'data/latest.json', 'data/source.json', 'data/currency-strength.json', 'data/run-diagnostics.json', 'data/strategy-report.json', 'data/scenario-continuity.json'}:
+    if not set(staged) <= {'data/cache.json', 'data/latest.json', 'data/source.json', 'data/currency-strength.json', 'data/run-diagnostics.json', 'data/strategy-report.json', 'data/scenario-continuity.json', 'data/report-slot.json'}:
         raise ValueError('unexpected staged private files')
     git(root, '-c', 'user.name=github-actions[bot]', '-c',
         'user.email=41898286+github-actions[bot]@users.noreply.github.com',
@@ -220,6 +234,20 @@ def main():
                'FX_NEW_PAIR_H1_BOOTSTRAP': '1',
                'FX_H1_EVIDENCE_DIR': str(root/'.private-run'/run_id/'h1-evidence')}
         logs = root/'.private-run'/run_id
+        if args.stage == 'restore':
+            marker = logs/'collection-start.json'
+            if marker.is_symlink() or not marker.resolve().is_relative_to(root):
+                raise ValueError('collection start path invalid')
+            logs.mkdir(parents=True, exist_ok=True, mode=0o700)
+            # Capture once, before collection. Never derive the slot from a
+            # later saved/evaluation clock or overwrite a previous observation.
+            if not marker.exists():
+                with marker.open('x') as stream:
+                    json.dump({'run_id':int(run_id),'source_commit':commit,
+                        'repository':CODE_REPOSITORY,'observed_started_at':int(time.time()),
+                        'run_attempt':int(os.environ.get('GITHUB_RUN_ATTEMPT','0')),
+                        'event':os.environ.get('GITHUB_EVENT_NAME')},stream)
+                marker.chmod(0o600)
         if args.stage == 'refresh':
             env = prepare_optional_calendar(root, run_id, env)
         if args.stage == 'snapshot':
