@@ -10,6 +10,7 @@ from .strategy_strength import interpret
 METHOD='contextual_scenario_review_v13_standard_technicals'
 SECONDS={'m5':300,'m15':900,'h1':3600,'h4':14400,'d1':86400,'w1':604800}
 PROFILE={'super_bollinger':[21,21],'macd':[12,26,9],'sma':[50,200],'rci':[9,26,52],'fibonacci':'standard'}
+NY_CLOSE_PROFILE={**PROFILE,'macd_signal':'EMA9','h4_calendar':'mt4_ny_close_h4_v1'}
 
 def ema(values,period):
     out=[None]*len(values)
@@ -29,8 +30,10 @@ def macd(closes):
             for a,b in zip(line,signal)]
 
 
-def _calculate_frame(rows,tf,clock,verified,calendar=None):
+def _calculate_frame(rows,tf,clock,verified,calendar=None,calculation_version=1):
+    if type(calculation_version) is not int or calculation_version not in (1,2):raise ValueError("unsupported calculation version")
     out={'timeframe':tf,'evaluated_at':clock,'calendar':calendar,'verified':verified is True,'status':'unverified','bars':[]}
+    if calculation_version==2:out['calculation_version']=2
     if not isinstance(rows,list) or not rows:return out
     if any(not isinstance(b,dict) or type(b.get('timestamp')) is not int
            or not all(type(b.get(k)) in (int,float) and math.isfinite(b[k]) and b[k]>0 for k in ('open','high','low','close'))
@@ -56,12 +59,12 @@ def _calculate_frame(rows,tf,clock,verified,calendar=None):
 
 
 @lru_cache(maxsize=128)
-def _cached_frame(payload,tf,clock,verified,calendar):
-    return _calculate_frame(json.loads(payload),tf,clock,verified,calendar)
+def _cached_frame(payload,tf,clock,verified,calendar,calculation_version):
+    return _calculate_frame(json.loads(payload),tf,clock,verified,calendar,calculation_version)
 
 
-def frame(rows,tf,clock,verified,calendar=None):
-    return deepcopy(_cached_frame(json.dumps(rows,sort_keys=True,separators=(',',':'),allow_nan=False),tf,clock,verified,calendar))
+def frame(rows,tf,clock,verified,calendar=None,calculation_version=1):
+    return deepcopy(_cached_frame(json.dumps(rows,sort_keys=True,separators=(',',':'),allow_nan=False),tf,clock,verified,calendar,calculation_version))
 
 
 def prepare(data,verified,indicator_frames,quality):
@@ -69,7 +72,7 @@ def prepare(data,verified,indicator_frames,quality):
     data['standard_technical_version']=1
     data['standard_technical_frames']={tf:frame(indicator_frames[tf],tf,clock,
         quality.get('timeframes',{}).get(tf,{}).get('ok') is True,
-        quality.get('timeframes',{}).get(tf,{}).get('calendar')) for tf in SECONDS}
+        quality.get('timeframes',{}).get(tf,{}).get('calendar'),calculation_version=2) for tf in SECONDS}
     # No retired indicator observations survive in a newly generated market view.
     for key in ('advisory_indicators','indicator_research','dinapoli_research','dinapoli_indicator_reference',
                 'span_model_version','span_model_inputs','forecast_wave_inputs','base_evolution_inputs',
@@ -194,10 +197,16 @@ def refresh(r):
     i=r['standard_inputs'];base=i['base'];trigger=i['trigger'];clock=r['evaluated_at'];tf=r['reference_timeframe'];tt=r['trigger_timeframe']
     if i['evaluated_at']!=clock or base['evaluated_at']!=clock or trigger['evaluated_at']!=clock:raise ValueError('standard input clocks mismatch')
     for tfname,fdata in ((tf,base),(tt,trigger)):
-        if fdata.get('bars') and frame(fdata['bars'],tfname,clock,fdata['verified'],fdata.get('calendar'))!=fdata:
+        version=fdata.get('calculation_version',1)
+        if type(version) is not int or version not in (1,2):raise ValueError('unsupported saved calculation version')
+        if fdata.get('bars') and frame(fdata['bars'],tfname,clock,fdata['verified'],fdata.get('calendar'),fdata.get('calculation_version',1))!=fdata:
             raise ValueError('standard frame calculations differ from retained full-prefix candles')
     r['technical_order_version']=1
-    r['technical_profile']=deepcopy(PROFILE);r['base_quality_verified']=base.get('verified') is True
+    r['technical_profile']=deepcopy(PROFILE)
+    if base.get('calculation_version',1)!=trigger.get('calculation_version',1):raise ValueError('mixed calculation profiles')
+    if base.get('calculation_version')==2:
+        r['technical_profile'].update(macd_signal='EMA9',h4_calendar='mt4_ny_close_h4_v1')
+    r['base_quality_verified']=base.get('verified') is True
     from .core import technical
     if i['structure']!=technical(base.get('bars',[])).get('structure','unconfirmed'):
         raise ValueError('standard price structure mismatch')

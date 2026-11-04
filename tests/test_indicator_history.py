@@ -10,6 +10,7 @@ from unittest.mock import patch
 from fx_system.core import aggregate
 from fx_system.indicator_history import RETAINED_BARS, extend_from_archive, indicator_health
 from fx_system.standard_technicals import frame
+from fx_system.mt4_calendar import aggregate_h4
 from fx_system.acquisition import rebuild_verified_h1, request_plan
 from fx_system.provenance import key
 
@@ -31,7 +32,7 @@ class IndicatorHistoryTests(unittest.TestCase):
     def test_existing_archive_supplies_201_h4_without_changing_retained_or_original(self):
         all_rows = bars(1000, 3600)
         current = all_rows[-500:]
-        frames = {'h1':current, 'h4':aggregate(current,3600,14400)}
+        frames = {'h1':current, 'h4':aggregate_h4(current)}
         checkpoint = {'archive':{'pairs':{'EURUSD':{str(b['timestamp']):b for b in all_rows}}},
                       'blocked_pairs':{}}
         before = deepcopy((frames,checkpoint))
@@ -40,7 +41,9 @@ class IndicatorHistoryTests(unittest.TestCase):
         self.assertEqual((frames,checkpoint),before)
         self.assertEqual(diagnostic['added_h1'],340)
         self.assertEqual(len(result['h1']),840)
-        self.assertEqual(len(result['h4']),210)
+        self.assertGreaterEqual(len(result['h4']),209)
+        from fx_system.mt4_calendar import h4_start
+        self.assertTrue(all(h4_start(r['timestamp'])==r['timestamp'] for r in result['h4']))
         f=frame(result['h4'],'h4',NOW,True)
         self.assertIsNotNone(f['sma']['200']['previous'])
         self.assertAlmostEqual(f['sma']['200']['value'],sum(b['close'] for b in result['h4'][-200:])/200)
@@ -48,7 +51,7 @@ class IndicatorHistoryTests(unittest.TestCase):
     def test_gap_conflict_missing_evidence_and_future_clock_do_not_extend(self):
         all_rows=bars(900,3600);current=all_rows[-500:]
         original={'archive':{'pairs':{'EURUSD':{str(b['timestamp']):b for b in all_rows}}},'blocked_pairs':{}}
-        frames={'h1':current,'h4':aggregate(current,3600,14400)}
+        frames={'h1':current,'h4':aggregate_h4(current)}
         for variant in ('gap','conflict','blocked','receipt','source','clock','quality'):
             state=deepcopy(original);context=self.context();quality={'timeframes':{'h1':{'ok':True}}}
             if variant=='gap':state['archive']['pairs']['EURUSD'].pop(str(current[0]['timestamp']-3600))

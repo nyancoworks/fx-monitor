@@ -2,7 +2,7 @@ import json
 import math
 import unittest
 from copy import deepcopy
-from fx_system.standard_technicals import macd,frame,PROFILE,METHOD,prepare,assess,refresh
+from fx_system.standard_technicals import macd,frame,PROFILE,NY_CLOSE_PROFILE,METHOD,prepare,assess,refresh
 from fx_system.scheduled_outlook import build_scheduled_outlook
 from fx_system.strategy_report_export import build_strategy_report_export,restore_strategy_report_export
 from fx_system.validate_strategy_snapshot import validate_strategy_snapshot
@@ -59,7 +59,7 @@ class StandardTechnicalTests(unittest.TestCase):
             self.assertEqual(validate_strategy_snapshot({'evaluated_at':CLOCK,'scheduled_outlook':o}),[])
             self.assertEqual(len(o['strategy_assessments']),32)
             for r in o['strategy_assessments']:
-                self.assertEqual(r['method_version'],METHOD);self.assertEqual(r['technical_profile'],PROFILE)
+                self.assertEqual(r['method_version'],METHOD);self.assertEqual(r['technical_profile'],NY_CLOSE_PROFILE)
                 self.assertNotIn('span_model_version',r);self.assertNotIn('forecast_wave_version',r)
                 self.assertNotIn('DMA',json.dumps(r,ensure_ascii=False));self.assertNotIn('stochastic',json.dumps(r))
             b=build_strategy_report_export(json.dumps({'evaluated_at':CLOCK,'scheduled_outlook':o}).encode(),SOURCE)
@@ -83,13 +83,13 @@ class StandardTechnicalTests(unittest.TestCase):
         self.assertGreater(local,origin)
         t=r['standard_inputs']['trigger'];bars=deepcopy(t['bars']);price=(local+origin)/2
         for b in bars[-5:]:b.update(open=price,high=price+.1,low=price-.1,close=price)
-        r['standard_inputs']['trigger']=frame(bars,'m15',CLOCK,True)
+        r['standard_inputs']['trigger']=frame(bars,'m15',CLOCK,True,calculation_version=2)
         refresh(r)
         self.assertEqual(r['assessment'],'review');self.assertEqual(r['invalidation']['price'],origin)
         self.assertEqual(r['practical_review']['status'],'entry_recheck')
         self.assertEqual(r['practical_review']['entry_status'],'paused')
         pending=deepcopy(r);b=pending['standard_inputs']['base']
-        pending['standard_inputs']['base']=frame(b['bars'],'h4',CLOCK,False)
+        pending['standard_inputs']['base']=frame(b['bars'],'h4',CLOCK,False,calculation_version=2)
         refresh(pending);self.assertEqual(pending['assessment'],'evaluation_pending')
         self.assertNotEqual(pending['practical_review']['entry_status'],'paused')
         old=deepcopy(r);old['standard_technical_version']=1;old['practical_review'].pop('entry_status')

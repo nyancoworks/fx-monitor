@@ -1,4 +1,5 @@
 from __future__ import annotations
+from .mt4_calendar import aggregate_h4
 import datetime as dt
 import json
 import os
@@ -316,7 +317,7 @@ def _refresh(ny=None):
                     acquisition[tf]["status"]="skipped"
         cached['bar_provenance']={provenance_key(tf,b['timestamp']):provenance.get(provenance_key(tf,b['timestamp']),'unknown') for tf in ('m5','h1') for b in raw[tf]}
         evaluation_now=int(time.time())
-        frames={"m5":raw["m5"],"m15":aggregate(raw["m5"],300,900),"h1":raw["h1"],"h4":aggregate(raw["h1"],3600,14400),"d1":[],"w1":[]}
+        frames={"m5":raw["m5"],"m15":aggregate(raw["m5"],300,900),"h1":raw["h1"],"h4":aggregate_h4(raw["h1"]),"d1":[],"w1":[]}
         result["pairs"][name]={tf:{"candles":rows[-100:],"quality":assess(rows,tf,evaluation_now)} for tf,rows in frames.items()}
         result["pairs"][name]["decision_data"]={"raw":{tf:raw[tf] for tf in ("m5","h1","d1")},"provenance":cached['bar_provenance']}
         decision_frames,decision_quality=evaluate_pair(result["pairs"][name],int(time.time()))
