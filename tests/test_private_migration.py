@@ -15,6 +15,50 @@ from fx_system.storage_paths import storage_root
 
 
 class PrivateMigrationTests(unittest.TestCase):
+    def test_push_timeout_acknowledges_only_exact_remote_commit_without_retry(self):
+        commit = 'a' * 40
+        failure = runtime.PrivateGitError('push', 'git_timeout')
+        for remote, accepted in ((commit+'\trefs/heads/main', True),
+                                 ('b'*40+'\trefs/heads/main', False), ('', False)):
+            with self.subTest(accepted=accepted, remote=remote), \
+                 patch.object(runtime, 'git', side_effect=[commit, failure, remote]) as command:
+                if accepted:
+                    runtime.push_snapshot(Path('/synthetic'))
+                else:
+                    with self.assertRaises(runtime.PrivateGitError):
+                        runtime.push_snapshot(Path('/synthetic'))
+                self.assertEqual([c.args[1] for c in command.call_args_list],
+                                 ['rev-parse', 'push', 'ls-remote'])
+
+    def test_push_rejection_is_not_retried_or_treated_as_success(self):
+        with patch.object(runtime, 'git', side_effect=[
+                'a'*40, runtime.PrivateGitError('push', 'git_rejected')]) as command:
+            with self.assertRaises(runtime.PrivateGitError):
+                runtime.push_snapshot(Path('/synthetic'))
+            self.assertEqual(command.call_count, 2)
+
+    def test_git_timeouts_are_bounded_and_do_not_expose_output(self):
+        for operation, timeout in (('push', 120), ('show', 30)):
+            with patch.object(runtime.subprocess, 'run', side_effect=subprocess.TimeoutExpired(
+                    ['git', 'PRIVATE_SECRET'], timeout, output=b'PRIVATE_SECRET')) as command:
+                with self.assertRaises(runtime.PrivateGitError) as caught:
+                    runtime.git(Path('/synthetic'), operation)
+                self.assertEqual(command.call_args.kwargs['timeout'], timeout)
+                self.assertEqual(caught.exception.reason, 'git_timeout')
+                self.assertNotIn('PRIVATE_SECRET', str(caught.exception))
+
+    def test_git_failure_public_summary_contains_only_fixed_classification(self):
+        out = io.StringIO()
+        with patch.object(sys, 'argv', ['runner', 'snapshot', '--state', '/synthetic']), \
+             patch.dict(os.environ, {'GITHUB_RUN_ID':'123', 'GITHUB_SHA':'a'*40,
+                 'GITHUB_REPOSITORY':runtime.CODE_REPOSITORY, 'GITHUB_REF':'refs/heads/main'}), \
+             patch.object(runtime, 'private_root',
+                          side_effect=runtime.PrivateGitError('push', 'git_timeout')), \
+             contextlib.redirect_stdout(out):
+            self.assertEqual(runtime.main(), 1)
+        self.assertIn('FX_PRIVATE_GIT_FAILURE', out.getvalue())
+        self.assertIn('"operation": "push"', out.getvalue())
+
     def test_configured_data_location_and_legacy_default(self):
         with patch.dict(os.environ, {}, clear=True):
             self.assertEqual(storage_root('/legacy'), Path('/legacy'))
