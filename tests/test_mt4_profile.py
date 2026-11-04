@@ -11,6 +11,30 @@ def stamp(value):
 
 
 class MT4ProfileTests(unittest.TestCase):
+    def test_dst_complete_bar_sequence_preserves_real_missing_bar_rejection(self):
+        from fx_system.mt4_calendar import sequence_valid, CALENDAR
+        for beginning in ('2026-10-29T00:00:00+00:00','2026-03-05T00:00:00+00:00'):
+            start=stamp(beginning)
+            rows=[dict(timestamp=start+i*3600,open=100+i*.01,high=101+i*.01,
+                       low=99+i*.01,close=100+i*.01) for i in range(120)]
+            bars=aggregate_h4(rows)
+            self.assertTrue(sequence_valid(bars))
+            self.assertTrue(any(b['timestamp']-a['timestamp']!=14400 for a,b in zip(bars,bars[1:])))
+            broken=bars[:10]+bars[11:]
+            self.assertFalse(sequence_valid(broken))
+            clock=rows[-1]['timestamp']+3600
+            old=frame(bars,'h4',clock,True,CALENDAR,2)
+            new=frame(bars,'h4',clock,True,CALENDAR,3)
+            self.assertEqual(new['super_bollinger']['status'],'calculated')
+            self.assertEqual(old['super_bollinger']['status'],'noncontiguous')
+            # Dropping an actual full H4 inside the required lookback still fails.
+            new_missing=frame(bars[:-4]+bars[-3:],'h4',clock,True,CALENDAR,3)
+            self.assertEqual(new_missing['super_bollinger']['status'],'noncontiguous')
+            self.assertEqual(new['macd'],old['macd'])
+        ordinary=[{'timestamp':stamp('2026-11-04T15:00:00+09:00')},
+                  {'timestamp':stamp('2026-11-04T20:00:00+09:00')}]
+        self.assertFalse(sequence_valid(ordinary))
+
     def test_quality_expects_same_complete_h4_as_aggregation(self):
         from fx_system.data_quality import evaluate_data
         from fx_system.provenance import key
