@@ -1,0 +1,21 @@
+# 定時報告の対象枠
+
+`data/report-slot.json`をsource/診断/exportと同じimmutable保存commitで読む。
+schemaはsaved_report_slot_v1。status=assignedのsource全項目とsnapshot_git_blob_shaを
+同世代データへ照合し、target_scheduled_forを今回タスクのscheduled_forへ照合する。
+UTC/JSTのISO表示も保存する。復元器のvalidate_slotで整合を検査できる。
+
+producerは既存restore段階の開始を一度だけ観測し、run ID・commit・repository・
+run attempt・eventとともに非公開記録へ保持する。観測が毎時50分以上・次の正時より
+前なら、その次の正時を対象枠として明示的に割り当てる。保存時刻/評価時刻からの
+推測ではない。GitHubのcreated_atの代用品や同じ値とは主張しない。
+開始が遅れて窓外、再試行、証跡欠落、source不一致ならassignedにしない。
+source/blob一致は署名や操作命令の信頼保証ではなく、既存の信頼済みproducerを前提とする。
+
+報告タスクはassignedかつ今回枠/source/blob一致なら、毎回Actionsのcreated_atを
+再取得する必要はない。品質/全32/本文/前回比較/出典の既存確認は省略しない。
+旧保存などでこの記録がない場合のみ、source.run_idの実Actions情報を直接読む従来の
+経路へ戻る。照合不能な範囲は明示し、他世代で置換しない。
+
+API・スケジュール・workflow・判断基準を増減しない。新しいファイルはsnapshotと
+同じpushで保存し、原本/履歴を後付けで改変しない。過去の保留本文は自動修正しない。
