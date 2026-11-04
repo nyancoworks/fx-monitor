@@ -72,7 +72,10 @@ def _label(r):
 
 
 def render_strategy_report(snapshot, *, include_all_reviews=False, complete_evidence=False,
-                           selection_version=4, comparison_explanation_version=1):
+                           selection_version=4, comparison_explanation_version=1,
+                           presentation_version=1):
+    if type(presentation_version) is not int or presentation_version not in (1, 2):
+        raise ValueError('unsupported report presentation version')
     if type(comparison_explanation_version) is not int or comparison_explanation_version not in (1, 2):
         raise ValueError('unsupported comparison explanation version')
     failures = validate_strategy_snapshot(snapshot)
@@ -113,8 +116,8 @@ def render_strategy_report(snapshot, *, include_all_reviews=False, complete_evid
     for r in shown:
         from .standard_technicals import METHOD as STANDARD_METHOD, render_lines as standard_lines
         if r.get('method_version')==STANDARD_METHOD:
-            lines.extend(standard_lines(r))
-            lines.extend(calendar_lines(r,_clock))
+            lines.extend(standard_lines(r, presentation_version=presentation_version))
+            lines.extend(calendar_lines(r,_clock, presentation_version=presentation_version))
             continue
         from .technical_scenario import METHOD as TECHNICAL_METHOD, render_lines
         from .technical_forecast import METHOD as FORECAST_METHOD
@@ -123,7 +126,7 @@ def render_strategy_report(snapshot, *, include_all_reviews=False, complete_evid
             lines.extend(render_lines(r))
             strength=r.get('currency_strength_context', {})
             if strength.get('summary'):lines.append('通貨強弱：'+strength['summary'])
-            lines.extend(calendar_lines(r, _clock))
+            lines.extend(calendar_lines(r, _clock, presentation_version=presentation_version))
             continue
         plan = r.get('reference_plan', {}); levels = r.get('reference_levels', {})
         recent = r.get('trigger_price_review', {}); expiry = r.get('expiry', {})
@@ -173,7 +176,7 @@ def render_strategy_report(snapshot, *, include_all_reviews=False, complete_evid
             for event in r.get('practical_review',{}).get('events',[]):
                 lines.append('発表再評価：'+str(event.get('id'))+' '+_clock(event.get('scheduled_at_utc')))
         else:
-            lines.extend(calendar_lines(r, _clock))
+            lines.extend(calendar_lines(r, _clock, presentation_version=presentation_version))
         if condition_plan.get('status') in ('waiting','awaiting_breakout','awaiting_retest','retest_failed','conditions_observed'):
             state = ('条件観測済み' if condition_plan['status']=='conditions_observed' else
                      '再試し失敗・再評価' if condition_plan['status']=='retest_failed' else

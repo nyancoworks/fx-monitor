@@ -307,10 +307,12 @@ def pair_row(pair,data,source_quality,clock):
 
 
 
-def render_lines(r):
+def render_lines(r, *, presentation_version=1):
+    if type(presentation_version) is not int or presentation_version not in (1,2):
+        raise ValueError('unsupported report presentation version')
     f=r['technical_outlook']['forecast'];p=r['wave_price_plan'];c=r['scenario_conditions']
     fmt=lambda x:f'{x:.8f}'.rstrip('0').rstrip('.') if type(x) in (int,float) and x>0 else '未確認'
-    return ['',r['pair']+' '+r['strategy']+'｜'+('買い' if r['direction']=='long' else '売り')+'｜'+str(r['grade']),
+    lines = ['',r['pair']+' '+r['strategy']+'｜'+('買い' if r['direction']=='long' else '売り')+'｜'+str(r['grade']),
         '見通し：'+f['primary_path'],'根拠：'+'／'.join(r['reasons']),
         '懸念：'+'／'.join(r['opposing_evidence']),
         ('局所条件観測済み：' if c['status']=='conditions_observed' else '待つ条件：')+c['summary'],
@@ -321,6 +323,23 @@ def render_lines(r):
         '局所停止参考：'+fmt(p['local_setup_failure'])+'。大局撤回と別。実際の成立価格・損失幅・費用は未確定',
         *((['ローソク足の補足：'+r['candle_reference']['summary']]) if r.get('candle_reference',{}).get('status') in ('observed','not_observed') else []),
         '使用指標：SB、通常MACD12/26/9、通常Fib、SMA50/200、RCI9/26/52']
+    if presentation_version == 1:
+        return lines
+    paused = r.get('practical_review',{}).get('entry_status') == 'paused'
+    state = ('経路終了・再評価' if r.get('expiry',{}).get('status') == 'withdrawn' else
+             '局所停止・再評価' if paused else
+             '局所条件観測済み' if c['status'] == 'conditions_observed' else
+             '条件待ち' if c['status'] == 'waiting' else '条件確認不可・再評価')
+    title = (r['pair'][:3]+'/'+r['pair'][3:]+'｜'+
+             ('スイング' if r['strategy']=='swing' else 'デイトレード')+'｜'+
+             ('買い' if r['direction']=='long' else '売り')+str(r['grade'])+'｜'+state)
+    stop = p['local_setup_failure']
+    stop_line = ('局所停止：'+r['trigger_timeframe'].upper()+'確定終値 '+fmt(stop)+
+                 ('以下' if r['direction']=='long' else '以上') if stop is not None else
+                 '局所停止：水準未確認')
+    stop_line += '。仕掛けを再評価する水準で、大局撤回と別。成立価格・損失幅・費用は未確定'
+    return ['', title, '確認足 '+r['trigger_timeframe'].upper()+'｜'+lines[5],
+            stop_line, lines[6], lines[7], *lines[2:5], *lines[8:10], *lines[11:]]
 
 
 def pair_context(records,clock):
