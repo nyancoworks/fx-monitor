@@ -31,11 +31,39 @@ def private_root(value):
     return root
 
 
+class PrivateGitError(ValueError):
+    def __init__(self, operation, reason):
+        super().__init__('private data Git operation failed')
+        self.operation = operation
+        self.reason = reason
+
+
 def git(root, *args):
-    result = subprocess.run(['git', '-C', str(root), *args], capture_output=True, timeout=30)
+    operation = args[0] if args[0] != '-c' else 'commit'
+    try:
+        result = subprocess.run(['git', '-C', str(root), *args], capture_output=True,
+                                timeout=120 if operation == 'push' else 30)
+    except subprocess.TimeoutExpired:
+        raise PrivateGitError(operation, 'git_timeout') from None
+    except OSError:
+        raise PrivateGitError(operation, 'git_unavailable') from None
     if result.returncode:
-        raise ValueError('private data Git operation failed')
+        raise PrivateGitError(operation, 'git_rejected')
     return result.stdout.decode().strip()
+
+
+def push_snapshot(root):
+    expected = git(root, 'rev-parse', 'HEAD')
+    try:
+        git(root, 'push', 'origin', 'HEAD:refs/heads/main')
+    except PrivateGitError as failure:
+        if failure.operation != 'push' or failure.reason != 'git_timeout':
+            raise
+        # A server may accept the commit before the client times out. Verify
+        # exactly that commit; never repeat a write or accept an older save.
+        remote = git(root, 'ls-remote', '--refs', 'origin', 'refs/heads/main')
+        if remote != expected + '\trefs/heads/main':
+            raise failure
 
 
 def verify_ready(root):
@@ -194,7 +222,7 @@ def save_snapshot(root, run_id, source_commit):
     git(root, '-c', 'user.name=github-actions[bot]', '-c',
         'user.email=41898286+github-actions[bot]@users.noreply.github.com',
         'commit', '-m', 'Save scheduled FX observations')
-    git(root, 'push', 'origin', 'HEAD:refs/heads/main')
+    push_snapshot(root)
     # Reuse the acknowledged snapshot push; long-term storage must not add a
     # second remote read just to establish which input was already saved.
     receipt = root/'.private-run'/run_id/'snapshot.receipt.json'
@@ -293,7 +321,16 @@ def main():
             if value.get('status') not in expected:
                 raise ValueError('archive persistence not verified')
             (logs/(args.stage+'.stdout.json')).write_text(json.dumps(value))
-    except Exception:
+    except Exception as failure:
+        if isinstance(failure, PrivateGitError):
+            operation = failure.operation if failure.operation in {
+                'remote', 'show', 'rev-parse', 'add', 'diff', 'commit', 'push', 'ls-remote'
+            } else 'other'
+            reason = failure.reason if failure.reason in {
+                'git_timeout', 'git_unavailable', 'git_rejected'
+            } else 'other'
+            print('FX_PRIVATE_GIT_FAILURE ' + json.dumps({
+                'operation': operation, 'reason': reason}, sort_keys=True))
         print('FX_STAGE ' + args.stage + ' failed; private diagnostics retained when available')
         return 1
     print('FX_STAGE ' + args.stage + (' success' if rc == 0 else ' failed'))
