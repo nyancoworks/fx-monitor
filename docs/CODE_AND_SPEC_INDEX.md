@@ -8,6 +8,7 @@
 | 現行指標・予測・価格計画・32評価 | `standard_technicals.py`、`technical_entry.py`、`scheduled_outlook.py` |
 | 同ペアの戦略関係・掲載・本文 | `pair_market_context.py`、`strategy_report.py`、`REPORT_SELECTION.md` |
 | 保存・完全復元・履歴・前回条件 | `strategy_report_export.py`、`saved_standard_inputs.py`、`scenario_continuity.py`、`scenario_followthrough.py`、`diagnostics/monitoring_result_history.py`、`PRIVATE_REPORT_READING.md` |
+| 候補の条件・停止・目標と経済指標の情報品質表示 | `REPORT_PRESENTATION.md`、`economic_calendar_report.py` |
 | 保存通貨強弱・経済指標・政策資料 | `strategy_strength.py`、`economic_calendar_context.py`、`ECONOMIC_CALENDAR.md`、`POLICY_REFERENCE.md` |
 | NY17確定足・既存保管 | `ny_archive_transport.py`、`ny_archive_status.py`などの保管/復元処理、`ARCHIVE_INVENTORY.md` |
 

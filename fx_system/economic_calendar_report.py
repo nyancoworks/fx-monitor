@@ -77,7 +77,43 @@ def _background_lines(context, format_clock):
     return lines
 
 
-def calendar_lines(record, format_clock):
+def _quality_lines(record):
+    """Explain saved gaps across all events, without asserting freshness."""
+    context = record.get('economic_calendar_context')
+    if not isinstance(context, dict):
+        return []
+    if context.get('status') not in ('available', 'partial'):
+        return ['判断への影響：経済指標による裏付けは未確認。予定なしとは判断できない。']
+    events = context.get('events')
+    if not isinstance(events, list):
+        return []
+    lines = []
+    for currency in (record.get('pair', '')[:3], record.get('pair', '')[3:]):
+        selected = [e for e in events if isinstance(e, dict) and e.get('currency') == currency]
+        counts = [
+            ('古い出典', sum(e.get('freshness') == 'stale' for e in selected)),
+            ('出典の劣化・失敗・停止', sum(isinstance(e.get('source_health'), dict)
+                and e['source_health'].get('status') in ('degraded', 'failed', 'disabled') for e in selected)),
+            ('日時未確定', sum(e.get('timing') == 'uncertain' for e in selected)),
+        ]
+        gaps = '・'.join(label+str(count)+'件' for label, count in counts if count)
+        if gaps:
+            lines.append('情報品質 '+currency+'：'+gaps+'（非掲載分を含む、同一指標の重複あり）')
+    if lines or context.get('collection_status') == 'unavailable':
+        lines.append('判断への影響：該当情報の最新日程・実績を裏付けられない。保存予定は参考とし、発表結果や通貨方向を推測しない。')
+    if context.get('status') == 'partial' or context.get('omitted_count') or context.get('warnings'):
+        lines.append('確認範囲：関連予定の網羅性は未確認。非掲載・空欄からイベントなしとは判断できない。')
+    return lines
+
+
+def calendar_lines(record, format_clock, *, presentation_version=1):
+    if type(presentation_version) is not int or presentation_version not in (1, 2):
+        raise ValueError('unsupported report presentation version')
+    return ((_quality_lines(record) if presentation_version == 2 else [])
+            + _legacy_calendar_lines(record, format_clock))
+
+
+def _legacy_calendar_lines(record, format_clock):
     context = record.get('economic_calendar_context')
     if not isinstance(context, dict):
         return []
