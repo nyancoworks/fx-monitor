@@ -4,6 +4,26 @@ from zoneinfo import ZoneInfo
 
 CALENDAR = 'mt4_ny_close_h4_v1'
 NY = ZoneInfo('America/New_York')
+CONTINUITY = 'mt4_ny_close_complete_h4_v2'
+
+
+def complete_start(stamp):
+    return h4_start(stamp) == stamp and all(h4_start(stamp+i*3600) == stamp for i in range(4))
+
+
+def next_complete_start(stamp):
+    # A server-clock change can leave a partial bucket. It is not a full H4
+    # candle and must neither be invented nor mistaken for a missing full bar.
+    return next(t for t in range(stamp+14400, stamp+12*3600, 3600) if complete_start(t))
+
+
+def sequence_valid(rows):
+    if not rows:
+        return False
+    stamps = [row.get('timestamp') for row in rows]
+    if any(type(t) is not int or not complete_start(t) for t in stamps):
+        return False
+    return all(b == next_complete_start(a) for a,b in zip(stamps,stamps[1:]))
 
 
 def h4_start(stamp):
@@ -14,7 +34,7 @@ def h4_start(stamp):
 def expected_h4(now):
     # Look at actual UTC instants so DST is handled without naive local clocks.
     starts = {h4_start(int(now)-i*3600) for i in range(10)}
-    return max(t for t in starts if t+14400 <= int(now))
+    return max(t for t in starts if t+14400 <= int(now) and complete_start(t))
 
 
 def aggregate_h4(rows):

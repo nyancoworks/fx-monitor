@@ -62,7 +62,10 @@ def super_bollinger_context(rows, period=21, lag=21, *, timeframe=None, calendar
     # must not be silently treated as the same lag displacement.
     recent=ordered[-max(period+1,lag+1):]
     steps=[b["timestamp"]-a["timestamp"] for a,b in zip(recent,recent[1:])]
-    if calendar == NY17:
+    if calendar == 'mt4_ny_close_complete_h4_v2' and timeframe == 'h4':
+        from .mt4_calendar import sequence_valid
+        contiguous = sequence_valid(recent)
+    elif calendar == NY17:
         contiguous = ny17_sequence_valid(recent,timeframe)
     else:
         contiguous = not steps or all(step>0 and step==steps[-1] for step in steps)

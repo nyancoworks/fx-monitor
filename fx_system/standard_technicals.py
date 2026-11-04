@@ -31,9 +31,9 @@ def macd(closes):
 
 
 def _calculate_frame(rows,tf,clock,verified,calendar=None,calculation_version=1):
-    if type(calculation_version) is not int or calculation_version not in (1,2):raise ValueError("unsupported calculation version")
+    if type(calculation_version) is not int or calculation_version not in (1,2,3):raise ValueError("unsupported calculation version")
     out={'timeframe':tf,'evaluated_at':clock,'calendar':calendar,'verified':verified is True,'status':'unverified','bars':[]}
-    if calculation_version==2:out['calculation_version']=2
+    if calculation_version in (2,3):out['calculation_version']=calculation_version
     if not isinstance(rows,list) or not rows:return out
     if any(not isinstance(b,dict) or type(b.get('timestamp')) is not int
            or not all(type(b.get(k)) in (int,float) and math.isfinite(b[k]) and b[k]>0 for k in ('open','high','low','close'))
@@ -45,8 +45,12 @@ def _calculate_frame(rows,tf,clock,verified,calendar=None,calculation_version=1)
                     'previous':sum(c[-p-1:-1])/p if len(c)>p else None} for p in (50,200)}
     for v in smas.values():
         v['slope']='up' if v['value'] is not None and v['previous'] is not None and v['value']>v['previous'] else 'down' if v['value'] is not None and v['previous'] is not None and v['value']<v['previous'] else 'flat' if v['previous'] is not None else 'unverified'
-    sb=super_bollinger_context(rows,timeframe=tf,calendar=calendar)
-    previous_sb=super_bollinger_context(rows[:-1],timeframe=tf,calendar=calendar)
+    sb_calendar=calendar
+    if calculation_version==3 and tf=='h4' and calendar=='mt4_ny_close_h4_v1':
+        from .mt4_calendar import CONTINUITY
+        sb_calendar=CONTINUITY
+    sb=super_bollinger_context(rows,timeframe=tf,calendar=sb_calendar)
+    previous_sb=super_bollinger_context(rows[:-1],timeframe=tf,calendar=sb_calendar)
     if sb.get('status')=='calculated' and previous_sb.get('status')=='calculated':
         delta=sb['bandwidth_3sigma']-previous_sb['bandwidth_3sigma']
         sb['bandwidth_state']='expanding' if delta>0 else 'contracting' if delta<0 else 'flat'
@@ -72,7 +76,7 @@ def prepare(data,verified,indicator_frames,quality):
     data['standard_technical_version']=1
     data['standard_technical_frames']={tf:frame(indicator_frames[tf],tf,clock,
         quality.get('timeframes',{}).get(tf,{}).get('ok') is True,
-        quality.get('timeframes',{}).get(tf,{}).get('calendar'),calculation_version=2) for tf in SECONDS}
+        quality.get('timeframes',{}).get(tf,{}).get('calendar'),calculation_version=3) for tf in SECONDS}
     # No retired indicator observations survive in a newly generated market view.
     for key in ('advisory_indicators','indicator_research','dinapoli_research','dinapoli_indicator_reference',
                 'span_model_version','span_model_inputs','forecast_wave_inputs','base_evolution_inputs',
@@ -198,13 +202,13 @@ def refresh(r):
     if i['evaluated_at']!=clock or base['evaluated_at']!=clock or trigger['evaluated_at']!=clock:raise ValueError('standard input clocks mismatch')
     for tfname,fdata in ((tf,base),(tt,trigger)):
         version=fdata.get('calculation_version',1)
-        if type(version) is not int or version not in (1,2):raise ValueError('unsupported saved calculation version')
+        if type(version) is not int or version not in (1,2,3):raise ValueError('unsupported saved calculation version')
         if fdata.get('bars') and frame(fdata['bars'],tfname,clock,fdata['verified'],fdata.get('calendar'),fdata.get('calculation_version',1))!=fdata:
             raise ValueError('standard frame calculations differ from retained full-prefix candles')
     r['technical_order_version']=1
     r['technical_profile']=deepcopy(PROFILE)
     if base.get('calculation_version',1)!=trigger.get('calculation_version',1):raise ValueError('mixed calculation profiles')
-    if base.get('calculation_version')==2:
+    if base.get('calculation_version') in (2,3):
         r['technical_profile'].update(macd_signal='EMA9',h4_calendar='mt4_ny_close_h4_v1')
     r['base_quality_verified']=base.get('verified') is True
     from .core import technical
