@@ -1,7 +1,7 @@
 """Bounded indicator history, reusing existing verified observations only."""
 from copy import deepcopy
 import math
-from .core import aggregate
+from .mt4_calendar import aggregate_h4
 
 # Enough for 201 complete H4/M15 candles, with aggregation alignment margin.
 # Request sizes and request planning remain unchanged.
@@ -59,7 +59,7 @@ def extend_from_archive(frames, checkpoint, pair, context, quality, now):
             prefix.append({k: old[k] for k in FIELDS})
             stamp -= 3600
         result['h1'] = list(reversed(prefix)) + deepcopy(current)
-        result['h4'] = aggregate(result['h1'], 3600, 14400)
+        result['h4'] = aggregate_h4(result['h1'])
         diagnostic.update(status='archive_prefix_reused' if prefix else 'no_adjacent_prefix',
                           added_h1=len(prefix), input_h1=len(result['h1']))
     except (KeyError, TypeError, ValueError, AttributeError):

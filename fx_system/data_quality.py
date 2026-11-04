@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import math
 from collections import Counter
+from .mt4_calendar import aggregate_h4, expected_h4, CALENDAR as MT4_H4
 from .core import INTERVALS, MIN_BARS, assess, aggregate, weekly, expected_closed_timestamp
 from .provenance import key
 
@@ -61,9 +62,10 @@ def evaluate_data(raw, provenance, now):
         frames[tf]=segment
         exclusions[tf]={**counts, "retained_count":len(rows), "decision_count":len(segment)}
     frames["m15"]=aggregate(frames["m5"],300,900)
-    frames["h4"]=aggregate(frames["h1"],3600,14400)
+    frames["h4"]=aggregate_h4(frames["h1"])
     frames["w1"]=weekly(frames["d1"],now)
     checks={tf:assess(rows,tf,now) for tf,rows in frames.items()}
+    checks["h4"]["calendar"]=MT4_H4
     minimum={**MIN_BARS,"h1":35,"h4":15}
     # W1 is macro context, not a hard veto on an otherwise verified H4/H1 setup.
     # Keep W1 quality visible in timeframes, but do not add it to blocking reasons.
@@ -74,7 +76,7 @@ def evaluate_data(raw, provenance, now):
             reasons.append(tf+": verified completed candles stale or missing")
     freshness={}
     for tf in ("m5","h1","h4","d1"):
-        expected=expected_closed_timestamp(tf,now)
+        expected=expected_h4(now) if tf=="h4" else expected_closed_timestamp(tf,now)
         actual=frames[tf][-1]["timestamp"] if frames[tf] else None
         present=actual==expected
         freshness[tf]={"expected_last_closed":expected,"actual_last":actual,"latest_closed_present":present}
