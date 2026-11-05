@@ -3,9 +3,9 @@ from copy import deepcopy
 
 
 def build(records, clock, *, version=1):
-    if version==3:
+    if version in (3,4):
         from .standard_technicals import pair_context
-        return pair_context(records,clock)
+        return pair_context(records,clock,version=version)
     pairs={}
     for r in records:pairs.setdefault(r['pair'],{})[r['strategy']]=r
     result=[]
@@ -100,7 +100,7 @@ def build(records, clock, *, version=1):
 
 def attach(outlook):
     from .standard_technicals import METHOD
-    version=3 if any(r.get('method_version')==METHOD for r in outlook['strategy_assessments']) else 2
+    version=4 if any(r.get('method_version')==METHOD for r in outlook['strategy_assessments']) else 2
     outlook['pair_context_version']=version
     outlook['pair_market_context']=build(outlook['strategy_assessments'],outlook['evaluated_at'],version=version)
     return outlook
