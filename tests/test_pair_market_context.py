@@ -22,6 +22,42 @@ def records():
 
 
 class PairMarketContextTests(unittest.TestCase):
+    def test_standard_resolution_roles_follow_saved_preference(self):
+        from fx_system.standard_technicals import METHOD
+
+        def record(strategy, direction):
+            long = direction == 'long'
+            return {'pair':'EURUSD', 'strategy':strategy, 'direction':direction,
+                'method_version':METHOD, 'evaluated_at':CLOCK, 'grade':'B',
+                'reference_timeframe':'h4' if long else 'h1',
+                'technical_outlook':{'forecast':{'status':'available', 'direction':direction,
+                    'phase':'continuation', 'primary_path':'synthetic forecast',
+                    'background':{'sma':{'50':{'value':100,'slope':'up' if long else 'down'}}},
+                    'evolution':{'momentum':'directional_building'}}},
+                'reference_plan':{'reference_close':101 if long else 99},
+                'practical_review':{'status':'technical_watch'},
+                'scenario_conditions':{'status':'waiting','summary':'synthetic wait'},
+                'invalidation':{'price':90 if long else 110},
+                'reference_levels':{'scenario_target':110 if long else 90}}
+
+        rows = [record('swing','long'),record('daytrade','short')]
+        for preferred, swing_role, daytrade_role in (
+                (None,'比較経路','比較経路'),('daytrade','対案','主監視'),('swing','主監視','対案')):
+            with self.subTest(preferred=preferred):
+                current = deepcopy(rows)
+                if preferred == 'daytrade':
+                    current[0]['reference_plan']['reference_close'] = 99
+                elif preferred == 'swing':
+                    current[1]['technical_outlook']['forecast']['evolution']['momentum'] = 'counterpressure_easing'
+                legacy = build(current,CLOCK,version=3)[0]
+                new = build(current,CLOCK,version=4)[0]
+                self.assertEqual(new['preferred_strategy'],preferred)
+                self.assertIn(f'スイング（{swing_role}）',new['resolution'])
+                self.assertIn(f'デイトレード（{daytrade_role}）',new['resolution'])
+                self.assertIn('短期調整継続の対案',legacy.pop('resolution'))
+                new.pop('resolution')
+                self.assertEqual(new,legacy)
+
     def test_concrete_branches_use_saved_conditions_and_distinct_withdrawals(self):
         rows=records();c=build(rows,CLOCK,version=2)[0]
         self.assertEqual(len(c['decision_branches']),3)

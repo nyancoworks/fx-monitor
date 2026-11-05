@@ -355,7 +355,7 @@ def render_lines(r, *, presentation_version=1):
             stop_line, lines[6], lines[7], *lines[2:5], *lines[8:10], *lines[11:]]
 
 
-def pair_context(records,clock):
+def pair_context(records,clock, *, version=3):
     grouped={}
     for r in records:grouped.setdefault(r['pair'],{})[r['strategy']]=r
     result=[]
@@ -377,7 +377,13 @@ def pair_context(records,clock):
         resolution='H4：'+fs['primary_path']+'／H1：'+fd['primary_path']+'。'
         for key in ('swing','daytrade'):
             p=plans[key];x=p['withdrawal']['price'];price=f'{x:.8f}'.rstrip('0').rstrip('.') if x else '未確認'
-            resolution+=('スイング回復の確認：' if key=='swing' else '短期調整継続の対案：')+p['wait']+'。'+p['timeframe'].upper()+'確定終値'+price+('以下' if p['direction']=='long' else '以上')+'で当該仮説を撤回。'
+            if version == 4:
+                strategy_label = 'スイング' if key == 'swing' else 'デイトレード'
+                role = '主監視' if primary == key else '対案' if primary else '比較経路'
+                label = f'{strategy_label}（{role}）の確認：'
+            else:
+                label = 'スイング回復の確認：' if key == 'swing' else '短期調整継続の対案：'
+            resolution+=label+p['wait']+'。'+p['timeframe'].upper()+'確定終値'+price+('以下' if p['direction']=='long' else '以上')+'で当該仮説を撤回。'
         resolution+='局所条件の観測や片側撤回だけで他方成立としない。SMA50/200の背景、MACD経過、RCI26/52の持続を再評価し、障害と目標で反応を確認する'
         result.append({'pair':pair,'evaluated_at':clock,'preferred_strategy':primary,
             'phase':'recovery_hypothesis' if primary=='swing' else 'lower_timeframe_continuation' if primary else 'opposing_hypotheses_unresolved',

@@ -33,7 +33,7 @@ def validate_strategy_snapshot(snapshot):
         failures.append('scheduled pair market context version missing')
     if 'pair_context_version' in outlook:
         from .pair_market_context import build
-        if (type(outlook['pair_context_version']) is not int or outlook['pair_context_version'] not in (1,2,3)
+        if (type(outlook['pair_context_version']) is not int or outlook['pair_context_version'] not in (1,2,3,4)
                 or outlook.get('pair_market_context')!=build(records,clock,version=outlook['pair_context_version'])):
             failures.append('scheduled pair market context mismatch')
     counts = Counter()

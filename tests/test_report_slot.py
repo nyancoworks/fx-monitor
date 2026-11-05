@@ -19,6 +19,19 @@ def start():
             'observed_started_at':START,'run_attempt':1,'event':'workflow_dispatch'}
 
 class ReportSlotTests(unittest.TestCase):
+    def test_delayed_save_keeps_original_slot_and_later_generation_cannot_fill_it(self):
+        delayed = {**SOURCE, 'evaluated_at': TARGET + 90}
+        original = build_slot(start(), delayed, 'b'*40)
+        self.assertTrue(validate_slot(original, delayed, 'b'*40, TARGET))
+        later = {**delayed, 'run_id':124, 'evaluated_at':TARGET+3690}
+        later_start = {**start(), 'run_id':124, 'observed_started_at':START+3600}
+        successor = build_slot(later_start, later, 'c'*40)
+        self.assertTrue(validate_slot(successor, later, 'c'*40, TARGET+3600))
+        with self.assertRaises(ValueError):
+            validate_slot(successor, later, 'c'*40, TARGET)
+        with self.assertRaises(ValueError):
+            validate_slot(original, later, 'c'*40, TARGET)
+
     def test_explicit14_slot_binds_run_source_and_blob_without_api(self):
         value=build_slot(start(),SOURCE,'b'*40)
         self.assertEqual(value['target_scheduled_for'],TARGET)

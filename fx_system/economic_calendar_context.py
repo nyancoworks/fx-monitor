@@ -149,7 +149,7 @@ def enrich_outlook(outlook, calendar):
         "observed_at_utc": calendar["observed_at_utc"] if valid else None,
         "advisory_only": True, "changes_grades": False,
     }
-    if result.get('pair_context_version') in (1,2,3):
+    if result.get('pair_context_version') in (1,2,3,4):
         from .pair_market_context import attach
         attach(result)
     return result
