@@ -25,6 +25,26 @@ def inputs(sign=1,count=220):
 
 
 class StandardTechnicalTests(unittest.TestCase):
+    def test_broken_h4_structure_is_neither_intact_opposition_nor_confirmed_reversal(self):
+        from fx_system.standard_technicals import forecast
+        data, _, _ = inputs()
+        f = deepcopy(data['standard_technical_frames']['h4'])
+        f['super_bollinger']['centerline_direction'] = 'down'
+        f['macd']['observations'] = [{'histogram': x} for x in (-.1,-.2,-.3)]
+        f['sma']['50']['slope'] = 'flat'
+        legacy = forecast(f, 'HH_HL')
+        updated = forecast(f, 'HH_HL', structure_state='broken')
+        self.assertEqual(legacy['conviction'], 'weak')
+        self.assertIn('structure_opposed', legacy['material_cautions'])
+        self.assertEqual(updated['direction'], 'short')
+        self.assertEqual(updated['conviction'], 'developing')
+        self.assertIn('structure_broken', updated['material_cautions'])
+        self.assertNotIn('structure_opposed', updated['material_cautions'])
+        self.assertTrue(any('下降構造の確定は待ち' in t for t in updated['cautions']))
+        self.assertEqual(forecast(f, 'HH_HL', structure_state='intact'), legacy)
+        f['super_bollinger']['centerline_direction'] = 'up'
+        self.assertEqual(forecast(f, 'HH_HL', structure_state='broken')['conviction'], 'weak')
+
     def test_standard_macd_golden_linear_series_and_full_prefix(self):
         m=macd(list(range(1,81)))
         self.assertIsNone(m[24]['line']);self.assertIsNone(m[32]['signal'])

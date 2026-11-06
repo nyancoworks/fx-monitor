@@ -84,7 +84,7 @@ def prepare(data,verified,indicator_frames,quality):
         data.pop(key,None)
 
 
-def forecast(f,structure):
+def forecast(f,structure, *, structure_state=None):
     sb=f.get('super_bollinger',{});m=f.get('macd',{}).get('observations',[])
     hist=[x.get('histogram') for x in m]
     direction={'up':'long','down':'short'}.get(sb.get('centerline_direction'))
@@ -137,7 +137,13 @@ def forecast(f,structure):
         if direction and r.get('movement')==('falling' if sign==1 else 'rising'):
             cautions.append('RCI'+p+'が予測方向に逆行。傾き・転換・張り付きの解消を監視');material.append('rci'+p+'_opposed')
     structural={'HH_HL':'long','LH_LL':'short'}.get(structure)
-    if structural and direction and structural!=direction:
+    broken = structural is not None and structure_state == 'broken'
+    if broken:
+        prior = '上昇' if structural == 'long' else '下降'
+        opposite = '下降' if structural == 'long' else '上昇'
+        cautions.append(f'{f["timeframe"].upper()}の旧{prior}構造は確定終値で崩れた。新しい{opposite}構造の確定は待ち')
+        material.append('structure_broken')
+    elif structural and direction and structural!=direction:
         cautions.append('価格構造は方向仮説と逆。転換と一時調整を再評価');material.append('structure_opposed')
     elif not structural:
         cautions.append('価格構造の方向更新は未確認');material.append('structure_unconfirmed')
@@ -147,7 +153,10 @@ def forecast(f,structure):
     if reversal:
         phase='reversal_developing';texts[phase]='SMA50の位置・傾きと通常MACDの方向側改善から転換を仮説化。SB背景と競合し、転換完了とはしない'
         cautions.append(texts[phase]);material.append('sb_background_conflict')
-    weak=reversal or bool(structural and direction and structural!=direction)
+    structure_conflict = bool(structural and direction and structural != direction)
+    if broken:
+        structure_conflict = structural == direction
+    weak = reversal or structure_conflict
     return {'schema':'standard_direction_forecast_v1','status':'available' if status and direction else 'no_direction' if status else 'unverified',
         'direction':direction,'direction_basis':basis,'phase':phase,'conviction':'weak' if weak else 'developing',
         'primary_path':texts[phase],'alternative_path':'SB方向背景と価格構造が崩れれば継続仮説を取り下げる。短期RCIや局所反応だけで反転しない',
@@ -190,6 +199,8 @@ def assess(pair,strategy,track,clock):
        'macro_context':deepcopy(track.get('macro_context',{})),
        'execution_authority':'none','advisory_only':True,'reference_timeframe':track['base_timeframe'],
        'trigger_timeframe':track['trigger_timeframe']}
+    if track['base_timeframe'] == 'h4':
+        r['structure_interpretation_version'] = 1
     return refresh(r)
 
 
@@ -212,9 +223,22 @@ def refresh(r):
         r['technical_profile'].update(macd_signal='EMA9',h4_calendar='mt4_ny_close_h4_v1')
     r['base_quality_verified']=base.get('verified') is True
     from .core import technical
-    if i['structure']!=technical(base.get('bars',[])).get('structure','unconfirmed'):
+    structure = technical(base.get('bars', []))
+    if i['structure'] != structure.get('structure','unconfirmed'):
         raise ValueError('standard price structure mismatch')
-    r['base_structure']=i['structure'];f=forecast(base,i['structure']);direction=f['direction'];r['direction']=direction;sign=1 if direction=='long' else -1
+    state = None
+    if 'structure_interpretation_version' in r:
+        version = r['structure_interpretation_version']
+        if type(version) is not int or version != 1 or tf != 'h4':
+            raise ValueError('unsupported structure interpretation')
+        evidence = {}
+        if base.get('verified') is True and 0 < base.get('closed_at', 0) <= clock:
+            evidence = structure.get('closed_bar_structure', {})
+        state = evidence.get('state', 'unknown')
+        r['base_structure_state'] = {'state': state,
+            'pivot_timestamp': evidence.get('pivot_timestamp'),
+            'break_bar_timestamp': evidence.get('break_bar_timestamp')}
+    r['base_structure']=i['structure'];f=forecast(base,i['structure'],structure_state=state);direction=f['direction'];r['direction']=direction;sign=1 if direction=='long' else -1
     for name in ('w1','d1'):
         context=r.get('macro_context',{}).get(name,{})
         if context.get('verified') is not True or (context.get('super_bollinger') or {}).get('status')!='calculated':f['cautions'].append(name.upper()+'上位背景は資料不足')
