@@ -12,7 +12,7 @@ import lzma
 import re
 import zlib
 
-from .strategy_report import render_strategy_report
+from .strategy_report import conflict_role_lines, render_strategy_report
 from .validate_strategy_snapshot import validate_strategy_snapshot
 
 
@@ -100,6 +100,8 @@ def build_strategy_report_export(snapshot_bytes, source):
                                                         presentation_version=2),
             'payload_sha256': hashlib.sha256(raw).hexdigest(), 'payload_byte_length': len(raw),
             'payload_base64': base64.b64encode(gzip.compress(raw, mtime=0)).decode('ascii')}
+        if projected.get('pair_context_version') == 4:
+            saved['conflict_role_lines'] = conflict_role_lines(projected)
         if compact_rows:
             saved['payload_layout']='standard_inputs_v3' if table_layout else 'canonical_rows_v2'
         if len(_json(saved)) > MAX_EXPORT_BYTES:
@@ -191,6 +193,9 @@ def restore_strategy_report_export(bundle, source, snapshot_blob_sha):
                                        selection_version=selection_version,
                                        comparison_explanation_version=comparison_version,
                                        presentation_version=presentation_version)):
+            raise ValueError
+        if ('conflict_role_lines' in bundle
+                and bundle['conflict_role_lines'] != conflict_role_lines(view['scheduled_outlook'])):
             raise ValueError
         return view
     except Exception:
