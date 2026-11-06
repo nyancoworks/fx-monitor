@@ -2,7 +2,7 @@ from copy import deepcopy
 import json
 import unittest
 from fx_system.pair_market_context import build,attach
-from fx_system.strategy_report import report_records
+from fx_system.strategy_report import conflict_role_lines, report_records
 from fx_system.strategy_report_export import build_strategy_report_export,restore_strategy_report_export
 from fx_system.validate_strategy_snapshot import validate_strategy_snapshot
 from test_technical_interpretation import contextual
@@ -54,6 +54,13 @@ class PairMarketContextTests(unittest.TestCase):
                 self.assertEqual(new['preferred_strategy'],preferred)
                 self.assertIn(f'スイング（{swing_role}）',new['resolution'])
                 self.assertIn(f'デイトレード（{daytrade_role}）',new['resolution'])
+                outlook = {'pair_context_version': 4, 'pair_market_context': [new]}
+                status = '方向競合' if preferred else '方向競合・主方向未確定'
+                self.assertEqual(conflict_role_lines(outlook), {'EURUSD':
+                    f'EUR/USD｜{status}｜スイング買いB（{swing_role}）／デイトレ売りB（{daytrade_role}）'})
+                ungraded = deepcopy(outlook)
+                ungraded['pair_market_context'][0]['plans']['daytrade']['grade'] = None
+                self.assertEqual(conflict_role_lines(ungraded), {})
                 self.assertIn('短期調整継続の対案',legacy.pop('resolution'))
                 new.pop('resolution')
                 self.assertEqual(new,legacy)
