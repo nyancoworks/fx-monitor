@@ -63,6 +63,28 @@ def _number(value):
     return f'{value:.8f}'.rstrip('0').rstrip('.') if type(value) in (int, float) and math.isfinite(value) else '未算出'
 
 
+def conflict_role_lines(outlook):
+    """Copy-ready headings for the saved v4 pair context, keyed by pair."""
+    if outlook.get('pair_context_version') != 4:
+        return {}
+    lines = {}
+    for context in outlook['pair_market_context']:
+        pair = context['pair']
+        preferred = context['preferred_strategy']
+        plans = context['plans']
+        if any(plan['grade'] is None for plan in plans.values()):
+            continue
+        parts = []
+        for strategy, label in (('swing', 'スイング'), ('daytrade', 'デイトレ')):
+            plan = plans[strategy]
+            role = '比較経路' if preferred is None else '主監視' if preferred == strategy else '対案'
+            side = {'long': '買い', 'short': '売り'}[plan['direction']]
+            parts.append(f"{label}{side}{plan['grade']}（{role}）")
+        status = '方向競合・主方向未確定' if preferred is None else '方向競合'
+        lines[pair] = f"{pair[:3]}/{pair[3:]}｜{status}｜" + '／'.join(parts)
+    return lines
+
+
 def _clock(value):
     return datetime.fromtimestamp(value, ZoneInfo('Asia/Tokyo')).strftime('%Y-%m-%d %H:%M:%S JST') if type(value) is int else '未確認'
 
