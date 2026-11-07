@@ -8,7 +8,7 @@ from copy import deepcopy
 import math
 
 
-SECONDS = {'m15': 900, 'm5': 300}
+SECONDS = {'m15': 900, 'm5': 300, 'h1': 3600}
 LABELS = {'m15': '15分足', 'm5': '5分足', 'h4': '4時間足', 'h1': '1時間足'}
 
 
@@ -196,7 +196,7 @@ def describe_conditions(record, inputs):
 
 def validate_conditions(record):
     """Check saved condition evidence without putting raw bars into history."""
-    if record.get('scenario_conditions',{}).get('basis')=='rci9_turn_v1':
+    if record.get('scenario_conditions',{}).get('basis') in ('rci9_turn_v1', 'h1_price_reaction_v1'):
         from .technical_entry import describe
         if (record.get('method_version')!='contextual_scenario_review_v13_standard_technicals'
                 or type(record.get('technical_entry_version')) is not int or record['technical_entry_version']!=1):

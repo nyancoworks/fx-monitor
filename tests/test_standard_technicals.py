@@ -103,7 +103,7 @@ class StandardTechnicalTests(unittest.TestCase):
         self.assertGreater(local,origin)
         t=r['standard_inputs']['trigger'];bars=deepcopy(t['bars']);price=(local+origin)/2
         for b in bars[-5:]:b.update(open=price,high=price+.1,low=price-.1,close=price)
-        r['standard_inputs']['trigger']=frame(bars,'m15',CLOCK,True,calculation_version=3)
+        r['standard_inputs']['trigger']=frame(bars,'h1',CLOCK,True,calculation_version=3)
         refresh(r)
         self.assertEqual(r['assessment'],'review');self.assertEqual(r['invalidation']['price'],origin)
         self.assertEqual(r['practical_review']['status'],'entry_recheck')
@@ -113,6 +113,8 @@ class StandardTechnicalTests(unittest.TestCase):
         refresh(pending);self.assertEqual(pending['assessment'],'evaluation_pending')
         self.assertNotEqual(pending['practical_review']['entry_status'],'paused')
         old=deepcopy(r);old['standard_technical_version']=1;old['practical_review'].pop('entry_status')
+        old['trigger_timeframe']='m15'
+        old['standard_inputs']['trigger']=deepcopy(d['standard_technical_frames']['m15'])
         refresh(old);self.assertNotIn('entry_status',old['practical_review'])
         self.assertEqual(refresh(deepcopy(old)),old)
 

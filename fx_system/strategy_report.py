@@ -96,7 +96,7 @@ def _label(r):
 def render_strategy_report(snapshot, *, include_all_reviews=False, complete_evidence=False,
                            selection_version=4, comparison_explanation_version=1,
                            presentation_version=1):
-    if type(presentation_version) is not int or presentation_version not in (1, 2):
+    if type(presentation_version) is not int or presentation_version not in (1, 2, 3):
         raise ValueError('unsupported report presentation version')
     if type(comparison_explanation_version) is not int or comparison_explanation_version not in (1, 2):
         raise ValueError('unsupported comparison explanation version')

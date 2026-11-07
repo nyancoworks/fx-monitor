@@ -19,18 +19,43 @@ def describe(record):
         'scope':'technical_timing_not_candle_pattern_or_fill','level':None}
     def unavailable(text,status='unavailable'):
         return {**result,'status':status,'reason':text,'summary':text}
+    if tf == 'h1':
+        result.update(basis='h1_price_reaction_v1', route='continuation_breakout',
+                      scope='h1_price_reaction_with_rci_context')
     if record.get('expiry',{}).get('status')=='withdrawn':return unavailable('旧経路は終了。新しい価格計画を待つ','withdrawn')
     if record.get('assessment')!='review':return unavailable('主要材料の不足または方向未確定で条件を具体化できない','not_applicable')
-    f=record['standard_inputs']['trigger'];sec={'m5':300,'m15':900}[tf];rci=f.get('rci',{}).get('9',{})
+    f=record['standard_inputs']['trigger'];sec={'m5':300,'m15':900,'h1':3600}[tf];rci=f.get('rci',{}).get('9',{})
     rows=f.get('bars',[]);closed=f.get('closed_at');value,previous=rci.get('value'),rci.get('previous')
     observed=turn_observed(value,previous,direction)
     if (f.get('verified') is not True or f.get('evaluated_at')!=clock or f.get('timeframe')!=tf
-            or type(closed) is not int or not 0<=clock-closed<sec or not rows or observed is None):
+            or type(closed) is not int or not 0<=clock-closed<sec or not rows or (tf != 'h1' and observed is None)):
         return unavailable('同時刻の確定確認足・RCI9の位置と傾きを確認できない')
     price=rows[-1]['close'];levels=record['reference_levels'];stop,target=levels.get('invalidation'),levels.get('scenario_target')
     if (type(stop) not in (int,float) or type(target) not in (int,float)
             or not (stop<price<target if direction=='long' else target<price<stop)):
         return unavailable('方向仮説は保持するが、経路目標・撤回と確認足価格の関係を再評価する')
+    if tf == 'h1':
+        if len(rows) < 4 or any(b['timestamp']-a['timestamp'] != sec
+                                for a,b in zip(rows[-4:], rows[-3:])):
+            return unavailable('連続するH1確定足が不足')
+        long = direction == 'long'
+        edge, extreme = ('high', max) if long else ('low', min)
+        previous_level = extreme(b[edge] for b in rows[-4:-1])
+        confirmed = price > previous_level if long else price < previous_level
+        level = previous_level if confirmed else extreme(b[edge] for b in rows[-3:])
+        move = '上抜け' if long else '下抜け'
+        timing = ('H1確定終値で直前3本の水準を'+move+'観測' if confirmed else
+                  f'H1確定終値で直近3本の水準 {level} の{move}待ち')
+        rci_context = ('RCI9反転を観測' if observed else
+                       'RCI9反転は未観測' if observed is False else 'RCI9は未確認')
+        text = timing+'。'+rci_context+'（勢いの補足）'
+        return {**result, 'status':'conditions_observed' if confirmed else 'waiting',
+                'summary':text, 'reason':text, 'level':level,
+                'conditions':[{'kind':'h1_close_breakout', 'lookback':3, 'price':level}],
+                'observed_at':closed if confirmed else None,
+                'observed_close':price if confirmed else None,
+                'evidence':{'closed_at':closed,'rci9':value,'previous_rci9':previous},
+                'withdrawal_conditions':deepcopy(record.get('expiry',{}).get('withdrawal_conditions',[]))}
     text=tf.upper()+'のRCI9が'+('−80以下から上向く押し目回復' if direction=='long' else '＋80以上から下向く戻りの収束')+'を確定足で確認する。ローソク足パターンは必須にしない'
     return {**result,'status':'conditions_observed' if observed else 'waiting',
         'reason':('RCI9反転のタイミングを観測' if observed else 'RCI9の極端域からの反転待ち')+'。方向背景・価格経路・局所停止は別途評価',
@@ -47,7 +72,7 @@ def candle_reference(record):
          'summary':'ローソク足は独立した仕掛け条件に使用しない'}
     if (record.get('direction')!='long' or record.get('assessment')!='review' or not rows
             or f.get('verified') is not True or f.get('evaluated_at')!=record['evaluated_at']
-            or type(f.get('closed_at')) is not int or not 0<=record['evaluated_at']-f['closed_at']<{'m5':300,'m15':900}[record['trigger_timeframe']]):return out
+            or type(f.get('closed_at')) is not int or not 0<=record['evaluated_at']-f['closed_at']<{'m5':300,'m15':900,'h1':3600}[record['trigger_timeframe']]):return out
     value,previous=rci.get('value'),rci.get('previous')
     if turn_observed(value,previous,'long') is not True:return out
     b=rows[-1];body=abs(b['close']-b['open']);lower=min(b['open'],b['close'])-b['low'];upper=b['high']-max(b['open'],b['close'])

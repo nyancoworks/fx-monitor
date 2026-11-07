@@ -89,15 +89,15 @@ def build_strategy_report_export(snapshot_bytes, source):
             'assessment_counts': deepcopy(projected['assessment_counts']),
             'selection_version': 4,
             'comparison_explanation_version': 2,
-            'presentation_version': 2,
+            'presentation_version': 3,
             'report_text': render_strategy_report(view, comparison_explanation_version=2,
-                                                 presentation_version=2),
+                                                 presentation_version=3),
             'encoding': 'gzip_base64_json',
             'review_context_version': 3,
             'review_context_text': render_strategy_report(view, include_all_reviews=True,
                                                         complete_evidence=True,
                                                         comparison_explanation_version=2,
-                                                        presentation_version=2),
+                                                        presentation_version=3),
             'payload_sha256': hashlib.sha256(raw).hexdigest(), 'payload_byte_length': len(raw),
             'payload_base64': base64.b64encode(gzip.compress(raw, mtime=0)).decode('ascii')}
         if projected.get('pair_context_version') == 4:
@@ -170,7 +170,7 @@ def restore_strategy_report_export(bundle, source, snapshot_blob_sha):
         if type(comparison_version) is not int or comparison_version not in (1, 2):
             raise ValueError
         presentation_version = bundle.get('presentation_version', 1)
-        if type(presentation_version) is not int or presentation_version not in (1, 2):
+        if type(presentation_version) is not int or presentation_version not in (1, 2, 3):
             raise ValueError
         if (view.get('evaluated_at') != source['evaluated_at'] or validate_strategy_snapshot(view)
                 or bundle.get('assessment_summaries') != _summaries(view)

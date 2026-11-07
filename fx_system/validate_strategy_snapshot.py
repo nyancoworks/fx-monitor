@@ -129,6 +129,10 @@ def validate_strategy_snapshot(snapshot):
         if r.get('execution_authority') != 'none' or 'entry_permission' in r:
             failures.append('scheduled strategy execution contract invalid')
         base, trigger = ('h4', 'm15') if r.get('strategy') == 'swing' else ('h1', 'm5')
+        if (r.get('strategy') == 'swing' and r.get('technical_entry_version') == 1
+                and r.get('method_version') == 'contextual_scenario_review_v13_standard_technicals'
+                and r.get('scenario_conditions', {}).get('basis') == 'h1_price_reaction_v1'):
+            trigger = 'h1'
         if r.get('reference_timeframe') != base or r.get('trigger_timeframe') != trigger:
             failures.append('scheduled strategy timeframe mismatch')
     if outlook.get('assessment_counts') != {s: counts[s] for s in ('review', 'skip', 'evaluation_pending')}:

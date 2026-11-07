@@ -44,7 +44,7 @@ def observe_frozen_condition(record, pair, through):
         return out
     if validate_conditions(record):
         return {**out, 'status': 'saved_condition_unverified'}
-    seconds = {'m5': 300, 'm15': 900}.get(record.get('trigger_timeframe'))
+    seconds = {'m5': 300, 'm15': 900, 'h1': 3600}.get(record.get('trigger_timeframe'))
     base_seconds = {'h1': 3600, 'h4': 14400}.get(record.get('reference_timeframe'))
     levels = record.get('reference_levels', {})
     from .technical_scenario import METHOD as TECHNICAL_METHOD
@@ -100,11 +100,11 @@ def observe_frozen_condition(record, pair, through):
                excluded_initial_confirmation_seconds=(clock+seconds-1)//seconds*seconds-clock,
                excluded_final_m5_seconds=through % 300,
                boundary_candles_are_not_fully_observed=True)
-    if not expected:
+    if not expected and seconds != 3600:
         return {**out, 'status': 'awaiting_whole_future_candles'}
-    if missing:
+    if missing and seconds != 3600:
         return {**out, 'status': 'incomplete_saved_candles'}
-    future = [rows[t] for t in expected]
+    future = [rows[t] for t in expected] if not missing else []
     for bar in future:
         for name, price in (('target_touch', target), ('invalidation_touch', stop)):
             reached = (sign*(bar['high' if sign == 1 else 'low']-price) >= 0 if name == 'target_touch'
@@ -115,6 +115,12 @@ def observe_frozen_condition(record, pair, through):
     # Production H4 is derived from verified H1, not from potentially different
     # M5 closes. Retain that distinction when checking the original base plan.
     hourly = {}; hourly_stamps = []
+    ny_h4 = seconds == 3600 and base_seconds == 14400 and record.get(
+        'standard_inputs', {}).get('base', {}).get('calendar') == 'mt4_ny_close_h4_v1'
+    base_start = clock // base_seconds * base_seconds
+    if ny_h4:
+        from .mt4_calendar import aggregate_h4, h4_start, next_complete_start, expected_h4
+        base_start = h4_start(clock)
     raw_hourly = decision.get('raw', {}).get('h1', [])
     if not isinstance(raw_hourly, list) or len(raw_hourly) > 10000:
         return {**out, 'status': 'followup_input_invalid'}
@@ -122,7 +128,7 @@ def observe_frozen_condition(record, pair, through):
         if not isinstance(bar, dict) or type(bar.get('timestamp')) is not int:
             return {**out, 'status': 'followup_input_invalid'}
         ts = bar['timestamp']
-        if ts < clock // base_seconds * base_seconds or ts + 3600 > through:
+        if ts < base_start or ts + 3600 > through:
             continue
         if (ts <= 0 or ts % 3600 or any(not positive(bar.get(k)) for k in ('open', 'high', 'low', 'close'))
                 or not bar['low'] <= min(bar['open'], bar['close']) <= max(bar['open'], bar['close']) <= bar['high']):
@@ -134,7 +140,17 @@ def observe_frozen_condition(record, pair, through):
         return {**out, 'status': 'followup_input_invalid'}
     # A base candle may open before publication. Its later close can be checked
     # only with all constituent verified H1 candles, including the earlier ones.
-    base = _aggregate(hourly, base_seconds, clock // base_seconds * base_seconds, through, 3600)
+    if ny_h4:
+        base = [{**bar, 'closed_at':bar['timestamp'] + base_seconds}
+                for bar in aggregate_h4(hourly.values())]
+        expected_base = 0
+        stamp = next_complete_start(expected_h4(clock))
+        while stamp + base_seconds <= through:
+            expected_base += 1
+            stamp = next_complete_start(stamp)
+    else:
+        base = _aggregate(hourly, base_seconds, base_start, through, 3600)
+        expected_base = through//base_seconds-clock//base_seconds
     for bar in base:
         if bar['closed_at'] <= clock:
             continue
@@ -147,9 +163,14 @@ def observe_frozen_condition(record, pair, through):
             out['base_close_withdrawal'] = {'condition': reason, 'closed_at': bar['closed_at'],
                                              'saved_close': bar['close']}
             break
-    out['base_close_coverage_complete'] = len(base) == through//base_seconds-clock//base_seconds
-    confirmation = _aggregate(rows, seconds, clock, through)
+    out['base_close_coverage_complete'] = len(base) == expected_base
+    confirmation = (_aggregate(hourly, seconds, clock, through, 3600) if seconds == 3600
+                    else _aggregate(rows, seconds, clock, through))
     out['whole_confirmation_candle_count'] = len(confirmation)
+    if seconds == 3600:
+        expected_h1 = through//seconds - (clock+seconds-1)//seconds
+        if len(confirmation) < expected_h1 or not out['base_close_coverage_complete']:
+            return {**out, 'status':'incomplete_saved_candles'}
     for bar in confirmation:
         local = out.get('local_setup_failure') if technical else stop
         reason = ('local_setup_failure_crossed' if technical and positive(local) and sign*(bar['close']-local)<=0 else

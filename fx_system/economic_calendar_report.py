@@ -107,9 +107,9 @@ def _quality_lines(record):
 
 
 def calendar_lines(record, format_clock, *, presentation_version=1):
-    if type(presentation_version) is not int or presentation_version not in (1, 2):
+    if type(presentation_version) is not int or presentation_version not in (1, 2, 3):
         raise ValueError('unsupported report presentation version')
-    return ((_quality_lines(record) if presentation_version == 2 else [])
+    return ((_quality_lines(record) if presentation_version >= 2 else [])
             + _legacy_calendar_lines(record, format_clock))
 
 

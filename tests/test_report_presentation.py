@@ -60,6 +60,38 @@ class ReportPresentationTests(unittest.TestCase):
         row['expiry']={'status':'withdrawn'}
         self.assertIn('経路終了・再評価',render_lines(row,presentation_version=2)[1])
 
+    def test_h1_breakout_does_not_require_rci_and_rejects_gaps(self):
+        from fx_system.technical_entry import describe
+
+        rows = [{'timestamp':i*3600,'high':2,'low':1,'close':1.5} for i in range(1,5)]
+        record = {'evaluated_at':18001,'direction':'long','assessment':'review',
+                  'trigger_timeframe':'h1','reference_levels':{'invalidation':1,'scenario_target':3},
+                  'standard_inputs':{'trigger':{'verified':True,'evaluated_at':18001,
+                      'timeframe':'h1','closed_at':18000,'bars':rows}}}
+        self.assertEqual(describe(record)['status'],'waiting')
+        rows[-1].update(close=2.1,high=2.1)
+        self.assertEqual(describe(record)['status'],'conditions_observed')
+        rows[-2]['timestamp'] -= 3600
+        self.assertEqual(describe(record)['status'],'unavailable')
+
+    def test_saved_distances_use_direction_pip_size_and_verified_clock(self):
+        from fx_system.standard_technicals import _saved_distance_line
+
+        record = {'pair':'EURUSD', 'direction':'short', 'trigger_timeframe':'m15',
+                  'evaluated_at':1801, 'trigger_price_review':{
+                      'status':'observed_reference', 'saved_close':1.20001, 'closed_at':1800},
+                  'reference_levels':{'structural_target':1.2, 'scenario_target':1.19}}
+        self.assertIn('手前の節目 0.1 pips｜波の目標 100.1 pips', _saved_distance_line(record))
+        record.update(pair='USDJPY', direction='long',
+                      reference_levels={'structural_target':150.0002,'scenario_target':150})
+        record['trigger_price_review']['saved_close'] = 150
+        self.assertIn('手前の節目 0.02 pips｜波の目標 到達済み', _saved_distance_line(record))
+        record['trigger_price_review']['saved_close'] = 150.01
+        record['reference_levels']['scenario_target'] = None
+        self.assertIn('手前の節目 通過済み｜波の目標 水準未確認', _saved_distance_line(record))
+        record['evaluated_at'] = 2700
+        self.assertIn('確定時刻を確認できない', _saved_distance_line(record))
+
     def test_export_version_preserves_old_text_and_all32_assessments(self):
         saved=snapshot()
         outlook=saved['scheduled_outlook']
@@ -70,17 +102,22 @@ class ReportPresentationTests(unittest.TestCase):
                 record['economic_calendar_context']['status']='partial'
         before=deepcopy(saved)
         new=build_strategy_report_export(json.dumps(saved).encode(),SOURCE)
-        self.assertEqual(new['presentation_version'],2)
+        self.assertEqual(new['presentation_version'],3)
         old=deepcopy(new);old.pop('presentation_version')
         old['report_text']=render_strategy_report(saved,comparison_explanation_version=2)
         old['review_context_text']=render_strategy_report(saved,include_all_reviews=True,
             complete_evidence=True,comparison_explanation_version=2)
-        for bundle in (old,new):
+        previous = {**new, 'presentation_version': 2,
+                    'report_text': render_strategy_report(saved, comparison_explanation_version=2,
+                                                          presentation_version=2),
+                    'review_context_text': render_strategy_report(saved, include_all_reviews=True,
+                        complete_evidence=True, comparison_explanation_version=2, presentation_version=2)}
+        for bundle in (old,previous,new):
             restored=restore_strategy_report_export(bundle,SOURCE,bundle['snapshot_git_blob_sha'])
             self.assertEqual(restored['scheduled_outlook']['strategy_assessments'],
                              saved['scheduled_outlook']['strategy_assessments'])
         self.assertNotEqual(old['report_text'],new['report_text'])
-        for version in (True,0,3,'2',1):
+        for version in (True,0,4,'3',1):
             with self.assertRaises(ValueError):
                 restore_strategy_report_export({**new,'presentation_version':version},SOURCE,
                                                new['snapshot_git_blob_sha'])

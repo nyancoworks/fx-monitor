@@ -1,5 +1,8 @@
 """Standard-only technical profile. Historical interpreters are separate readers."""
 from copy import deepcopy
+from datetime import datetime
+from decimal import Decimal, ROUND_HALF_UP
+from zoneinfo import ZoneInfo
 import math
 import json
 from functools import lru_cache
@@ -319,7 +322,7 @@ def refresh(r):
 
 def pair_row(pair,data,source_quality,clock):
     frames=data['standard_technical_frames'];tracks={}
-    for strategy,base,trigger in (('swing','h4','m15'),('daytrade','h1','m5')):
+    for strategy,base,trigger in (('swing','h4','h1'),('daytrade','h1','m5')):
         b=deepcopy(frames[base]);t=deepcopy(frames[trigger])
         for name,entry in ((base,b),(trigger,t)):
             if source_quality.get('timeframes',{}).get(name,{}).get('ok') is not True:
@@ -344,8 +347,45 @@ def pair_row(pair,data,source_quality,clock):
 
 
 
+def _saved_distance_line(record):
+    def valid_price(value):
+        return type(value) in (int, float) and math.isfinite(value) and value > 0
+
+    recent = record.get('trigger_price_review', {})
+    price, closed = recent.get('saved_close'), recent.get('closed_at')
+    clock = record.get('evaluated_at')
+    timeframe = record['trigger_timeframe']
+    if (recent.get('status') != 'observed_reference' or not valid_price(price)
+            or type(closed) is not int or type(clock) is not int
+            or closed <= 0 or not 0 <= clock - closed < SECONDS[timeframe]):
+        return '残り値幅：確認足の保存終値または確定時刻を確認できない'
+
+    direction = 1 if record['direction'] == 'long' else -1
+    pip = Decimal('0.01' if record['pair'].endswith('JPY') else '0.0001')
+    levels = record['reference_levels']
+
+    def distance(key):
+        level = levels.get(key)
+        if not valid_price(level):
+            return '水準未確認'
+        remaining = direction * (Decimal(str(level)) - Decimal(str(price))) / pip
+        if remaining == 0:
+            return '到達済み'
+        if remaining < 0:
+            return '通過済み'
+        if remaining >= Decimal('0.05'):
+            return f"{remaining.quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)} pips"
+        if remaining >= Decimal('0.005'):
+            return f"{remaining.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)} pips"
+        return '0.01 pips未満'
+
+    jst = datetime.fromtimestamp(closed, ZoneInfo('Asia/Tokyo'))
+    return (f'残り値幅：保存{timeframe.upper()}終値 {price}（{jst:%m/%d %H:%M JST}）'
+            f'｜手前の節目 {distance("structural_target")}｜波の目標 {distance("scenario_target")}')
+
+
 def render_lines(r, *, presentation_version=1):
-    if type(presentation_version) is not int or presentation_version not in (1,2):
+    if type(presentation_version) is not int or presentation_version not in (1,2,3):
         raise ValueError('unsupported report presentation version')
     f=r['technical_outlook']['forecast'];p=r['wave_price_plan'];c=r['scenario_conditions']
     fmt=lambda x:f'{x:.8f}'.rstrip('0').rstrip('.') if type(x) in (int,float) and x>0 else '未確認'
@@ -375,8 +415,16 @@ def render_lines(r, *, presentation_version=1):
                  ('以下' if r['direction']=='long' else '以上') if stop is not None else
                  '局所停止：水準未確認')
     stop_line += '。仕掛けを再評価する水準で、大局撤回と別。成立価格・損失幅・費用は未確定'
-    return ['', title, '確認足 '+r['trigger_timeframe'].upper()+'｜'+lines[5],
-            stop_line, lines[6], lines[7], *lines[2:5], *lines[8:10], *lines[11:]]
+    background = []
+    if r['strategy'] == 'swing' and r['trigger_timeframe'] == 'h1':
+        d1 = r.get('macro_context', {}).get('d1', {})
+        sb = d1.get('super_bollinger') or {}
+        slope = sb.get('centerline_direction') if d1.get('verified') and sb.get('status') == 'calculated' else None
+        direction = {'up':'上向き', 'down':'下向き', 'flat':'横ばい'}.get(slope, '未確認')
+        background.append('D1環境：スーパーボリンジャー中心線 '+direction+'｜H4の波：'+f['primary_path'])
+    return ['', title, *background, '確認足 '+r['trigger_timeframe'].upper()+'｜'+lines[5],
+            stop_line, lines[6], lines[7],
+            *([_saved_distance_line(r)] if presentation_version == 3 else []), *lines[2:5], *lines[8:10], *lines[11:]]
 
 
 def pair_context(records,clock, *, version=3):

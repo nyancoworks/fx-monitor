@@ -72,7 +72,7 @@ def saved_plan_comparison(record):
         return unavailable
     basis = 'base'
     recent = _dict(record.get('trigger_price_review'))
-    trigger_seconds = {'m15': 900, 'm5': 300}.get(record.get('trigger_timeframe'))
+    trigger_seconds = {'m15': 900, 'm5': 300, 'h1': 3600}.get(record.get('trigger_timeframe'))
     if recent.get('status') == 'observed_reference':
         trigger_close = recent.get('saved_close')
         if (not _price(trigger_close)

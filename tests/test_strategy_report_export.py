@@ -96,10 +96,10 @@ class StrategyReportExportTests(unittest.TestCase):
         self.assertEqual(bundle['assessment_counts'], saved['scheduled_outlook']['assessment_counts'])
         self.assertIn('32戦略', bundle['report_text'])
         self.assertIn('Synthetic calendar reference', bundle['report_text'])
-        self.assertEqual(bundle['report_text'], render_strategy_report(saved, comparison_explanation_version=2, presentation_version=2))
+        self.assertEqual(bundle['report_text'], render_strategy_report(saved, comparison_explanation_version=2, presentation_version=3))
         self.assertEqual(bundle['review_context_version'], 3)
         self.assertEqual(bundle['review_context_text'], render_strategy_report(
-            saved, include_all_reviews=True, complete_evidence=True, comparison_explanation_version=2, presentation_version=2))
+            saved, include_all_reviews=True, complete_evidence=True, comparison_explanation_version=2, presentation_version=3))
         self.assertNotIn('raw_unrelated_price_input', json.dumps(restored))
         self.assertLess(len(json.dumps(bundle).encode()), 900000)
         self.assertEqual(saved, original)
