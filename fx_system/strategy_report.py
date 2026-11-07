@@ -246,5 +246,18 @@ def render_strategy_report(snapshot, *, include_all_reviews=False, complete_evid
         lines.append(f"{prefix}：{_label(r)}｜{reasons.get(r['expiry'].get('observed_condition'), r['grade_reason'])}")
         if r.get('swing_context'):
             lines.append('スイング大局：'+r['swing_context']['summary'])
+    longer = outlook.get('long_swing_reference', [])
+    if longer:
+        counts = Counter(r['status'] for r in longer)
+        lines += ['', f"長期スイング参考（W1／D1／H4、32評価とは別）｜反応観測{counts['observed']}／待ち{counts['waiting']}／再確認{counts['recheck']}／保留{counts['pending']}"]
+        candidates = [r for status in ('observed','waiting') for r in longer if r['status']==status]
+        for r in candidates[:2]:
+            side = '買い' if r['direction']=='long' else '売り'
+            weekly = {'up':'上向き','down':'下向き','flat':'横ばい'}.get(r['weekly_direction'],'未確認')
+            reaction = '観測' if r['status']=='observed' else '待ち'
+            move, stop = ('上抜け', '以下') if side=='買い' else ('下抜け', '以上')
+            lines.append(f"{r['pair']} {side}｜W1中心線{weekly}｜D1 {r['daily_reason']}｜D1目標 {_number(r['target'])}、D1終値 {_number(r['invalidation'])}{stop}で撤回"
+                         f"｜H4確定終値で {_number(r['reaction_level'])} の{move}{reaction}｜目標まで {_number(r['reward_pips'])} pips"
+                         f"（保存H4終値 {_number(r['saved_close'])}、{_clock(r['closed_at'])}）")
     lines.append('上記は保存されたシナリオの報告。現在価格・約定・損益・通知到達は未確認。')
     return '\n'.join(lines)
