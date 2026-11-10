@@ -87,18 +87,47 @@ def prepare(data,verified,indicator_frames,quality):
         data.pop(key,None)
 
 
-def forecast(f,structure, *, structure_state=None):
+def bollinger_regime(sb):
+    """FX Monitor interpretation of lagging-span and closing-price positions."""
+    lag = sb.get('lagging_span', {}).get('location')
+    close = sb.get('last_close')
+    middle = sb.get('centerline')
+    bands = sb.get('bands', {})
+    one, two = bands.get('1', {}), bands.get('2', {})
+    values = (close, middle, one.get('lower'), one.get('upper'), two.get('lower'), two.get('upper'))
+    if (sb.get('status') != 'calculated' or lag not in ('above', 'below', 'inside')
+            or not all(type(v) in (int, float) and math.isfinite(v) for v in values)):
+        return None, 'unverified'
+    if lag == 'inside':
+        return None, 'range' if one['lower'] <= close <= one['upper'] else 'transition'
+    long = lag == 'above'
+    trend = 'long' if long else 'short'
+    if (close < middle if long else close > middle):
+        return ('short' if long else 'long'), 'correction'
+    outside_two = close > two['upper'] if long else close < two['lower']
+    outside_one = close > one['upper'] if long else close < one['lower']
+    if outside_two and sb.get('bandwidth_state') == 'expanding':
+        return trend, 'expanding_trend'
+    return trend, 'trend' if outside_one else 'gradual_trend'
+
+
+def forecast(f,structure, *, structure_state=None, bollinger_regimes=False):
     sb=f.get('super_bollinger',{});m=f.get('macd',{}).get('observations',[])
     hist=[x.get('histogram') for x in m]
     direction={'up':'long','down':'short'}.get(sb.get('centerline_direction'))
     status=f.get('status')=='available' and sb.get('status')=='calculated' and len(hist)==3 and all(type(h) in (int,float) for h in hist)
     center=direction;basis='sb_environment'
+    regime = None
+    if bollinger_regimes:
+        direction, regime = bollinger_regime(sb)
+        basis = 'sb_regime'
+        status = status and regime != 'unverified'
     slow=f.get('sma',{}).get('50',{});rows=f.get('bars',[])
     slow_direction=('long' if slow.get('slope')=='up' and slow.get('value') is not None and rows and rows[-1]['close']>slow['value'] else
                     'short' if slow.get('slope')=='down' and slow.get('value') is not None and rows and rows[-1]['close']<slow['value'] else None)
     # A recovering price/medium background with directional momentum may
     # challenge SB. This is a reversal hypothesis, not a vote or proven turn.
-    if status and slow_direction and slow_direction!=center:
+    if not bollinger_regimes and status and slow_direction and slow_direction!=center:
         candidate=[(1 if slow_direction=='long' else -1)*v for v in hist]
         if candidate[-1]>0 and candidate[0]<candidate[1]<candidate[2]:
             direction=slow_direction;basis='sma50_macd_reversal_hypothesis'
@@ -119,6 +148,11 @@ def forecast(f,structure, *, structure_state=None):
            'continuation':'方向側MACDの勢いが改善。途中障害の反応と継続を監視',
            'reacceleration_unconfirmed':'方向側MACDの変化が混在。再加速を断定しない','momentum_neutral':'MACDヒストグラムは中立。方向再開の勢いは未確認','unverified':'方向や勢いの主要材料不足'}
     cautions=[];support=[];material=[]
+    if regime is not None:
+        label = {'unverified':'判定材料不足','range':'レンジ','transition':'移行中',
+                 'correction':'調整波','trend':'トレンド','gradual_trend':'緩やかなトレンド',
+                 'expanding_trend':'バンド拡大を伴うトレンド'}[regime]
+        support.append('SB局面：'+label)
     if center:support.append('SB中心線'+sb['centerline_direction']+'を環境として参照（予測方向と一致するとは限らず、独立票にはしない）')
     if sb.get('status')=='calculated':
         support.append('SB遅行は過去足の'+str(sb.get('lagging_span',{}).get('location'))+'、帯幅は'+str(sb.get('bandwidth_state','unverified'))+'。位置と拡がりを一つの環境として読む')
@@ -160,6 +194,8 @@ def forecast(f,structure, *, structure_state=None):
     if broken:
         structure_conflict = structural == direction
     weak = reversal or structure_conflict
+    if regime == 'correction':
+        material.append('sb_correction')
     return {'schema':'standard_direction_forecast_v1','status':'available' if status and direction else 'no_direction' if status else 'unverified',
         'direction':direction,'direction_basis':basis,'phase':phase,'conviction':'weak' if weak else 'developing',
         'primary_path':texts[phase],'alternative_path':'SB方向背景と価格構造が崩れれば継続仮説を取り下げる。短期RCIや局所反応だけで反転しない',
@@ -197,7 +233,7 @@ def wave(rows,direction):
 
 def assess(pair,strategy,track,clock):
     r={'pair':pair,'strategy':strategy,'evaluated_at':clock,'method_version':METHOD,
-       'standard_technical_version':2,'technical_entry_version':1,'standard_inputs':deepcopy(track['standard_inputs']),
+       'standard_technical_version':2,'technical_entry_version':1,'bollinger_regime_version':1,'standard_inputs':deepcopy(track['standard_inputs']),
        'currency_strength_context':deepcopy(track.get('currency_strength_context')),
        'macro_context':deepcopy(track.get('macro_context',{})),
        'execution_authority':'none','advisory_only':True,'reference_timeframe':track['base_timeframe'],
@@ -241,7 +277,10 @@ def refresh(r):
         r['base_structure_state'] = {'state': state,
             'pivot_timestamp': evidence.get('pivot_timestamp'),
             'break_bar_timestamp': evidence.get('break_bar_timestamp')}
-    r['base_structure']=i['structure'];f=forecast(base,i['structure'],structure_state=state);direction=f['direction'];r['direction']=direction;sign=1 if direction=='long' else -1
+    regime_version = r.get('bollinger_regime_version')
+    if 'bollinger_regime_version' in r and (type(regime_version) is not int or regime_version != 1):
+        raise ValueError('unsupported Bollinger regime interpretation')
+    r['base_structure']=i['structure'];f=forecast(base,i['structure'],structure_state=state,bollinger_regimes=regime_version==1);direction=f['direction'];r['direction']=direction;sign=1 if direction=='long' else -1
     for name in ('w1','d1'):
         context=r.get('macro_context',{}).get(name,{})
         if context.get('verified') is not True or (context.get('super_bollinger') or {}).get('status')!='calculated':f['cautions'].append(name.upper()+'上位背景は資料不足')
