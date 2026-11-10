@@ -84,7 +84,25 @@ class StandardTechnicalTests(unittest.TestCase):
         self.assertEqual(record['trigger_timeframe'], 'm15')
         old = deepcopy(record)
         old.pop('swing_setup_version')
+        old.pop('setup_synthesis_version')
         self.assertEqual(refresh(old)['direction'], 'long')
+
+    def test_h1_momentum_conflict_reduces_setup_conviction(self):
+        from fx_system.standard_technicals import forecast
+        data, _, _ = inputs()
+        frame = data['standard_technical_frames']['h1']
+        close = frame['bars'][-1]['close']
+        frame['super_bollinger'].update(last_close=close, centerline=close - .1,
+                                       lagging_span={'location': 'above'})
+        frame['macd']['observations'] = [
+            {'line': -.4, 'histogram': value} for value in (-.3, -.1, -.2)]
+        frame['rci']['26']['movement'] = 'falling'
+        old = forecast(frame, 'unconfirmed', bollinger_regimes=True)
+        current = forecast(frame, 'unconfirmed', bollinger_regimes=True, setup_synthesis=True)
+        self.assertEqual(current['direction'], 'long')
+        self.assertEqual(old['conviction'], 'developing')
+        self.assertEqual(current['conviction'], 'weak')
+        self.assertIn('setup_momentum_opposed', current['material_cautions'])
 
     def test_standard_macd_golden_linear_series_and_full_prefix(self):
         m=macd(list(range(1,81)))

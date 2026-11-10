@@ -111,7 +111,7 @@ def bollinger_regime(sb):
     return trend, 'trend' if outside_one else 'gradual_trend'
 
 
-def forecast(f,structure, *, structure_state=None, bollinger_regimes=False):
+def forecast(f,structure, *, structure_state=None, bollinger_regimes=False, setup_synthesis=False):
     sb=f.get('super_bollinger',{});m=f.get('macd',{}).get('observations',[])
     hist=[x.get('histogram') for x in m]
     direction={'up':'long','down':'short'}.get(sb.get('centerline_direction'))
@@ -194,6 +194,30 @@ def forecast(f,structure, *, structure_state=None, bollinger_regimes=False):
     if broken:
         structure_conflict = structural == direction
     weak = reversal or structure_conflict
+    if setup_synthesis and direction and h:
+        line = m[-1].get('line')
+        if type(line) in (int, float) and math.isfinite(line):
+            if sign * line < 0:
+                material.append('macd_zero_line_opposed')
+                cautions.append('MACD本線はゼロラインの方向反対側')
+                rci26 = f.get('rci', {}).get('26', {})
+                rci52 = f.get('rci', {}).get('52', {})
+                opposing_zone = 'lower' if sign == 1 else 'upper'
+                if h[-1] < 0 and (
+                        rci26.get('movement') == ('falling' if sign == 1 else 'rising')
+                        or rci52.get('extreme_run', {}).get('zone') == opposing_zone):
+                    weak = True
+                    material.append('setup_momentum_opposed')
+                    cautions.append('MACDと中長期RCIが逆行。H1セットアップの継続を再評価')
+            elif sign * line > 0 and h[-1] > 0:
+                support.append('MACD本線とシグナルの関係が方向を支持')
+        for period in ('50', '200'):
+            average = sma.get(period, {})
+            value = average.get('value')
+            if value is not None and close is not None:
+                slope = average.get('slope')
+                if sign * (close - value) > 0 and slope == ('up' if sign == 1 else 'down'):
+                    support.append(f'終値とSMA{period}の傾きが方向を支持')
     if regime == 'correction':
         material.append('sb_correction')
     return {'schema':'standard_direction_forecast_v1','status':'available' if status and direction else 'no_direction' if status else 'unverified',
@@ -244,6 +268,7 @@ def assess(pair,strategy,track,clock):
         r['structure_interpretation_version'] = 1
         if 'h1_setup' in track['standard_inputs']:
             r['swing_setup_version'] = 1
+            r['setup_synthesis_version'] = 1
     return refresh(r)
 
 
@@ -300,6 +325,10 @@ def refresh(r):
     direction = f['direction']
     setup_opposed = False
     h1_primary = 'swing_setup_version' in r
+    synthesis = 'setup_synthesis_version' in r
+    if synthesis and (type(r['setup_synthesis_version']) is not int
+                      or r['setup_synthesis_version'] != 1 or not h1_primary):
+        raise ValueError('unsupported setup synthesis interpretation')
     if h1_primary:
         if (type(r['swing_setup_version']) is not int or r['swing_setup_version'] != 1
                 or r['strategy'] != 'swing' or tf != 'h4' or setup is None):
@@ -307,7 +336,7 @@ def refresh(r):
         setup_structure = technical(setup.get('bars', []))
         f = forecast(setup, setup_structure.get('structure', 'unconfirmed'),
                      structure_state=setup_structure.get('closed_bar_structure', {}).get('state'),
-                     bollinger_regimes=True)
+                     bollinger_regimes=True, setup_synthesis=synthesis)
         setup_fresh = setup.get('verified') is True and 0 <= clock - setup.get('closed_at', 0) < SECONDS['h1']
         if not setup_fresh:
             f.update(status='unverified', direction=None, primary_path='H1セットアップは確定足未確認')
