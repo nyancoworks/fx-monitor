@@ -69,6 +69,23 @@ class StandardTechnicalTests(unittest.TestCase):
         self.assertEqual(timing_signals(closes[:-1], 'long'), ['macd_signal_cross'])
         self.assertEqual(timing_signals(closes, 'long'), ['sb_one_sigma_cross'])
 
+    def test_swing_h1_can_select_sell_while_h4_background_is_buy(self):
+        data, quality, _ = inputs()
+        falling, _, _ = inputs(-1)
+        data['standard_technical_frames']['h1'] = falling['standard_technical_frames']['h1']
+        outlook = build_scheduled_outlook({'EURUSD': data}, {'EURUSD': quality}, evaluated_at=CLOCK)
+        record = next(r for r in outlook['strategy_assessments']
+                      if r['pair'] == 'EURUSD' and r['strategy'] == 'swing')
+        self.assertEqual(record['direction'], 'short')
+        forecast = record['technical_outlook']['forecast']
+        self.assertEqual(forecast['timeframe'], 'h1')
+        self.assertIn('h4_background_opposed', forecast['material_cautions'])
+        self.assertEqual(record['reference_timeframe'], 'h4')
+        self.assertEqual(record['trigger_timeframe'], 'm15')
+        old = deepcopy(record)
+        old.pop('swing_setup_version')
+        self.assertEqual(refresh(old)['direction'], 'long')
+
     def test_standard_macd_golden_linear_series_and_full_prefix(self):
         m=macd(list(range(1,81)))
         self.assertIsNone(m[24]['line']);self.assertIsNone(m[32]['signal'])
