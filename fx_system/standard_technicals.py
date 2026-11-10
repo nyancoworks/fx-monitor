@@ -250,7 +250,13 @@ def refresh(r):
         raise ValueError('unsupported technical entry interpretation')
     i=r['standard_inputs'];base=i['base'];trigger=i['trigger'];clock=r['evaluated_at'];tf=r['reference_timeframe'];tt=r['trigger_timeframe']
     if i['evaluated_at']!=clock or base['evaluated_at']!=clock or trigger['evaluated_at']!=clock:raise ValueError('standard input clocks mismatch')
-    for tfname,fdata in ((tf,base),(tt,trigger)):
+    setup = i.get('h1_setup')
+    timing = i.get('m5_timing')
+    extra_frames = tuple((name, fdata) for name, fdata in (('h1', setup), ('m5', timing))
+                         if fdata is not None)
+    for tfname,fdata in ((tf,base),(tt,trigger),*extra_frames):
+        if extra_frames and (fdata.get('timeframe') != tfname or fdata.get('evaluated_at') != clock):
+            raise ValueError('standard timeframe context mismatch')
         version=fdata.get('calculation_version',1)
         if type(version) is not int or version not in (1,2,3):raise ValueError('unsupported saved calculation version')
         if fdata.get('bars') and frame(fdata['bars'],tfname,clock,fdata['verified'],fdata.get('calendar'),fdata.get('calculation_version',1))!=fdata:
@@ -281,9 +287,34 @@ def refresh(r):
     if 'bollinger_regime_version' in r and (type(regime_version) is not int or regime_version != 1):
         raise ValueError('unsupported Bollinger regime interpretation')
     r['base_structure']=i['structure'];f=forecast(base,i['structure'],structure_state=state,bollinger_regimes=regime_version==1);direction=f['direction'];r['direction']=direction;sign=1 if direction=='long' else -1
+    setup_opposed = False
+    if setup is not None:
+        setup_view = forecast(setup, 'unconfirmed', bollinger_regimes=True)
+        setup_ready = setup.get('verified') is True and 0 <= clock-setup.get('closed_at', 0) < SECONDS['h1']
+        setup_side = setup_view['direction'] if setup_ready and setup_view['status'] == 'available' else None
+        setup_opposed = bool(direction and setup_side and direction != setup_side)
+        if setup_side:
+            side = '買い' if setup_side == 'long' else '売り'
+            note = f'H1セットアップ：{side}方向。{setup_view["primary_path"]}'
+            if setup_opposed:
+                f['cautions'].append(note+'。H4と競合し再評価')
+                f['material_cautions'].append('h1_setup_opposed')
+            else:
+                f['support'].append(note)
+        elif setup_ready:
+            f['cautions'].append('H1セットアップの方向は未確定')
+        else:
+            f['cautions'].append('H1セットアップは確定足未確認')
+    if timing is not None and timing.get('verified') is True and 0 <= clock-timing.get('closed_at', 0) < SECONDS['m5']:
+        from .technical_entry import turn_observed
+        rci = timing.get('rci', {}).get('9', {})
+        if turn_observed(rci.get('value'), rci.get('previous'), direction):
+            f['support'].append('M5のRCI9反転を仕掛けタイミングの補足として観測')
     for name in ('w1','d1'):
         context=r.get('macro_context',{}).get(name,{})
         if context.get('verified') is not True or (context.get('super_bollinger') or {}).get('status')!='calculated':f['cautions'].append(name.upper()+'上位背景は資料不足')
+        elif setup is not None and bollinger_regime(context['super_bollinger'])[1] == 'range':
+            f['support'].append(name.upper()+'はSBレンジ局面')
         elif (context.get('super_bollinger') or {}).get('centerline_direction')==('down' if direction=='long' else 'up'):
             f['cautions'].append(name.upper()+'上位SB背景が予測方向と競合。伸びの制約に注意');f['material_cautions'].append(name+'_background_opposed')
     p=wave(base.get('bars',[]),direction);rows=base.get('bars',[]);recent=trigger.get('bars',[])
@@ -341,7 +372,7 @@ def refresh(r):
     local=p.get('local_setup_failure')
     local_paused=bool(r['assessment']=='review' and r['standard_technical_version']==2 and fresh and local and sign*(price-local)<=0)
     status=('evaluation_pending' if r['assessment']=='evaluation_pending' else 'direction_watch' if r['assessment']=='skip' else
-            'event_recheck' if events else 'technical_recheck' if f['conviction']=='weak' or f['phase']=='pullback_deepening' else
+            'event_recheck' if events else 'technical_recheck' if f['conviction']=='weak' or f['phase']=='pullback_deepening' or setup_opposed else
             'entry_recheck' if local_paused else 'price_plan_recheck' if not risk or risk<=0 or not reward or reward<=0 or not room or room<=0 else 'entry_recheck' if not defined else 'technical_watch')
     r['grade']='C' if r['assessment']=='review' and f['conviction']=='weak' else 'A' if status=='technical_watch' and f['phase']=='continuation' and not f['material_cautions'] else 'B' if r['assessment']=='review' else None
     r['grade_reason']=f['primary_path']+'。'+{'technical_watch':'保存条件の反応と価格経路を監視','technical_recheck':'勢い・構造の再評価待ち','price_plan_recheck':'未確認の拡張や通過済み目標を追わず価格計画を再評価','entry_recheck':'局所条件を再評価','event_recheck':'発表後に再評価','direction_watch':'旧経路終了、新しい構造待ち','evaluation_pending':'方向・確定波の主要材料不足'}[status]
@@ -361,7 +392,7 @@ def refresh(r):
 
 def pair_row(pair,data,source_quality,clock):
     frames=data['standard_technical_frames'];tracks={}
-    for strategy,base,trigger in (('swing','h4','h1'),('daytrade','h1','m5')):
+    for strategy,base,trigger in (('swing','h4','m15'),('daytrade','h1','m5')):
         b=deepcopy(frames[base]);t=deepcopy(frames[trigger])
         for name,entry in ((base,b),(trigger,t)):
             if source_quality.get('timeframes',{}).get(name,{}).get('ok') is not True:
@@ -375,6 +406,12 @@ def pair_row(pair,data,source_quality,clock):
             'trigger_status':'candle_current','standard_inputs':{'evaluated_at':clock,'base':deepcopy(b),'trigger':deepcopy(t),'structure':structure},
             'reference_plan':{},'reference_levels':{},'scenario_explanation':{},'rci_observation':{},'indicator_context':{},
             'macro_context':{tf:{'verified':frames[tf]['verified'],'super_bollinger':frames[tf].get('super_bollinger'),'sma':frames[tf].get('sma')} for tf in ('w1','d1')}}
+        if strategy == 'swing':
+            for key, name in (('h1_setup', 'h1'), ('m5_timing', 'm5')):
+                extra = deepcopy(frames[name])
+                if source_quality.get('timeframes', {}).get(name, {}).get('ok') is not True:
+                    extra.update(verified=False, status='unverified')
+                tracks[strategy]['standard_inputs'][key] = extra
     return {'pair':pair,'strategy_tracks':tracks,'direction':None,
         'state':'conditional_watch' if any(t['base_verified'] for t in tracks.values()) else 'unassessed',
         'scheduled_grade':'D','legacy_pair_rank_status':'retired_use_canonical32',

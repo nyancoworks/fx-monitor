@@ -96,6 +96,10 @@ class StandardTechnicalTests(unittest.TestCase):
                 {p:q for p in __import__('fx_system.monitor_pairs',fromlist=['PAIR_KEYS']).PAIR_KEYS},evaluated_at=CLOCK)
             self.assertEqual(validate_strategy_snapshot({'evaluated_at':CLOCK,'scheduled_outlook':o}),[])
             self.assertEqual(len(o['strategy_assessments']),32)
+            swing = next(r for r in o['strategy_assessments'] if r['strategy'] == 'swing')
+            self.assertEqual(swing['trigger_timeframe'], 'm15')
+            self.assertEqual(swing['standard_inputs']['h1_setup']['timeframe'], 'h1')
+            self.assertEqual(swing['standard_inputs']['m5_timing']['timeframe'], 'm5')
             for r in o['strategy_assessments']:
                 self.assertEqual(r['method_version'],METHOD);self.assertEqual(r['technical_profile'],NY_CLOSE_PROFILE)
                 self.assertNotIn('span_model_version',r);self.assertNotIn('forecast_wave_version',r)
@@ -121,7 +125,7 @@ class StandardTechnicalTests(unittest.TestCase):
         self.assertGreater(local,origin)
         t=r['standard_inputs']['trigger'];bars=deepcopy(t['bars']);price=(local+origin)/2
         for b in bars[-5:]:b.update(open=price,high=price+.1,low=price-.1,close=price)
-        r['standard_inputs']['trigger']=frame(bars,'h1',CLOCK,True,calculation_version=3)
+        r['standard_inputs']['trigger']=frame(bars,'m15',CLOCK,True,calculation_version=3)
         refresh(r)
         self.assertEqual(r['assessment'],'review');self.assertEqual(r['invalidation']['price'],origin)
         self.assertEqual(r['practical_review']['status'],'entry_recheck')
