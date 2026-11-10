@@ -242,6 +242,8 @@ def assess(pair,strategy,track,clock):
         r['multi_timing_version'] = 1
     if track['base_timeframe'] == 'h4':
         r['structure_interpretation_version'] = 1
+        if 'h1_setup' in track['standard_inputs']:
+            r['swing_setup_version'] = 1
     return refresh(r)
 
 
@@ -291,9 +293,38 @@ def refresh(r):
     regime_version = r.get('bollinger_regime_version')
     if 'bollinger_regime_version' in r and (type(regime_version) is not int or regime_version != 1):
         raise ValueError('unsupported Bollinger regime interpretation')
-    r['base_structure']=i['structure'];f=forecast(base,i['structure'],structure_state=state,bollinger_regimes=regime_version==1);direction=f['direction'];r['direction']=direction;sign=1 if direction=='long' else -1
+    r['base_structure'] = i['structure']
+    background = forecast(base, i['structure'], structure_state=state,
+                          bollinger_regimes=regime_version == 1)
+    f = background
+    direction = f['direction']
     setup_opposed = False
-    if setup is not None:
+    h1_primary = 'swing_setup_version' in r
+    if h1_primary:
+        if (type(r['swing_setup_version']) is not int or r['swing_setup_version'] != 1
+                or r['strategy'] != 'swing' or tf != 'h4' or setup is None):
+            raise ValueError('unsupported swing setup interpretation')
+        setup_structure = technical(setup.get('bars', []))
+        f = forecast(setup, setup_structure.get('structure', 'unconfirmed'),
+                     structure_state=setup_structure.get('closed_bar_structure', {}).get('state'),
+                     bollinger_regimes=True)
+        setup_fresh = setup.get('verified') is True and 0 <= clock - setup.get('closed_at', 0) < SECONDS['h1']
+        if not setup_fresh:
+            f.update(status='unverified', direction=None, primary_path='H1セットアップは確定足未確認')
+        direction = f['direction']
+        if f['status'] != 'available':
+            direction = None
+            f['direction'] = None
+        if f['status'] == 'no_direction':
+            f['primary_path'] = 'H1セットアップの方向は未確定'
+        h4_side = {'long': '買い方向', 'short': '売り方向'}.get(background['direction'], '方向未確定')
+        note = f'H4の背景：{h4_side}。{background["primary_path"]}'
+        if direction and background['direction'] and direction != background['direction']:
+            f['cautions'].append(note+'。H1のセットアップと逆方向')
+            f['material_cautions'].append('h4_background_opposed')
+        else:
+            f['support'].append(note)
+    elif setup is not None:
         setup_view = forecast(setup, 'unconfirmed', bollinger_regimes=True)
         setup_ready = setup.get('verified') is True and 0 <= clock-setup.get('closed_at', 0) < SECONDS['h1']
         setup_side = setup_view['direction'] if setup_ready and setup_view['status'] == 'available' else None
@@ -310,6 +341,8 @@ def refresh(r):
             f['cautions'].append('H1セットアップの方向は未確定')
         else:
             f['cautions'].append('H1セットアップは確定足未確認')
+    r['direction'] = direction
+    sign = 1 if direction == 'long' else -1
     if timing is not None and timing.get('verified') is True and 0 <= clock-timing.get('closed_at', 0) < SECONDS['m5']:
         from .technical_entry import turn_observed
         rci = timing.get('rci', {}).get('9', {})
@@ -323,7 +356,7 @@ def refresh(r):
         elif (context.get('super_bollinger') or {}).get('centerline_direction')==('down' if direction=='long' else 'up'):
             f['cautions'].append(name.upper()+'上位SB背景が予測方向と競合。伸びの制約に注意');f['material_cautions'].append(name+'_background_opposed')
     p=wave(base.get('bars',[]),direction);rows=base.get('bars',[]);recent=trigger.get('bars',[])
-    active=(len(rows)>=2 and p.get('retest_objective') and all(sign*(b['close']-p['retest_objective']['price'])>0 for b in rows[-2:]) and f['evolution']['momentum']=='directional_building')
+    active=(len(rows)>=2 and p.get('retest_objective') and all(sign*(b['close']-p['retest_objective']['price'])>0 for b in rows[-2:]) and (not h1_primary or background['direction']==direction) and background['evolution']['momentum']=='directional_building')
     target=(p['retest_objective']['price'] if p.get('retest_objective') and sign*(p['retest_objective']['price']-p['reference_close'])>0 else
             p['extension_zone']['near'] if active and sign*(p['extension_zone']['near']-p['reference_close'])>0 else p['extension_zone']['far'] if active else None)
     p['path_stage']='withdrawn' if p['status']=='objective_reached' else 'retest' if target is not None and not active else 'extension_active' if active else 'extension_wait'
@@ -519,7 +552,10 @@ def pair_context(records,clock, *, version=3):
         if any(r.get('method_version')!=METHOD or r.get('evaluated_at')!=clock for r in (s,d)):continue
         def backing(r,f):
             v=f['background']['sma']['50'];close=r['reference_plan']['reference_close'];direction=r['direction']
-            return v['value'] is not None and v['slope']==('up' if direction=='long' else 'down') and (close>v['value'] if direction=='long' else close<v['value'])
+            if 'swing_setup_version' in r:
+                bars = r['standard_inputs']['h1_setup']['bars']
+                close = bars[-1]['close'] if bars else None
+            return close is not None and v['value'] is not None and v['slope']==('up' if direction=='long' else 'down') and (close>v['value'] if direction=='long' else close<v['value'])
         primary=None
         if backing(s,fs) and fd['evolution']['momentum'] in ('counterpressure_easing','counterpressure_mixed') and fs['phase']!='pullback_deepening':primary='swing'
         elif backing(d,fd) and fd['phase']=='continuation' and not backing(s,fs):primary='daytrade'
@@ -527,7 +563,7 @@ def pair_context(records,clock, *, version=3):
         plans={k:{'direction':r['direction'],'grade':r['grade'],'phase':r['technical_outlook']['forecast']['phase'],
                   'condition_status':r['scenario_conditions']['status'],'wait':r['scenario_conditions']['summary'],
                   'withdrawal':r['invalidation'],'timeframe':r['reference_timeframe'],'target':r['reference_levels']['scenario_target']} for k,r in tracks.items()}
-        resolution='H4：'+fs['primary_path']+'／H1：'+fd['primary_path']+'。'
+        resolution=fs.get('timeframe','h4').upper()+'（スイング）：'+fs['primary_path']+'／H1（デイトレ）：'+fd['primary_path']+'。' if 'swing_setup_version' in s else 'H4：'+fs['primary_path']+'／H1：'+fd['primary_path']+'。'
         for key in ('swing','daytrade'):
             p=plans[key];x=p['withdrawal']['price'];price=f'{x:.8f}'.rstrip('0').rstrip('.') if x else '未確認'
             if version == 4:
