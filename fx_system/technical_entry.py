@@ -4,6 +4,36 @@ from statistics import median
 import math
 
 BASIS='rci9_turn_v1'
+MULTI_BASIS = 'multi_technical_turn_v1'
+SIGNAL_LABELS = {
+    'rci9_extreme_recovery': 'RCI9の極端域からの反転',
+    'macd_signal_cross': 'MACDのシグナル交差',
+    'sb_one_sigma_cross': '終値の方向側1σ通過',
+}
+
+
+def timing_signals(closes, direction):
+    from .advisory_indicators import stddev_bands
+    from .indicator_research import rci_series
+    from .standard_technicals import macd
+
+    sign = 1 if direction == 'long' else -1
+    signals = []
+    if len(closes) >= 10:
+        rci = rci_series(closes[-10:], 9)
+        if turn_observed(rci[-1], rci[-2], direction):
+            signals.append('rci9_extreme_recovery')
+    if len(closes) >= 35:
+        previous, current = (v['histogram'] for v in macd(closes)[-2:])
+        if sign * previous <= 0 < sign * current:
+            signals.append('macd_signal_cross')
+    if len(closes) >= 22:
+        previous, current = stddev_bands(closes[-22:])[-2:]
+        edge = 'upper' if sign == 1 else 'lower'
+        if sign * (closes[-2] - previous['bands']['1'][edge]) <= 0 < sign * (closes[-1] - current['bands']['1'][edge]):
+            signals.append('sb_one_sigma_cross')
+    return signals
+
 
 def turn_observed(value,previous,direction):
     if direction not in ('long','short') or not all(type(x) in (int,float) and math.isfinite(x) and -100<=x<=100 for x in (value,previous)):return None
@@ -19,6 +49,9 @@ def describe(record):
         'scope':'technical_timing_not_candle_pattern_or_fill','level':None}
     def unavailable(text,status='unavailable'):
         return {**result,'status':status,'reason':text,'summary':text}
+    multi = record.get('multi_timing_version') == 1
+    if multi:
+        result.update(basis=MULTI_BASIS, route='multi_technical_recovery', scope='alternative_technical_timing')
     if tf == 'h1':
         result.update(basis='h1_price_reaction_v1', route='continuation_breakout',
                       scope='h1_price_reaction_with_rci_context')
@@ -28,7 +61,7 @@ def describe(record):
     rows=f.get('bars',[]);closed=f.get('closed_at');value,previous=rci.get('value'),rci.get('previous')
     observed=turn_observed(value,previous,direction)
     if (f.get('verified') is not True or f.get('evaluated_at')!=clock or f.get('timeframe')!=tf
-            or type(closed) is not int or not 0<=clock-closed<sec or not rows or (tf != 'h1' and observed is None)):
+            or type(closed) is not int or not 0<=clock-closed<sec or not rows or (tf != 'h1' and not multi and observed is None)):
         return unavailable('同時刻の確定確認足・RCI9の位置と傾きを確認できない')
     price=rows[-1]['close'];levels=record['reference_levels'];stop,target=levels.get('invalidation'),levels.get('scenario_target')
     if (type(stop) not in (int,float) or type(target) not in (int,float)
@@ -55,6 +88,17 @@ def describe(record):
                 'observed_at':closed if confirmed else None,
                 'observed_close':price if confirmed else None,
                 'evidence':{'closed_at':closed,'rci9':value,'previous_rci9':previous},
+                'withdrawal_conditions':deepcopy(record.get('expiry',{}).get('withdrawal_conditions',[]))}
+    if multi:
+        signals = timing_signals([bar['close'] for bar in rows], direction)
+        summary = tf.upper()+'確定足で'+('・'.join(SIGNAL_LABELS[s] for s in signals)+'を観測' if signals else
+            'RCI9反転・MACD交差・方向側1σ通過のいずれかを確認待ち')
+        return {**result, 'status':'conditions_observed' if signals else 'waiting',
+                'summary':summary, 'reason':summary,
+                'conditions':[{'kind':kind} for kind in SIGNAL_LABELS],
+                'observed_at':closed if signals else None,
+                'observed_close':price if signals else None,
+                'evidence':{'closed_at':closed,'signals':signals},
                 'withdrawal_conditions':deepcopy(record.get('expiry',{}).get('withdrawal_conditions',[]))}
     text=tf.upper()+'のRCI9が'+('−80以下から上向く押し目回復' if direction=='long' else '＋80以上から下向く戻りの収束')+'を確定足で確認する。ローソク足パターンは必須にしない'
     return {**result,'status':'conditions_observed' if observed else 'waiting',
