@@ -76,7 +76,7 @@ class ForecastTests(unittest.TestCase):
             self.assertEqual(r['direction'],'long' if sign==1 else 'short')
             self.assertEqual(r['wave_price_plan']['status'],'available')
             p=r['wave_price_plan'];self.assertGreater(sign*(p['end_pivot']['price']-p['start_pivot']['price']),0)
-            self.assertEqual(r['entry_condition_inputs']['timeframe'],'h1')
+            self.assertEqual(r['entry_condition_inputs']['timeframe'],'m15')
             self.assertEqual(validate_strategy_snapshot({'evaluated_at':CLOCK,'scheduled_outlook':o}),[])
 
     def test_structure_cannot_choose_direction_or_force_opposite_forecast(self):

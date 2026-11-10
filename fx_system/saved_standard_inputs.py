@@ -11,7 +11,7 @@ def _json(v):
 
 def _pack_input(value):
     value=deepcopy(value)
-    for role in ('base','trigger'):
+    for role in ('base','trigger','h1_setup','m5_timing'):
         frame=value.get(role,{})
         bars=frame.get('bars')
         if not bars:continue
@@ -24,7 +24,7 @@ def _pack_input(value):
 def _expand_input(value):
     value=deepcopy(value)
     if not isinstance(value,dict):raise ValueError('invalid standard input table')
-    for role in ('base','trigger'):
+    for role in ('base','trigger','h1_setup','m5_timing'):
         frame=value.get(role,{})
         bars=frame.get('bars')
         if not isinstance(bars,dict):continue

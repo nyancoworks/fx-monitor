@@ -87,18 +87,47 @@ def prepare(data,verified,indicator_frames,quality):
         data.pop(key,None)
 
 
-def forecast(f,structure, *, structure_state=None):
+def bollinger_regime(sb):
+    """FX Monitor interpretation of lagging-span and closing-price positions."""
+    lag = sb.get('lagging_span', {}).get('location')
+    close = sb.get('last_close')
+    middle = sb.get('centerline')
+    bands = sb.get('bands', {})
+    one, two = bands.get('1', {}), bands.get('2', {})
+    values = (close, middle, one.get('lower'), one.get('upper'), two.get('lower'), two.get('upper'))
+    if (sb.get('status') != 'calculated' or lag not in ('above', 'below', 'inside')
+            or not all(type(v) in (int, float) and math.isfinite(v) for v in values)):
+        return None, 'unverified'
+    if lag == 'inside':
+        return None, 'range' if one['lower'] <= close <= one['upper'] else 'transition'
+    long = lag == 'above'
+    trend = 'long' if long else 'short'
+    if (close < middle if long else close > middle):
+        return ('short' if long else 'long'), 'correction'
+    outside_two = close > two['upper'] if long else close < two['lower']
+    outside_one = close > one['upper'] if long else close < one['lower']
+    if outside_two and sb.get('bandwidth_state') == 'expanding':
+        return trend, 'expanding_trend'
+    return trend, 'trend' if outside_one else 'gradual_trend'
+
+
+def forecast(f,structure, *, structure_state=None, bollinger_regimes=False):
     sb=f.get('super_bollinger',{});m=f.get('macd',{}).get('observations',[])
     hist=[x.get('histogram') for x in m]
     direction={'up':'long','down':'short'}.get(sb.get('centerline_direction'))
     status=f.get('status')=='available' and sb.get('status')=='calculated' and len(hist)==3 and all(type(h) in (int,float) for h in hist)
     center=direction;basis='sb_environment'
+    regime = None
+    if bollinger_regimes:
+        direction, regime = bollinger_regime(sb)
+        basis = 'sb_regime'
+        status = status and regime != 'unverified'
     slow=f.get('sma',{}).get('50',{});rows=f.get('bars',[])
     slow_direction=('long' if slow.get('slope')=='up' and slow.get('value') is not None and rows and rows[-1]['close']>slow['value'] else
                     'short' if slow.get('slope')=='down' and slow.get('value') is not None and rows and rows[-1]['close']<slow['value'] else None)
     # A recovering price/medium background with directional momentum may
     # challenge SB. This is a reversal hypothesis, not a vote or proven turn.
-    if status and slow_direction and slow_direction!=center:
+    if not bollinger_regimes and status and slow_direction and slow_direction!=center:
         candidate=[(1 if slow_direction=='long' else -1)*v for v in hist]
         if candidate[-1]>0 and candidate[0]<candidate[1]<candidate[2]:
             direction=slow_direction;basis='sma50_macd_reversal_hypothesis'
@@ -119,6 +148,11 @@ def forecast(f,structure, *, structure_state=None):
            'continuation':'方向側MACDの勢いが改善。途中障害の反応と継続を監視',
            'reacceleration_unconfirmed':'方向側MACDの変化が混在。再加速を断定しない','momentum_neutral':'MACDヒストグラムは中立。方向再開の勢いは未確認','unverified':'方向や勢いの主要材料不足'}
     cautions=[];support=[];material=[]
+    if regime is not None:
+        label = {'unverified':'判定材料不足','range':'レンジ','transition':'移行中',
+                 'correction':'調整波','trend':'トレンド','gradual_trend':'緩やかなトレンド',
+                 'expanding_trend':'バンド拡大を伴うトレンド'}[regime]
+        support.append('SB局面：'+label)
     if center:support.append('SB中心線'+sb['centerline_direction']+'を環境として参照（予測方向と一致するとは限らず、独立票にはしない）')
     if sb.get('status')=='calculated':
         support.append('SB遅行は過去足の'+str(sb.get('lagging_span',{}).get('location'))+'、帯幅は'+str(sb.get('bandwidth_state','unverified'))+'。位置と拡がりを一つの環境として読む')
@@ -160,6 +194,8 @@ def forecast(f,structure, *, structure_state=None):
     if broken:
         structure_conflict = structural == direction
     weak = reversal or structure_conflict
+    if regime == 'correction':
+        material.append('sb_correction')
     return {'schema':'standard_direction_forecast_v1','status':'available' if status and direction else 'no_direction' if status else 'unverified',
         'direction':direction,'direction_basis':basis,'phase':phase,'conviction':'weak' if weak else 'developing',
         'primary_path':texts[phase],'alternative_path':'SB方向背景と価格構造が崩れれば継続仮説を取り下げる。短期RCIや局所反応だけで反転しない',
@@ -197,7 +233,7 @@ def wave(rows,direction):
 
 def assess(pair,strategy,track,clock):
     r={'pair':pair,'strategy':strategy,'evaluated_at':clock,'method_version':METHOD,
-       'standard_technical_version':2,'technical_entry_version':1,'standard_inputs':deepcopy(track['standard_inputs']),
+       'standard_technical_version':2,'technical_entry_version':1,'bollinger_regime_version':1,'standard_inputs':deepcopy(track['standard_inputs']),
        'currency_strength_context':deepcopy(track.get('currency_strength_context')),
        'macro_context':deepcopy(track.get('macro_context',{})),
        'execution_authority':'none','advisory_only':True,'reference_timeframe':track['base_timeframe'],
@@ -214,7 +250,13 @@ def refresh(r):
         raise ValueError('unsupported technical entry interpretation')
     i=r['standard_inputs'];base=i['base'];trigger=i['trigger'];clock=r['evaluated_at'];tf=r['reference_timeframe'];tt=r['trigger_timeframe']
     if i['evaluated_at']!=clock or base['evaluated_at']!=clock or trigger['evaluated_at']!=clock:raise ValueError('standard input clocks mismatch')
-    for tfname,fdata in ((tf,base),(tt,trigger)):
+    setup = i.get('h1_setup')
+    timing = i.get('m5_timing')
+    extra_frames = tuple((name, fdata) for name, fdata in (('h1', setup), ('m5', timing))
+                         if fdata is not None)
+    for tfname,fdata in ((tf,base),(tt,trigger),*extra_frames):
+        if extra_frames and (fdata.get('timeframe') != tfname or fdata.get('evaluated_at') != clock):
+            raise ValueError('standard timeframe context mismatch')
         version=fdata.get('calculation_version',1)
         if type(version) is not int or version not in (1,2,3):raise ValueError('unsupported saved calculation version')
         if fdata.get('bars') and frame(fdata['bars'],tfname,clock,fdata['verified'],fdata.get('calendar'),fdata.get('calculation_version',1))!=fdata:
@@ -241,10 +283,38 @@ def refresh(r):
         r['base_structure_state'] = {'state': state,
             'pivot_timestamp': evidence.get('pivot_timestamp'),
             'break_bar_timestamp': evidence.get('break_bar_timestamp')}
-    r['base_structure']=i['structure'];f=forecast(base,i['structure'],structure_state=state);direction=f['direction'];r['direction']=direction;sign=1 if direction=='long' else -1
+    regime_version = r.get('bollinger_regime_version')
+    if 'bollinger_regime_version' in r and (type(regime_version) is not int or regime_version != 1):
+        raise ValueError('unsupported Bollinger regime interpretation')
+    r['base_structure']=i['structure'];f=forecast(base,i['structure'],structure_state=state,bollinger_regimes=regime_version==1);direction=f['direction'];r['direction']=direction;sign=1 if direction=='long' else -1
+    setup_opposed = False
+    if setup is not None:
+        setup_view = forecast(setup, 'unconfirmed', bollinger_regimes=True)
+        setup_ready = setup.get('verified') is True and 0 <= clock-setup.get('closed_at', 0) < SECONDS['h1']
+        setup_side = setup_view['direction'] if setup_ready and setup_view['status'] == 'available' else None
+        setup_opposed = bool(direction and setup_side and direction != setup_side)
+        if setup_side:
+            side = '買い' if setup_side == 'long' else '売り'
+            note = f'H1セットアップ：{side}方向。{setup_view["primary_path"]}'
+            if setup_opposed:
+                f['cautions'].append(note+'。H4と競合し再評価')
+                f['material_cautions'].append('h1_setup_opposed')
+            else:
+                f['support'].append(note)
+        elif setup_ready:
+            f['cautions'].append('H1セットアップの方向は未確定')
+        else:
+            f['cautions'].append('H1セットアップは確定足未確認')
+    if timing is not None and timing.get('verified') is True and 0 <= clock-timing.get('closed_at', 0) < SECONDS['m5']:
+        from .technical_entry import turn_observed
+        rci = timing.get('rci', {}).get('9', {})
+        if turn_observed(rci.get('value'), rci.get('previous'), direction):
+            f['support'].append('M5のRCI9反転を仕掛けタイミングの補足として観測')
     for name in ('w1','d1'):
         context=r.get('macro_context',{}).get(name,{})
         if context.get('verified') is not True or (context.get('super_bollinger') or {}).get('status')!='calculated':f['cautions'].append(name.upper()+'上位背景は資料不足')
+        elif setup is not None and bollinger_regime(context['super_bollinger'])[1] == 'range':
+            f['support'].append(name.upper()+'はSBレンジ局面')
         elif (context.get('super_bollinger') or {}).get('centerline_direction')==('down' if direction=='long' else 'up'):
             f['cautions'].append(name.upper()+'上位SB背景が予測方向と競合。伸びの制約に注意');f['material_cautions'].append(name+'_background_opposed')
     p=wave(base.get('bars',[]),direction);rows=base.get('bars',[]);recent=trigger.get('bars',[])
@@ -302,7 +372,7 @@ def refresh(r):
     local=p.get('local_setup_failure')
     local_paused=bool(r['assessment']=='review' and r['standard_technical_version']==2 and fresh and local and sign*(price-local)<=0)
     status=('evaluation_pending' if r['assessment']=='evaluation_pending' else 'direction_watch' if r['assessment']=='skip' else
-            'event_recheck' if events else 'technical_recheck' if f['conviction']=='weak' or f['phase']=='pullback_deepening' else
+            'event_recheck' if events else 'technical_recheck' if f['conviction']=='weak' or f['phase']=='pullback_deepening' or setup_opposed else
             'entry_recheck' if local_paused else 'price_plan_recheck' if not risk or risk<=0 or not reward or reward<=0 or not room or room<=0 else 'entry_recheck' if not defined else 'technical_watch')
     r['grade']='C' if r['assessment']=='review' and f['conviction']=='weak' else 'A' if status=='technical_watch' and f['phase']=='continuation' and not f['material_cautions'] else 'B' if r['assessment']=='review' else None
     r['grade_reason']=f['primary_path']+'。'+{'technical_watch':'保存条件の反応と価格経路を監視','technical_recheck':'勢い・構造の再評価待ち','price_plan_recheck':'未確認の拡張や通過済み目標を追わず価格計画を再評価','entry_recheck':'局所条件を再評価','event_recheck':'発表後に再評価','direction_watch':'旧経路終了、新しい構造待ち','evaluation_pending':'方向・確定波の主要材料不足'}[status]
@@ -322,7 +392,7 @@ def refresh(r):
 
 def pair_row(pair,data,source_quality,clock):
     frames=data['standard_technical_frames'];tracks={}
-    for strategy,base,trigger in (('swing','h4','h1'),('daytrade','h1','m5')):
+    for strategy,base,trigger in (('swing','h4','m15'),('daytrade','h1','m5')):
         b=deepcopy(frames[base]);t=deepcopy(frames[trigger])
         for name,entry in ((base,b),(trigger,t)):
             if source_quality.get('timeframes',{}).get(name,{}).get('ok') is not True:
@@ -336,6 +406,12 @@ def pair_row(pair,data,source_quality,clock):
             'trigger_status':'candle_current','standard_inputs':{'evaluated_at':clock,'base':deepcopy(b),'trigger':deepcopy(t),'structure':structure},
             'reference_plan':{},'reference_levels':{},'scenario_explanation':{},'rci_observation':{},'indicator_context':{},
             'macro_context':{tf:{'verified':frames[tf]['verified'],'super_bollinger':frames[tf].get('super_bollinger'),'sma':frames[tf].get('sma')} for tf in ('w1','d1')}}
+        if strategy == 'swing':
+            for key, name in (('h1_setup', 'h1'), ('m5_timing', 'm5')):
+                extra = deepcopy(frames[name])
+                if source_quality.get('timeframes', {}).get(name, {}).get('ok') is not True:
+                    extra.update(verified=False, status='unverified')
+                tracks[strategy]['standard_inputs'][key] = extra
     return {'pair':pair,'strategy_tracks':tracks,'direction':None,
         'state':'conditional_watch' if any(t['base_verified'] for t in tracks.values()) else 'unassessed',
         'scheduled_grade':'D','legacy_pair_rank_status':'retired_use_canonical32',

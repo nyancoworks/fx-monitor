@@ -45,6 +45,24 @@ class StandardTechnicalTests(unittest.TestCase):
         f['super_bollinger']['centerline_direction'] = 'up'
         self.assertEqual(forecast(f, 'HH_HL', structure_state='broken')['conviction'], 'weak')
 
+    def test_bollinger_regime_changes_direction_without_changing_legacy_forecast(self):
+        from fx_system.standard_technicals import forecast
+        data, _, _ = inputs()
+        f = data['standard_technical_frames']['h4']
+        close = f['bars'][-1]['close']
+        f['super_bollinger'].update(
+            centerline_direction='up', centerline=close + 1,
+            lagging_span={'location': 'above'},
+            bands={'1': {'lower': close - 1, 'upper': close + 3},
+                   '2': {'lower': close - 3, 'upper': close + 5}})
+        f['sma']['50']['slope'] = 'flat'
+        self.assertEqual(forecast(f, 'unconfirmed')['direction'], 'long')
+        revised = forecast(f, 'unconfirmed', bollinger_regimes=True)
+        self.assertEqual(revised['direction'], 'short')
+        self.assertIn('SB局面：調整波', revised['support'])
+        f['super_bollinger']['lagging_span']['location'] = 'inside'
+        self.assertEqual(forecast(f, 'unconfirmed', bollinger_regimes=True)['status'], 'no_direction')
+
     def test_standard_macd_golden_linear_series_and_full_prefix(self):
         m=macd(list(range(1,81)))
         self.assertIsNone(m[24]['line']);self.assertIsNone(m[32]['signal'])
@@ -78,6 +96,10 @@ class StandardTechnicalTests(unittest.TestCase):
                 {p:q for p in __import__('fx_system.monitor_pairs',fromlist=['PAIR_KEYS']).PAIR_KEYS},evaluated_at=CLOCK)
             self.assertEqual(validate_strategy_snapshot({'evaluated_at':CLOCK,'scheduled_outlook':o}),[])
             self.assertEqual(len(o['strategy_assessments']),32)
+            swing = next(r for r in o['strategy_assessments'] if r['strategy'] == 'swing')
+            self.assertEqual(swing['trigger_timeframe'], 'm15')
+            self.assertEqual(swing['standard_inputs']['h1_setup']['timeframe'], 'h1')
+            self.assertEqual(swing['standard_inputs']['m5_timing']['timeframe'], 'm5')
             for r in o['strategy_assessments']:
                 self.assertEqual(r['method_version'],METHOD);self.assertEqual(r['technical_profile'],NY_CLOSE_PROFILE)
                 self.assertNotIn('span_model_version',r);self.assertNotIn('forecast_wave_version',r)
@@ -103,7 +125,7 @@ class StandardTechnicalTests(unittest.TestCase):
         self.assertGreater(local,origin)
         t=r['standard_inputs']['trigger'];bars=deepcopy(t['bars']);price=(local+origin)/2
         for b in bars[-5:]:b.update(open=price,high=price+.1,low=price-.1,close=price)
-        r['standard_inputs']['trigger']=frame(bars,'h1',CLOCK,True,calculation_version=3)
+        r['standard_inputs']['trigger']=frame(bars,'m15',CLOCK,True,calculation_version=3)
         refresh(r)
         self.assertEqual(r['assessment'],'review');self.assertEqual(r['invalidation']['price'],origin)
         self.assertEqual(r['practical_review']['status'],'entry_recheck')
