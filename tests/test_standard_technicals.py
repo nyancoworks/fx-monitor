@@ -63,6 +63,12 @@ class StandardTechnicalTests(unittest.TestCase):
         f['super_bollinger']['lagging_span']['location'] = 'inside'
         self.assertEqual(forecast(f, 'unconfirmed', bollinger_regimes=True)['status'], 'no_direction')
 
+    def test_macd_and_sigma_can_confirm_without_an_rci_turn(self):
+        from fx_system.technical_entry import timing_signals
+        closes = [100 + math.sin(i * .45) for i in range(45)]
+        self.assertEqual(timing_signals(closes[:-1], 'long'), ['macd_signal_cross'])
+        self.assertEqual(timing_signals(closes, 'long'), ['sb_one_sigma_cross'])
+
     def test_standard_macd_golden_linear_series_and_full_prefix(self):
         m=macd(list(range(1,81)))
         self.assertIsNone(m[24]['line']);self.assertIsNone(m[32]['signal'])

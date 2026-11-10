@@ -238,6 +238,8 @@ def assess(pair,strategy,track,clock):
        'macro_context':deepcopy(track.get('macro_context',{})),
        'execution_authority':'none','advisory_only':True,'reference_timeframe':track['base_timeframe'],
        'trigger_timeframe':track['trigger_timeframe']}
+    if track['trigger_timeframe'] in ('m15', 'm5'):
+        r['multi_timing_version'] = 1
     if track['base_timeframe'] == 'h4':
         r['structure_interpretation_version'] = 1
     return refresh(r)
@@ -250,6 +252,9 @@ def refresh(r):
         raise ValueError('unsupported technical entry interpretation')
     i=r['standard_inputs'];base=i['base'];trigger=i['trigger'];clock=r['evaluated_at'];tf=r['reference_timeframe'];tt=r['trigger_timeframe']
     if i['evaluated_at']!=clock or base['evaluated_at']!=clock or trigger['evaluated_at']!=clock:raise ValueError('standard input clocks mismatch')
+    if 'multi_timing_version' in r and (type(r['multi_timing_version']) is not int
+            or r['multi_timing_version'] != 1 or tt not in ('m15', 'm5')):
+        raise ValueError('unsupported multi-technical timing version')
     setup = i.get('h1_setup')
     timing = i.get('m5_timing')
     extra_frames = tuple((name, fdata) for name, fdata in (('h1', setup), ('m5', timing))
