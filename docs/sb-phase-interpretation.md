@@ -36,3 +36,22 @@ Limits: these are deterministic observable definitions, not proof of trading
 advantage. Retained history limits the available preceding excursion. A single
 band re-entry can be noise; MACD/RCI and higher-timeframe opposition remain visible.
 No new data collection, API call, schedule, dependency or workflow is required.
+
+## Band dynamics context (detail version 1)
+
+Additional source: https://real-int.jp/articles/902 describes 3-sigma slope as
+momentum context. We use per-bar price differences of the directional 3-sigma
+line, not chart-screen angles. Changes in those differences describe acceleration
+or slowing of that line, not a guaranteed future price movement.
+
+Count actual consecutive confirmed closes outside 1/2 sigma. Distinguish a fresh
+2-sigma crossing, maintained 2-sigma closes, and a return inside 2 sigma while
+1 sigma still holds. Compare 3-sigma direction with existing MACD momentum and
+explain conflicts. Existing RCI, SMA and Fibonacci evidence remains available.
+These correlated price measures are not independent votes, new grade thresholds,
+or automatic entry/exit rules. Missing history does not produce invented values.
+Old scenarios lacking sb_detail_version retain their old interpretation.
+
+This change improves the observed evidence supplied for discretionary judgment.
+Trading accuracy, costs and performance still require real-data evaluation;
+synthetic regression tests establish calculation/contract behavior only.

@@ -126,7 +126,7 @@ def bollinger_regime(sb, closes=None):
     return trend, 'trend' if outside_one else 'gradual_trend'
 
 
-def forecast(f,structure, *, structure_state=None, bollinger_regimes=False, setup_synthesis=False, regime_transitions=False):
+def forecast(f,structure, *, structure_state=None, bollinger_regimes=False, setup_synthesis=False, regime_transitions=False, sb_details=False):
     sb=f.get('super_bollinger',{});m=f.get('macd',{}).get('observations',[])
     hist=[x.get('histogram') for x in m]
     direction={'up':'long','down':'short'}.get(sb.get('centerline_direction'))
@@ -251,6 +251,14 @@ def forecast(f,structure, *, structure_state=None, bollinger_regimes=False, setu
             'neutral':'momentum_neutral','directional_mixed':'reacceleration_unconfirmed'}.get(momentum,'unverified')]
     else:
         primary = texts[phase]
+    if sb_details and status and direction:
+        from .sb_momentum import describe as band_dynamics
+        details = band_dynamics([b['close'] for b in f.get('bars', [])], direction, momentum)
+        if details['status'] == 'observed':
+            support.append(f['timeframe'].upper()+' SB：'+details['summary'])
+            if details['caution']:
+                cautions.append(details['caution'])
+                material.append('sb_momentum_caution')
     return {'schema':'standard_direction_forecast_v1','status':'available' if status and direction else 'no_direction' if status else 'unverified',
         'direction':direction,'direction_basis':basis,'phase':phase,'conviction':'weak' if weak else 'developing',
         'primary_path':primary,'alternative_path':'SB方向背景と価格構造が崩れれば継続仮説を取り下げる。短期RCIや局所反応だけで反転しない',
@@ -288,7 +296,7 @@ def wave(rows,direction):
 
 def assess(pair,strategy,track,clock):
     r={'pair':pair,'strategy':strategy,'evaluated_at':clock,'method_version':METHOD,
-       'standard_technical_version':2,'technical_entry_version':1,'bollinger_regime_version':2,'standard_inputs':deepcopy(track['standard_inputs']),
+       'standard_technical_version':2,'technical_entry_version':1,'bollinger_regime_version':2,'sb_detail_version':1,'standard_inputs':deepcopy(track['standard_inputs']),
        'currency_strength_context':deepcopy(track.get('currency_strength_context')),
        'macro_context':deepcopy(track.get('macro_context',{})),
        'execution_authority':'none','advisory_only':True,'reference_timeframe':track['base_timeframe'],
@@ -347,12 +355,15 @@ def refresh(r):
         r['base_structure_state'] = {'state': state,
             'pivot_timestamp': evidence.get('pivot_timestamp'),
             'break_bar_timestamp': evidence.get('break_bar_timestamp')}
+    details_version = r.get('sb_detail_version')
+    if 'sb_detail_version' in r and (type(details_version) is not int or details_version != 1):
+        raise ValueError('unsupported SB detail interpretation')
     regime_version = r.get('bollinger_regime_version')
     if 'bollinger_regime_version' in r and (type(regime_version) is not int or regime_version not in (1, 2)):
         raise ValueError('unsupported Bollinger regime interpretation')
     r['base_structure'] = i['structure']
     background = forecast(base, i['structure'], structure_state=state,
-                          bollinger_regimes=regime_version in (1, 2), regime_transitions=regime_version == 2)
+                          bollinger_regimes=regime_version in (1, 2), regime_transitions=regime_version == 2, sb_details=details_version == 1)
     f = background
     direction = f['direction']
     setup_opposed = False
@@ -368,7 +379,7 @@ def refresh(r):
         setup_structure = technical(setup.get('bars', []))
         f = forecast(setup, setup_structure.get('structure', 'unconfirmed'),
                      structure_state=setup_structure.get('closed_bar_structure', {}).get('state'),
-                     bollinger_regimes=True, setup_synthesis=synthesis, regime_transitions=regime_version == 2)
+                     bollinger_regimes=True, setup_synthesis=synthesis, regime_transitions=regime_version == 2, sb_details=details_version == 1)
         setup_fresh = setup.get('verified') is True and 0 <= clock - setup.get('closed_at', 0) < SECONDS['h1']
         if not setup_fresh:
             f.update(status='unverified', direction=None, primary_path='H1セットアップは確定足未確認')
