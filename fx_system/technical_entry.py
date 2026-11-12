@@ -93,10 +93,13 @@ def describe(record):
         pullback = record.get('multi_timing_version') == 2 and record.get('timing_context') == 'pullback'
         kinds = ('sb_one_sigma_cross',) if pullback else tuple(SIGNAL_LABELS)
         signals = [kind for kind in timing_signals([bar['close'] for bar in rows], direction) if kind in kinds]
-        wait = ('H1の調整後、方向側1σへの終値復帰を確認待ち' if pullback else
-                'RCI9反転・MACD交差・方向側1σ通過のいずれかを確認待ち')
-        summary = (tf.upper()+'確定足で'+'・'.join(SIGNAL_LABELS[s] for s in signals)+'を観測'
-                   if signals else f'{wait}（{tf.upper()}確定足）' if pullback else tf.upper()+'確定足で'+wait)
+        band_cross = '＋1σを上抜け' if direction == 'long' else '−1σを下抜け'
+        labels = {**SIGNAL_LABELS, 'sb_one_sigma_cross': '終値が'+band_cross+'る動き'}
+        frame = {'m15':'15分足', 'm5':'5分足'}[tf]
+        wait = ('1時間足の調整後、終値が'+band_cross+'るのを待つ' if pullback else
+                'RCI9反転・MACD交差・終値が'+band_cross+'る動きのいずれかを待つ')
+        summary = (frame+'確定足で'+'・'.join(labels[s] for s in signals)+'を観測'
+                   if signals else frame+'確定足で'+wait)
         return {**result, 'status':'conditions_observed' if signals else 'waiting',
                 'summary':summary, 'reason':summary,
                 'conditions':[{'kind':kind} for kind in kinds],
