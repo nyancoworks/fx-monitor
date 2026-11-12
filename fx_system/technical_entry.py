@@ -101,14 +101,14 @@ def describe(record):
         signals = [kind for kind in timing_signals([bar['close'] for bar in rows], direction, **options) if kind in kinds]
         band_cross = '＋1σを上抜け' if direction == 'long' else '−1σを下抜け'
         labels = {**SIGNAL_LABELS, 'sb_one_sigma_cross': '終値が'+band_cross+'る動き'}
-        labels['sb_one_sigma_hold'] = '終値が'+('＋1σより上' if direction == 'long' else '−1σより下')+'を維持'
+        labels['sb_one_sigma_hold'] = '終値が'+('＋1σより上' if direction == 'long' else '−1σより下')+'を維持する動き'
         frame = {'m15':'15分足', 'm5':'5分足'}[tf]
         wait = ('1時間足の調整後、終値が'+band_cross+'るのを待つ' if pullback else
                 'RCI9反転・MACD交差・終値が'+band_cross+'る動きのいずれかを待つ')
         if current:
-            wait = 'RCI9反転・MACD交差・終値の'+band_cross+'／'+('＋1σより上' if direction == 'long' else '−1σより下')+'の維持を確認待ち'
-        summary = (frame+'確定足で'+'・'.join(labels[s] for s in signals)+'を観測'
-                   if signals else frame+'確定足で'+wait)
+            wait = 'RCI9反転、MACD交差、終値が'+band_cross+'る動き、または'+('＋1σより上' if direction == 'long' else '−1σより下')+'の維持を確認待ち'
+        summary = (frame+'の確定足で'+'・'.join(labels[s] for s in signals)+'を観測'
+                   if signals else frame+'の確定足で'+wait)
         return {**result, 'status':'conditions_observed' if signals else 'waiting',
                 'summary':summary, 'reason':summary,
                 'conditions':[{'kind':kind} for kind in kinds],
