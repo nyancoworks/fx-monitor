@@ -55,3 +55,22 @@ Old scenarios lacking sb_detail_version retain their old interpretation.
 This change improves the observed evidence supplied for discretionary judgment.
 Trading accuracy, costs and performance still require real-data evaluation;
 synthetic regression tests establish calculation/contract behavior only.
+
+## Scenario state version 1
+
+New records separate the SB underlying trend, the current movement and the
+scenario direction. A correction inside 1 sigma is not automatically a new
+opposite-direction scenario. While price has not recovered across the blue Span
+Model line with MACD histogram supporting that recovery, retain the underlying
+trend as a pullback-watch thesis and explain the opposing movement. A developed
+recovery may be represented as a weak countertrend hypothesis, not a confirmed
+trend reversal. This contextual rule is an FX Monitor adaptation, not a claim of
+Murphy's exact discretionary method or validated optimal thresholds. RCI, SMA,
+structural context and the existing price plan still contribute their evidence;
+no extra collective entry gate or indicator vote is introduced.
+
+A verified directional view with no constructible wave plan is a skip with
+`price_plan_unformed`, not missing-data evaluation_pending. Actual unavailable
+base/setup data remains evaluation_pending. This does not manufacture targets or
+withdrawal prices. Historical records without scenario_state_version retain their
+original interpretation and exact restoration.

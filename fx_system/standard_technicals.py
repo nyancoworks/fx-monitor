@@ -126,7 +126,7 @@ def bollinger_regime(sb, closes=None):
     return trend, 'trend' if outside_one else 'gradual_trend'
 
 
-def forecast(f,structure, *, structure_state=None, bollinger_regimes=False, setup_synthesis=False, regime_transitions=False, sb_details=False):
+def forecast(f,structure, *, structure_state=None, bollinger_regimes=False, setup_synthesis=False, regime_transitions=False, sb_details=False, direction_context=False):
     sb=f.get('super_bollinger',{});m=f.get('macd',{}).get('observations',[])
     hist=[x.get('histogram') for x in m]
     direction={'up':'long','down':'short'}.get(sb.get('centerline_direction'))
@@ -137,6 +137,25 @@ def forecast(f,structure, *, structure_state=None, bollinger_regimes=False, setu
         direction, regime = bollinger_regime(sb, [b['close'] for b in f.get('bars', [])] if regime_transitions else None)
         basis = 'sb_regime'
         status = status and regime != 'unverified'
+    context = None
+    if direction_context and status:
+        from .span_special import observe
+        trend = {'above':'long','below':'short'}.get(sb.get('lagging_span',{}).get('location'))
+        context = {'trend_direction':trend, 'movement_direction':direction, 'regime':regime,
+                   'scenario_kind':'trend' if direction else 'unresolved'}
+        if regime == 'correction' and trend and direction:
+            span = observe(f.get('bars',[]), f['timeframe'])
+            own = 'above' if direction == 'long' else 'below'
+            correction_sign = 1 if direction == 'long' else -1
+            # A developed price recovery with directional momentum can support
+            # a countertrend scenario. Band re-entry by itself cannot do so.
+            developed = (span.get('status') == 'available'
+                         and span['last']['blue_position'] == own
+                         and correction_sign * hist[-1] > 0)
+            context['scenario_kind'] = 'countertrend_hypothesis' if developed else 'trend_pullback'
+            if not developed:
+                direction = trend
+            basis = context['scenario_kind']
     slow=f.get('sma',{}).get('50',{});rows=f.get('bars',[])
     slow_direction=('long' if slow.get('slope')=='up' and slow.get('value') is not None and rows and rows[-1]['close']>slow['value'] else
                     'short' if slow.get('slope')=='down' and slow.get('value') is not None and rows and rows[-1]['close']<slow['value'] else None)
@@ -235,6 +254,9 @@ def forecast(f,structure, *, structure_state=None, bollinger_regimes=False, setu
                     support.append(f'終値とSMA{period}の傾きが方向を支持')
     if regime == 'correction':
         material.append('sb_correction')
+    if context and context['scenario_kind'] == 'countertrend_hypothesis':
+        weak = True
+        material.append('countertrend_hypothesis')
     if regime_transitions and regime is not None:
         phase = ('continuation' if regime in ('trend', 'expanding_trend', 'gradual_trend')
                  and momentum not in ('counterpressure_deepening', 'counterpressure_mixed')
@@ -251,6 +273,15 @@ def forecast(f,structure, *, structure_state=None, bollinger_regimes=False, setu
             'neutral':'momentum_neutral','directional_mixed':'reacceleration_unconfirmed'}.get(momentum,'unverified')]
     else:
         primary = texts[phase]
+    if context and regime == 'correction':
+        trend_label = '上昇' if context['trend_direction'] == 'long' else '下落'
+        move_label = '反騰' if context['movement_direction'] == 'long' else '反落'
+        scenario_label = ('押し目買い候補' if direction == 'long' else '戻り売り候補') if context['scenario_kind'] == 'trend_pullback' else ('調整波の買い仮説' if direction == 'long' else '調整波の売り仮説')
+        primary = trend_label+'基調・足元は調整'+move_label+'。'+scenario_label+'、再開・継続を確認待ち'
+        if context['scenario_kind'] == 'trend_pullback':
+            phase = 'pullback_deepening' if momentum == 'counterpressure_deepening' else 'recovery_wait'
+        else:
+            phase = 'reversal_developing'
     if sb_details and status and direction:
         from .sb_momentum import describe as band_dynamics
         details = band_dynamics([b['close'] for b in f.get('bars', [])], direction, momentum)
@@ -260,6 +291,7 @@ def forecast(f,structure, *, structure_state=None, bollinger_regimes=False, setu
                 cautions.append(details['caution'])
                 material.append('sb_momentum_caution')
     return {'schema':'standard_direction_forecast_v1','status':'available' if status and direction else 'no_direction' if status else 'unverified',
+        **({'direction_context':context} if direction_context else {}),
         'direction':direction,'direction_basis':basis,'phase':phase,'conviction':'weak' if weak else 'developing',
         'primary_path':primary,'alternative_path':'SB方向背景と価格構造が崩れれば継続仮説を取り下げる。短期RCIや局所反応だけで反転しない',
         'support':support,'cautions':cautions,'material_cautions':material,'background':{'sma':deepcopy(sma)},
@@ -296,7 +328,7 @@ def wave(rows,direction):
 
 def assess(pair,strategy,track,clock):
     r={'pair':pair,'strategy':strategy,'evaluated_at':clock,'method_version':METHOD,
-       'standard_technical_version':2,'technical_entry_version':1,'bollinger_regime_version':2,'sb_detail_version':1,'span_special_version':1,'standard_inputs':deepcopy(track['standard_inputs']),
+       'standard_technical_version':2,'technical_entry_version':1,'bollinger_regime_version':2,'sb_detail_version':1,'span_special_version':1,'scenario_state_version':1,'standard_inputs':deepcopy(track['standard_inputs']),
        'currency_strength_context':deepcopy(track.get('currency_strength_context')),
        'macro_context':deepcopy(track.get('macro_context',{})),
        'execution_authority':'none','advisory_only':True,'reference_timeframe':track['base_timeframe'],
@@ -355,6 +387,9 @@ def refresh(r):
         r['base_structure_state'] = {'state': state,
             'pivot_timestamp': evidence.get('pivot_timestamp'),
             'break_bar_timestamp': evidence.get('break_bar_timestamp')}
+    state_version = r.get('scenario_state_version')
+    if 'scenario_state_version' in r and (type(state_version) is not int or state_version != 1):
+        raise ValueError('unsupported scenario state interpretation')
     span_version = r.get('span_special_version')
     if 'span_special_version' in r and (type(span_version) is not int or span_version != 1):
         raise ValueError('unsupported Span Special interpretation')
@@ -368,7 +403,7 @@ def refresh(r):
         raise ValueError('unsupported Bollinger regime interpretation')
     r['base_structure'] = i['structure']
     background = forecast(base, i['structure'], structure_state=state,
-                          bollinger_regimes=regime_version in (1, 2), regime_transitions=regime_version == 2, sb_details=details_version == 1)
+                          bollinger_regimes=regime_version in (1, 2), regime_transitions=regime_version == 2, sb_details=details_version == 1, direction_context=state_version == 1)
     if span_version == 1:
         from .span_special import apply as apply_span
         background = apply_span(base, background)
@@ -387,7 +422,7 @@ def refresh(r):
         setup_structure = technical(setup.get('bars', []))
         f = forecast(setup, setup_structure.get('structure', 'unconfirmed'),
                      structure_state=setup_structure.get('closed_bar_structure', {}).get('state'),
-                     bollinger_regimes=True, setup_synthesis=synthesis, regime_transitions=regime_version == 2, sb_details=details_version == 1)
+                     bollinger_regimes=True, setup_synthesis=synthesis, regime_transitions=regime_version == 2, sb_details=details_version == 1, direction_context=state_version == 1)
         if span_version == 1:
             f = apply_span(setup, f)
             f['span_background'] = deepcopy(background.get('span_special'))
@@ -469,11 +504,16 @@ def refresh(r):
     r['wave_price_plan']=p
     quality=(base.get('status')=='available' and base.get('verified') is True and rows and 0<=clock-base.get('closed_at',0)<SECONDS[tf])
     r['assessment']='evaluation_pending' if not quality else 'skip' if f['status']=='no_direction' else 'evaluation_pending' if f['status']!='available' or p['status']=='unverified' else 'skip' if p['status']!='available' else 'review'
+    plan_unformed = state_version == 1 and quality and f['status'] == 'available' and p['status'] == 'unverified'
+    if plan_unformed:
+        r['assessment'] = 'skip'
     r['reference_levels']={'invalidation':p['thesis_invalidation'],'scenario_target':target,'structural_target':(p['first_obstacle'] or {}).get('price'),'executable_price':False}
     r['reference_plan']={'reference_close':p['reference_close'],'reference_close_timestamp':p['reference_close_timestamp'],'scenario_target':target,'invalidation':p['thesis_invalidation']}
     r['invalidation']={'price':p['thesis_invalidation'],'scope':'base_wave_thesis','observed':False}
     r.pop('skip_reason',None)
     if r['assessment']=='skip':r['skip_reason']='direction_unconfirmed' if f['status']=='no_direction' else 'base_wave_objective_reached'
+    if plan_unformed:
+        r['skip_reason'] = 'price_plan_unformed'
     r['expiry']={'status':'withdrawn' if p['status']=='objective_reached' else 'reference_recheck','time_expiry':{'status':'not_defined'},'withdrawal_conditions':[{'condition':'base_wave_invalidation','price':p['thesis_invalidation'],'relation':'<=' if sign==1 else '>=','basis_timeframe':tf,'confirmation':'verified_saved_base_close'}] if p['thesis_invalidation'] else []}
     r['market_phase']='transition_context' if f['conviction']=='weak' else 'pullback_wait' if f['phase']!='continuation' else 'directional_structure_wait'
     r['entry_condition_inputs']=condition_inputs({tt:{'candles':recent}},{'base_verified':quality,'trigger_verified':trigger.get('verified') is True,'direction':direction,'trigger_timeframe':tt},clock)
@@ -524,6 +564,8 @@ def refresh(r):
             'entry_recheck' if local_paused else 'price_plan_recheck' if not risk or risk<=0 or not reward or reward<=0 or not room or room<=0 else 'entry_recheck' if not defined else 'technical_watch')
     r['grade']='C' if r['assessment']=='review' and f['conviction']=='weak' else 'A' if status=='technical_watch' and f['phase']=='continuation' and not f['material_cautions'] else 'B' if r['assessment']=='review' else None
     r['grade_reason']=f['primary_path']+'。'+{'technical_watch':'保存条件の反応と価格経路を監視','technical_recheck':'勢い・構造の再評価待ち','price_plan_recheck':('到達済みの節目に代わる価格計画待ち' if 'completed_retest' in p else '未確認の拡張や通過済み目標を追わず価格計画を再評価'),'entry_recheck':'局所条件を再評価','event_recheck':'発表後に再評価','direction_watch':'旧経路終了、新しい構造待ち','evaluation_pending':'方向・確定波の主要材料不足'}[status]
+    if plan_unformed:
+        r['grade_reason'] = f['primary_path']+'。確定足は取得済みだが、目標・無効化を伴う価格計画を構成できないため見送り'
     r['practical_review']={'schema':'standard_practical_review_v1','status':status,'summary':r['grade_reason'],'reference_margin_sufficient':bool(risk and reward and reward>risk),'events':events}
     if r['standard_technical_version']==2:
         r['practical_review']['entry_status']='paused' if local_paused else 'timing_reference' if fresh else 'unverified'
