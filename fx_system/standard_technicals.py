@@ -269,6 +269,7 @@ def assess(pair,strategy,track,clock):
         if 'h1_setup' in track['standard_inputs']:
             r['swing_setup_version'] = 1
             r['setup_synthesis_version'] = 1
+            r['swing_objective_version'] = 1
     return refresh(r)
 
 
@@ -388,7 +389,30 @@ def refresh(r):
     active=(len(rows)>=2 and p.get('retest_objective') and all(sign*(b['close']-p['retest_objective']['price'])>0 for b in rows[-2:]) and (not h1_primary or background['direction']==direction) and background['evolution']['momentum']=='directional_building')
     target=(p['retest_objective']['price'] if p.get('retest_objective') and sign*(p['retest_objective']['price']-p['reference_close'])>0 else
             p['extension_zone']['near'] if active and sign*(p['extension_zone']['near']-p['reference_close'])>0 else p['extension_zone']['far'] if active else None)
+    if 'swing_objective_version' in r:
+        if (type(r['swing_objective_version']) is not int
+                or r['swing_objective_version'] != 1 or not h1_primary):
+            raise ValueError('unsupported swing objective interpretation')
+        objective = p.get('retest_objective')
+        if (objective and target == objective['price'] and not active
+                and base.get('verified') is True and trigger.get('verified') is True):
+            pivot_index = next(i for i, bar in enumerate(rows)
+                               if bar['timestamp'] == objective['timestamp'])
+            confirmation_bar = rows[pivot_index + 2]
+            confirmed_at = confirmation_bar.get('session_end_utc',
+                                                 confirmation_bar['timestamp'] + SECONDS[tf])
+            reached = next((bar for bar in recent
+                            if confirmed_at <= bar['timestamp']
+                            and bar['timestamp'] + SECONDS[tt] <= clock
+                            and sign * (bar['close'] - target) >= 0), None)
+            if reached:
+                p['completed_retest'] = {'price': target,
+                                         'closed_at': reached['timestamp'] + SECONDS[tt]}
+                target = None
+                f['cautions'].append('前回の節目目標は確認足終値で到達済み。新しい価格計画待ち')
     p['path_stage']='withdrawn' if p['status']=='objective_reached' else 'retest' if target is not None and not active else 'extension_active' if active else 'extension_wait'
+    if 'completed_retest' in p:
+        p['path_stage'] = 'completed_retest_wait'
     r['wave_price_plan']=p
     quality=(base.get('status')=='available' and base.get('verified') is True and rows and 0<=clock-base.get('closed_at',0)<SECONDS[tf])
     r['assessment']='evaluation_pending' if not quality else 'skip' if f['status']=='no_direction' else 'evaluation_pending' if f['status']!='available' or p['status']=='unverified' else 'skip' if p['status']!='available' else 'review'
@@ -439,10 +463,10 @@ def refresh(r):
     local=p.get('local_setup_failure')
     local_paused=bool(r['assessment']=='review' and r['standard_technical_version']==2 and fresh and local and sign*(price-local)<=0)
     status=('evaluation_pending' if r['assessment']=='evaluation_pending' else 'direction_watch' if r['assessment']=='skip' else
-            'event_recheck' if events else 'technical_recheck' if f['conviction']=='weak' or f['phase']=='pullback_deepening' or setup_opposed else
+            'event_recheck' if events else 'price_plan_recheck' if 'completed_retest' in p else 'technical_recheck' if f['conviction']=='weak' or f['phase']=='pullback_deepening' or setup_opposed else
             'entry_recheck' if local_paused else 'price_plan_recheck' if not risk or risk<=0 or not reward or reward<=0 or not room or room<=0 else 'entry_recheck' if not defined else 'technical_watch')
     r['grade']='C' if r['assessment']=='review' and f['conviction']=='weak' else 'A' if status=='technical_watch' and f['phase']=='continuation' and not f['material_cautions'] else 'B' if r['assessment']=='review' else None
-    r['grade_reason']=f['primary_path']+'。'+{'technical_watch':'保存条件の反応と価格経路を監視','technical_recheck':'勢い・構造の再評価待ち','price_plan_recheck':'未確認の拡張や通過済み目標を追わず価格計画を再評価','entry_recheck':'局所条件を再評価','event_recheck':'発表後に再評価','direction_watch':'旧経路終了、新しい構造待ち','evaluation_pending':'方向・確定波の主要材料不足'}[status]
+    r['grade_reason']=f['primary_path']+'。'+{'technical_watch':'保存条件の反応と価格経路を監視','technical_recheck':'勢い・構造の再評価待ち','price_plan_recheck':('到達済みの節目に代わる価格計画待ち' if 'completed_retest' in p else '未確認の拡張や通過済み目標を追わず価格計画を再評価'),'entry_recheck':'局所条件を再評価','event_recheck':'発表後に再評価','direction_watch':'旧経路終了、新しい構造待ち','evaluation_pending':'方向・確定波の主要材料不足'}[status]
     r['practical_review']={'schema':'standard_practical_review_v1','status':status,'summary':r['grade_reason'],'reference_margin_sufficient':bool(risk and reward and reward>risk),'events':events}
     if r['standard_technical_version']==2:
         r['practical_review']['entry_status']='paused' if local_paused else 'timing_reference' if fresh else 'unverified'

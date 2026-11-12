@@ -85,6 +85,7 @@ class StandardTechnicalTests(unittest.TestCase):
         old = deepcopy(record)
         old.pop('swing_setup_version')
         old.pop('setup_synthesis_version')
+        old.pop('swing_objective_version')
         self.assertEqual(refresh(old)['direction'], 'long')
 
     def test_h1_momentum_conflict_reduces_setup_conviction(self):
