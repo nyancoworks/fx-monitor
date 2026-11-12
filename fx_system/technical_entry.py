@@ -49,7 +49,7 @@ def describe(record):
         'scope':'technical_timing_not_candle_pattern_or_fill','level':None}
     def unavailable(text,status='unavailable'):
         return {**result,'status':status,'reason':text,'summary':text}
-    multi = record.get('multi_timing_version') == 1
+    multi = record.get('multi_timing_version') in (1, 2)
     if multi:
         result.update(basis=MULTI_BASIS, route='multi_technical_recovery', scope='alternative_technical_timing')
     if tf == 'h1':
@@ -90,12 +90,16 @@ def describe(record):
                 'evidence':{'closed_at':closed,'rci9':value,'previous_rci9':previous},
                 'withdrawal_conditions':deepcopy(record.get('expiry',{}).get('withdrawal_conditions',[]))}
     if multi:
-        signals = timing_signals([bar['close'] for bar in rows], direction)
-        summary = tf.upper()+'確定足で'+('・'.join(SIGNAL_LABELS[s] for s in signals)+'を観測' if signals else
-            'RCI9反転・MACD交差・方向側1σ通過のいずれかを確認待ち')
+        pullback = record.get('multi_timing_version') == 2 and record.get('timing_context') == 'pullback'
+        kinds = ('sb_one_sigma_cross',) if pullback else tuple(SIGNAL_LABELS)
+        signals = [kind for kind in timing_signals([bar['close'] for bar in rows], direction) if kind in kinds]
+        wait = ('H1の調整後、方向側1σへの終値復帰を確認待ち' if pullback else
+                'RCI9反転・MACD交差・方向側1σ通過のいずれかを確認待ち')
+        summary = (tf.upper()+'確定足で'+'・'.join(SIGNAL_LABELS[s] for s in signals)+'を観測'
+                   if signals else f'{wait}（{tf.upper()}確定足）' if pullback else tf.upper()+'確定足で'+wait)
         return {**result, 'status':'conditions_observed' if signals else 'waiting',
                 'summary':summary, 'reason':summary,
-                'conditions':[{'kind':kind} for kind in SIGNAL_LABELS],
+                'conditions':[{'kind':kind} for kind in kinds],
                 'observed_at':closed if signals else None,
                 'observed_close':price if signals else None,
                 'evidence':{'closed_at':closed,'signals':signals},

@@ -1,5 +1,6 @@
 """Synthetic RCI timing and optional candle observations, without PA gates."""
 import unittest
+from unittest.mock import patch
 from copy import deepcopy
 from fx_system.technical_entry import describe, candle_reference, turn_observed
 from fx_system.standard_technicals import refresh
@@ -9,10 +10,10 @@ from fx_system.scenario_followthrough import observe_frozen_condition
 from test_standard_technicals import inputs, CLOCK
 
 
-def record():
+def record(strategy='daytrade'):
     d,q,_=inputs()
     o=build_scheduled_outlook({'EURUSD':d},{'EURUSD':q},evaluated_at=CLOCK)
-    return next(r for r in o['strategy_assessments'] if r['pair']=='EURUSD' and r['strategy']=='daytrade')
+    return next(r for r in o['strategy_assessments'] if r['pair']=='EURUSD' and r['strategy']==strategy)
 
 
 class TechnicalEntryTests(unittest.TestCase):
@@ -45,6 +46,19 @@ class TechnicalEntryTests(unittest.TestCase):
         old['standard_technical_version']=1;refresh(old)
         self.assertIn('obstacle_path_review',old);self.assertEqual(old['scenario_conditions']['basis'],'contextual_saved_price_action_v1')
         self.assertEqual(refresh(deepcopy(old)),old)
+
+    def test_swing_pullback_waits_for_directional_sigma_cross(self):
+        r = record('swing')
+        r['timing_context'] = 'pullback'
+        with patch('fx_system.technical_entry.timing_signals', return_value=['macd_signal_cross']):
+            result = describe(r)
+            self.assertEqual(result['status'], 'waiting')
+            self.assertEqual(result['conditions'], [{'kind': 'sb_one_sigma_cross'}])
+        with patch('fx_system.technical_entry.timing_signals', return_value=['sb_one_sigma_cross']):
+            self.assertEqual(describe(r)['status'], 'conditions_observed')
+        r['multi_timing_version'] = 1
+        with patch('fx_system.technical_entry.timing_signals', return_value=['macd_signal_cross']):
+            self.assertEqual(describe(r)['status'], 'conditions_observed')
 
     def test_frozen_rci_recovery_uses_complete_retained_history(self):
         r=record();r.pop('multi_timing_version');tf=r['trigger_timeframe'];sec=300
