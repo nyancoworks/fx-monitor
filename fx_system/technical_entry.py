@@ -99,14 +99,21 @@ def describe(record):
             kinds = (*kinds, 'sb_one_sigma_hold')
         options = {'continuation': True} if current else {}
         signals = [kind for kind in timing_signals([bar['close'] for bar in rows], direction, **options) if kind in kinds]
+        if record.get('span_special_version') == 1 and current:
+            from .span_special import timing
+            kinds = (*kinds, 'span_blue_recovery')
+            signals.extend(timing(rows, tf, direction))
         band_cross = '＋1σを上抜け' if direction == 'long' else '−1σを下抜け'
         labels = {**SIGNAL_LABELS, 'sb_one_sigma_cross': '終値が'+band_cross+'る動き'}
         labels['sb_one_sigma_hold'] = '終値が'+('＋1σより上' if direction == 'long' else '−1σより下')+'を維持する動き'
+        labels['span_blue_recovery'] = '終値が青色スパンの'+('上' if direction == 'long' else '下')+'へ回復する動き'
         frame = {'m15':'15分足', 'm5':'5分足'}[tf]
         wait = ('1時間足の調整後、終値が'+band_cross+'るのを待つ' if pullback else
                 'RCI9反転・MACD交差・終値が'+band_cross+'る動きのいずれかを待つ')
         if current:
             wait = 'RCI9反転、MACD交差、終値が'+band_cross+'る動き、または'+('＋1σより上' if direction == 'long' else '−1σより下')+'の維持を確認待ち'
+        if record.get('span_special_version') == 1 and current:
+            wait += '（青色スパン回復も確認）'
         summary = (frame+'の確定足で'+'・'.join(labels[s] for s in signals)+'を観測'
                    if signals else frame+'の確定足で'+wait)
         return {**result, 'status':'conditions_observed' if signals else 'waiting',

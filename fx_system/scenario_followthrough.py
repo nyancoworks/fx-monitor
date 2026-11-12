@@ -211,6 +211,10 @@ def observe_frozen_condition(record, pair, through):
             allowed = {condition['kind'] for condition in plan['conditions']}
             observed = any(signal in allowed for signal in timing_signals(closes, record['direction'],
                 **({'continuation': True} if record.get('multi_timing_version') == 3 else {})))
+            if 'span_blue_recovery' in allowed and record.get('span_special_version') == 1:
+                from .span_special import timing
+                subsequent = _aggregate(rows, seconds, prefix[-1]['timestamp']+seconds, bar['closed_at'])
+                observed = observed or bool(timing(prefix+subsequent, record['trigger_timeframe'], record['direction']))
         elif rci_timing:
             from .indicator_research import rci_series
             from .technical_entry import turn_observed
