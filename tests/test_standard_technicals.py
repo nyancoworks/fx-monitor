@@ -147,7 +147,7 @@ class StandardTechnicalTests(unittest.TestCase):
             self.assertEqual(swing['standard_inputs']['h1_setup']['timeframe'], 'h1')
             self.assertEqual(swing['standard_inputs']['m5_timing']['timeframe'], 'm5')
             for r in o['strategy_assessments']:
-                self.assertEqual(r['method_version'],METHOD);self.assertEqual(r['technical_profile'],NY_CLOSE_PROFILE)
+                self.assertEqual(r['method_version'],METHOD);self.assertEqual(r['technical_profile'],{**NY_CLOSE_PROFILE,'span_model':{'periods':[9,26,52],'lag_intervals':26,'cloud_shift':0}})
                 self.assertNotIn('span_model_version',r);self.assertNotIn('forecast_wave_version',r)
                 self.assertNotIn('DMA',json.dumps(r,ensure_ascii=False));self.assertNotIn('stochastic',json.dumps(r))
             b=build_strategy_report_export(json.dumps({'evaluated_at':CLOCK,'scheduled_outlook':o}).encode(),SOURCE)

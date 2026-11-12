@@ -296,7 +296,7 @@ def wave(rows,direction):
 
 def assess(pair,strategy,track,clock):
     r={'pair':pair,'strategy':strategy,'evaluated_at':clock,'method_version':METHOD,
-       'standard_technical_version':2,'technical_entry_version':1,'bollinger_regime_version':2,'sb_detail_version':1,'standard_inputs':deepcopy(track['standard_inputs']),
+       'standard_technical_version':2,'technical_entry_version':1,'bollinger_regime_version':2,'sb_detail_version':1,'span_special_version':1,'standard_inputs':deepcopy(track['standard_inputs']),
        'currency_strength_context':deepcopy(track.get('currency_strength_context')),
        'macro_context':deepcopy(track.get('macro_context',{})),
        'execution_authority':'none','advisory_only':True,'reference_timeframe':track['base_timeframe'],
@@ -355,6 +355,11 @@ def refresh(r):
         r['base_structure_state'] = {'state': state,
             'pivot_timestamp': evidence.get('pivot_timestamp'),
             'break_bar_timestamp': evidence.get('break_bar_timestamp')}
+    span_version = r.get('span_special_version')
+    if 'span_special_version' in r and (type(span_version) is not int or span_version != 1):
+        raise ValueError('unsupported Span Special interpretation')
+    if span_version == 1:
+        r['technical_profile']['span_model'] = {'periods':[9,26,52], 'lag_intervals':26, 'cloud_shift':0}
     details_version = r.get('sb_detail_version')
     if 'sb_detail_version' in r and (type(details_version) is not int or details_version != 1):
         raise ValueError('unsupported SB detail interpretation')
@@ -364,6 +369,9 @@ def refresh(r):
     r['base_structure'] = i['structure']
     background = forecast(base, i['structure'], structure_state=state,
                           bollinger_regimes=regime_version in (1, 2), regime_transitions=regime_version == 2, sb_details=details_version == 1)
+    if span_version == 1:
+        from .span_special import apply as apply_span
+        background = apply_span(base, background)
     f = background
     direction = f['direction']
     setup_opposed = False
@@ -380,6 +388,9 @@ def refresh(r):
         f = forecast(setup, setup_structure.get('structure', 'unconfirmed'),
                      structure_state=setup_structure.get('closed_bar_structure', {}).get('state'),
                      bollinger_regimes=True, setup_synthesis=synthesis, regime_transitions=regime_version == 2, sb_details=details_version == 1)
+        if span_version == 1:
+            f = apply_span(setup, f)
+            f['span_background'] = deepcopy(background.get('span_special'))
         setup_fresh = setup.get('verified') is True and 0 <= clock - setup.get('closed_at', 0) < SECONDS['h1']
         if not setup_fresh:
             f.update(status='unverified', direction=None, primary_path='H1セットアップは確定足未確認')
@@ -612,7 +623,7 @@ def render_lines(r, *, presentation_version=1):
         '通常Fib条件付き拡張：'+fmt((p.get('extension_zone') or {}).get('near'))+'～'+fmt((p.get('extension_zone') or {}).get('far'))+'（確定支持抵抗ではない）',
         '局所停止参考：'+fmt(p['local_setup_failure'])+'。大局撤回と別。実際の成立価格・損失幅・費用は未確定',
         *((['ローソク足の補足：'+r['candle_reference']['summary']]) if r.get('candle_reference',{}).get('status') in ('observed','not_observed') else []),
-        '使用指標：SB、通常MACD12/26/9、通常Fib、SMA50/200、RCI9/26/52']
+        '使用指標：'+('スパンモデルスペシャル、' if r.get('span_special_version') == 1 else 'SB、')+'通常MACD12/26/9、通常Fib、SMA50/200、RCI9/26/52']
     if presentation_version == 1:
         return lines
     paused = r.get('practical_review',{}).get('entry_status') == 'paused'
