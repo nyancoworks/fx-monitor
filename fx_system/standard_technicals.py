@@ -263,7 +263,7 @@ def assess(pair,strategy,track,clock):
        'execution_authority':'none','advisory_only':True,'reference_timeframe':track['base_timeframe'],
        'trigger_timeframe':track['trigger_timeframe']}
     if track['trigger_timeframe'] in ('m15', 'm5'):
-        r['multi_timing_version'] = 1
+        r['multi_timing_version'] = 2 if strategy == 'swing' and 'h1_setup' in track['standard_inputs'] else 1
     if track['base_timeframe'] == 'h4':
         r['structure_interpretation_version'] = 1
         if 'h1_setup' in track['standard_inputs']:
@@ -281,7 +281,7 @@ def refresh(r):
     i=r['standard_inputs'];base=i['base'];trigger=i['trigger'];clock=r['evaluated_at'];tf=r['reference_timeframe'];tt=r['trigger_timeframe']
     if i['evaluated_at']!=clock or base['evaluated_at']!=clock or trigger['evaluated_at']!=clock:raise ValueError('standard input clocks mismatch')
     if 'multi_timing_version' in r and (type(r['multi_timing_version']) is not int
-            or r['multi_timing_version'] != 1 or tt not in ('m15', 'm5')):
+            or r['multi_timing_version'] not in (1, 2) or tt not in ('m15', 'm5')):
         raise ValueError('unsupported multi-technical timing version')
     setup = i.get('h1_setup')
     timing = i.get('m5_timing')
@@ -426,6 +426,10 @@ def refresh(r):
     r['entry_condition_inputs']=condition_inputs({tt:{'candles':recent}},{'base_verified':quality,'trigger_verified':trigger.get('verified') is True,'direction':direction,'trigger_timeframe':tt},clock)
     if r.get('technical_entry_version')==1:
         from .technical_entry import describe as technical_conditions,candle_reference
+        if r.get('multi_timing_version') == 2:
+            r['timing_context'] = ('pullback' if h1_primary and f['phase'] in (
+                'pullback_deepening', 'pullback_easing', 'pullback_unsettled', 'pullback_expected')
+                else 'standard')
         r['scenario_conditions']=technical_conditions(r)
         r['candle_reference']=candle_reference(r)
     else:
