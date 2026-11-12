@@ -76,7 +76,11 @@ class StandardTechnicalTests(unittest.TestCase):
         outlook = build_scheduled_outlook({'EURUSD': data}, {'EURUSD': quality}, evaluated_at=CLOCK)
         record = next(r for r in outlook['strategy_assessments']
                       if r['pair'] == 'EURUSD' and r['strategy'] == 'swing')
-        # The synthetic falling path ends in a rebound inside -1 sigma.
+        # Rebound inside -1 sigma is now a pullback, not an automatic buy.
+        self.assertEqual(record['direction'], 'short')
+        self.assertEqual(record['technical_outlook']['forecast']['direction_context']['movement_direction'], 'long')
+        record.pop('scenario_state_version')
+        refresh(record)
         self.assertEqual(record['direction'], 'long')
         record['bollinger_regime_version'] = 1
         refresh(record)
