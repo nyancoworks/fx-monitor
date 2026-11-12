@@ -23,7 +23,7 @@ class TechnicalEntryTests(unittest.TestCase):
                 (79,90,'short',True),(85,90,'short',True),(90,85,'short',False),
                 (None,-90,'long',None),(float('nan'),90,'short',None),(101,90,'short',None)]:
             self.assertIs(turn_observed(v,p,d),expected)
-        r=record();r.pop('multi_timing_version');t=r['standard_inputs']['trigger'];t['rci']['9'].update(value=-79,previous=-90)
+        r=record();r['bollinger_regime_version']=1;refresh(r);r.pop('multi_timing_version');t=r['standard_inputs']['trigger'];t['rci']['9'].update(value=-79,previous=-90)
         # No lower wick, neutral body: RCI timing still observed.
         b=t['bars'][-1];b.update(open=b['close'],low=b['close'],high=b['close']+.2)
         c=describe(r);self.assertEqual(c['status'],'conditions_observed');self.assertIsNone(c['level'])
@@ -49,6 +49,7 @@ class TechnicalEntryTests(unittest.TestCase):
 
     def test_swing_pullback_waits_for_directional_sigma_cross(self):
         r = record('swing')
+        r['multi_timing_version'] = 2
         r['timing_context'] = 'pullback'
         with patch('fx_system.technical_entry.timing_signals', return_value=['macd_signal_cross']):
             result = describe(r)
@@ -61,7 +62,7 @@ class TechnicalEntryTests(unittest.TestCase):
             self.assertEqual(describe(r)['status'], 'conditions_observed')
 
     def test_frozen_rci_recovery_uses_complete_retained_history(self):
-        r=record();r.pop('multi_timing_version');tf=r['trigger_timeframe'];sec=300
+        r=record();r['bollinger_regime_version']=1;refresh(r);r.pop('multi_timing_version');tf=r['trigger_timeframe'];sec=300
         # Retained ten declining closes: RCI starts at -100, next close reverses.
         r['evaluated_at']=CLOCK+2
         f=r['standard_inputs']['trigger'];f['evaluated_at']=CLOCK+2;last=f['bars'][-1]['timestamp']

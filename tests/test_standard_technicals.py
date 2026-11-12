@@ -76,6 +76,10 @@ class StandardTechnicalTests(unittest.TestCase):
         outlook = build_scheduled_outlook({'EURUSD': data}, {'EURUSD': quality}, evaluated_at=CLOCK)
         record = next(r for r in outlook['strategy_assessments']
                       if r['pair'] == 'EURUSD' and r['strategy'] == 'swing')
+        # The synthetic falling path ends in a rebound inside -1 sigma.
+        self.assertEqual(record['direction'], 'long')
+        record['bollinger_regime_version'] = 1
+        refresh(record)
         self.assertEqual(record['direction'], 'short')
         forecast = record['technical_outlook']['forecast']
         self.assertEqual(forecast['timeframe'], 'h1')
@@ -163,6 +167,7 @@ class StandardTechnicalTests(unittest.TestCase):
         d,q,_=inputs()
         o=build_scheduled_outlook({'EURUSD':d},{'EURUSD':q},evaluated_at=CLOCK)
         r=next(r for r in o['strategy_assessments'] if r['pair']=='EURUSD' and r['strategy']=='swing')
+        r['bollinger_regime_version']=1;refresh(r)  # legacy pause semantics
         local=r['wave_price_plan']['local_setup_failure'];origin=r['invalidation']['price']
         self.assertGreater(local,origin)
         t=r['standard_inputs']['trigger'];bars=deepcopy(t['bars']);price=(local+origin)/2

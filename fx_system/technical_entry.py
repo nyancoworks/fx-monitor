@@ -12,7 +12,7 @@ SIGNAL_LABELS = {
 }
 
 
-def timing_signals(closes, direction):
+def timing_signals(closes, direction, *, continuation=False):
     from .advisory_indicators import stddev_bands
     from .indicator_research import rci_series
     from .standard_technicals import macd
@@ -32,6 +32,8 @@ def timing_signals(closes, direction):
         edge = 'upper' if sign == 1 else 'lower'
         if sign * (closes[-2] - previous['bands']['1'][edge]) <= 0 < sign * (closes[-1] - current['bands']['1'][edge]):
             signals.append('sb_one_sigma_cross')
+        elif continuation and sign * (closes[-2] - previous['bands']['1'][edge]) > 0 and sign * (closes[-1] - current['bands']['1'][edge]) > 0:
+            signals.append('sb_one_sigma_hold')
     return signals
 
 
@@ -49,7 +51,7 @@ def describe(record):
         'scope':'technical_timing_not_candle_pattern_or_fill','level':None}
     def unavailable(text,status='unavailable'):
         return {**result,'status':status,'reason':text,'summary':text}
-    multi = record.get('multi_timing_version') in (1, 2)
+    multi = record.get('multi_timing_version') in (1, 2, 3)
     if multi:
         result.update(basis=MULTI_BASIS, route='multi_technical_recovery', scope='alternative_technical_timing')
     if tf == 'h1':
@@ -92,12 +94,19 @@ def describe(record):
     if multi:
         pullback = record.get('multi_timing_version') == 2 and record.get('timing_context') == 'pullback'
         kinds = ('sb_one_sigma_cross',) if pullback else tuple(SIGNAL_LABELS)
-        signals = [kind for kind in timing_signals([bar['close'] for bar in rows], direction) if kind in kinds]
+        current = record.get('multi_timing_version') == 3
+        if current:
+            kinds = (*kinds, 'sb_one_sigma_hold')
+        options = {'continuation': True} if current else {}
+        signals = [kind for kind in timing_signals([bar['close'] for bar in rows], direction, **options) if kind in kinds]
         band_cross = '＋1σを上抜け' if direction == 'long' else '−1σを下抜け'
         labels = {**SIGNAL_LABELS, 'sb_one_sigma_cross': '終値が'+band_cross+'る動き'}
+        labels['sb_one_sigma_hold'] = '終値が'+('＋1σより上' if direction == 'long' else '−1σより下')+'を維持'
         frame = {'m15':'15分足', 'm5':'5分足'}[tf]
         wait = ('1時間足の調整後、終値が'+band_cross+'るのを待つ' if pullback else
                 'RCI9反転・MACD交差・終値が'+band_cross+'る動きのいずれかを待つ')
+        if current:
+            wait = 'RCI9反転・MACD交差・終値の'+band_cross+'／'+('＋1σより上' if direction == 'long' else '−1σより下')+'の維持を確認待ち'
         summary = (frame+'確定足で'+'・'.join(labels[s] for s in signals)+'を観測'
                    if signals else frame+'確定足で'+wait)
         return {**result, 'status':'conditions_observed' if signals else 'waiting',

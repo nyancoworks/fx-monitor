@@ -209,7 +209,8 @@ def observe_frozen_condition(record, pair, through):
                 continue
             closes = [candle['close'] for candle in prefix] + [rci_history[t] for t in stamps]
             allowed = {condition['kind'] for condition in plan['conditions']}
-            observed = any(signal in allowed for signal in timing_signals(closes, record['direction']))
+            observed = any(signal in allowed for signal in timing_signals(closes, record['direction'],
+                **({'continuation': True} if record.get('multi_timing_version') == 3 else {})))
         elif rci_timing:
             from .indicator_research import rci_series
             from .technical_entry import turn_observed

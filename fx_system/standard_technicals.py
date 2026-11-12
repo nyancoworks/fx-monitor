@@ -87,7 +87,7 @@ def prepare(data,verified,indicator_frames,quality):
         data.pop(key,None)
 
 
-def bollinger_regime(sb):
+def bollinger_regime(sb, closes=None):
     """FX Monitor interpretation of lagging-span and closing-price positions."""
     lag = sb.get('lagging_span', {}).get('location')
     close = sb.get('last_close')
@@ -102,6 +102,21 @@ def bollinger_regime(sb):
         return None, 'range' if one['lower'] <= close <= one['upper'] else 'transition'
     long = lag == 'above'
     trend = 'long' if long else 'short'
+    # A return inside 1 sigma after a directional excursion is a correction,
+    # even before the centre line breaks. No prior excursion means gradual.
+    if closes is not None and len(closes) >= 22:
+        from .advisory_indicators import stddev_bands
+        history = stddev_bands(closes)
+        for price, band in reversed(list(zip(closes[:-1], history[:-1]))):
+            if band is None:
+                break
+            prior = ('long' if price > band['bands']['1']['upper'] else
+                     'short' if price < band['bands']['1']['lower'] else None)
+            if prior:
+                inside = close <= one['upper'] if long else close >= one['lower']
+                if prior == trend and inside:
+                    return ('short' if long else 'long'), 'correction'
+                break
     if (close < middle if long else close > middle):
         return ('short' if long else 'long'), 'correction'
     outside_two = close > two['upper'] if long else close < two['lower']
@@ -111,7 +126,7 @@ def bollinger_regime(sb):
     return trend, 'trend' if outside_one else 'gradual_trend'
 
 
-def forecast(f,structure, *, structure_state=None, bollinger_regimes=False, setup_synthesis=False):
+def forecast(f,structure, *, structure_state=None, bollinger_regimes=False, setup_synthesis=False, regime_transitions=False):
     sb=f.get('super_bollinger',{});m=f.get('macd',{}).get('observations',[])
     hist=[x.get('histogram') for x in m]
     direction={'up':'long','down':'short'}.get(sb.get('centerline_direction'))
@@ -119,7 +134,7 @@ def forecast(f,structure, *, structure_state=None, bollinger_regimes=False, setu
     center=direction;basis='sb_environment'
     regime = None
     if bollinger_regimes:
-        direction, regime = bollinger_regime(sb)
+        direction, regime = bollinger_regime(sb, [b['close'] for b in f.get('bars', [])] if regime_transitions else None)
         basis = 'sb_regime'
         status = status and regime != 'unverified'
     slow=f.get('sma',{}).get('50',{});rows=f.get('bars',[])
@@ -220,9 +235,25 @@ def forecast(f,structure, *, structure_state=None, bollinger_regimes=False, setu
                     support.append(f'終値とSMA{period}の傾きが方向を支持')
     if regime == 'correction':
         material.append('sb_correction')
+    if regime_transitions and regime is not None:
+        phase = ('continuation' if regime in ('trend', 'expanding_trend', 'gradual_trend')
+                 and momentum not in ('counterpressure_deepening', 'counterpressure_mixed')
+                 else phase)
+        side = '＋' if direction == 'long' else '−'
+        label = {'correction':'調整反騰' if direction == 'long' else '調整反落',
+                 'trend':side+'1σ外のトレンド',
+                 'expanding_trend':side+'2σ外・帯拡大のトレンド',
+                 'gradual_trend':'中心線側の緩やかなトレンド',
+                 'range':'レンジ', 'transition':'移行中', 'unverified':'未確認'}[regime]
+        primary = 'SB：'+label+'。'+texts[{'counterpressure_deepening':'pullback_deepening',
+            'counterpressure_easing':'pullback_easing','counterpressure_mixed':'pullback_unsettled',
+            'directional_fading':'pullback_expected','directional_building':'continuation',
+            'neutral':'momentum_neutral','directional_mixed':'reacceleration_unconfirmed'}.get(momentum,'unverified')]
+    else:
+        primary = texts[phase]
     return {'schema':'standard_direction_forecast_v1','status':'available' if status and direction else 'no_direction' if status else 'unverified',
         'direction':direction,'direction_basis':basis,'phase':phase,'conviction':'weak' if weak else 'developing',
-        'primary_path':texts[phase],'alternative_path':'SB方向背景と価格構造が崩れれば継続仮説を取り下げる。短期RCIや局所反応だけで反転しない',
+        'primary_path':primary,'alternative_path':'SB方向背景と価格構造が崩れれば継続仮説を取り下げる。短期RCIや局所反応だけで反転しない',
         'support':support,'cautions':cautions,'material_cautions':material,'background':{'sma':deepcopy(sma)},
         'evolution':{'status':'available' if h else 'unverified','momentum':momentum},
         'timing':{'rci':deepcopy(f.get('rci',{}))},'timeframe':f['timeframe'],'evaluated_at':f['evaluated_at']}
@@ -257,13 +288,13 @@ def wave(rows,direction):
 
 def assess(pair,strategy,track,clock):
     r={'pair':pair,'strategy':strategy,'evaluated_at':clock,'method_version':METHOD,
-       'standard_technical_version':2,'technical_entry_version':1,'bollinger_regime_version':1,'standard_inputs':deepcopy(track['standard_inputs']),
+       'standard_technical_version':2,'technical_entry_version':1,'bollinger_regime_version':2,'standard_inputs':deepcopy(track['standard_inputs']),
        'currency_strength_context':deepcopy(track.get('currency_strength_context')),
        'macro_context':deepcopy(track.get('macro_context',{})),
        'execution_authority':'none','advisory_only':True,'reference_timeframe':track['base_timeframe'],
        'trigger_timeframe':track['trigger_timeframe']}
     if track['trigger_timeframe'] in ('m15', 'm5'):
-        r['multi_timing_version'] = 2 if strategy == 'swing' and 'h1_setup' in track['standard_inputs'] else 1
+        r['multi_timing_version'] = 3
     if track['base_timeframe'] == 'h4':
         r['structure_interpretation_version'] = 1
         if 'h1_setup' in track['standard_inputs']:
@@ -281,7 +312,7 @@ def refresh(r):
     i=r['standard_inputs'];base=i['base'];trigger=i['trigger'];clock=r['evaluated_at'];tf=r['reference_timeframe'];tt=r['trigger_timeframe']
     if i['evaluated_at']!=clock or base['evaluated_at']!=clock or trigger['evaluated_at']!=clock:raise ValueError('standard input clocks mismatch')
     if 'multi_timing_version' in r and (type(r['multi_timing_version']) is not int
-            or r['multi_timing_version'] not in (1, 2) or tt not in ('m15', 'm5')):
+            or r['multi_timing_version'] not in (1, 2, 3) or tt not in ('m15', 'm5')):
         raise ValueError('unsupported multi-technical timing version')
     setup = i.get('h1_setup')
     timing = i.get('m5_timing')
@@ -317,11 +348,11 @@ def refresh(r):
             'pivot_timestamp': evidence.get('pivot_timestamp'),
             'break_bar_timestamp': evidence.get('break_bar_timestamp')}
     regime_version = r.get('bollinger_regime_version')
-    if 'bollinger_regime_version' in r and (type(regime_version) is not int or regime_version != 1):
+    if 'bollinger_regime_version' in r and (type(regime_version) is not int or regime_version not in (1, 2)):
         raise ValueError('unsupported Bollinger regime interpretation')
     r['base_structure'] = i['structure']
     background = forecast(base, i['structure'], structure_state=state,
-                          bollinger_regimes=regime_version == 1)
+                          bollinger_regimes=regime_version in (1, 2), regime_transitions=regime_version == 2)
     f = background
     direction = f['direction']
     setup_opposed = False
@@ -337,7 +368,7 @@ def refresh(r):
         setup_structure = technical(setup.get('bars', []))
         f = forecast(setup, setup_structure.get('structure', 'unconfirmed'),
                      structure_state=setup_structure.get('closed_bar_structure', {}).get('state'),
-                     bollinger_regimes=True, setup_synthesis=synthesis)
+                     bollinger_regimes=True, setup_synthesis=synthesis, regime_transitions=regime_version == 2)
         setup_fresh = setup.get('verified') is True and 0 <= clock - setup.get('closed_at', 0) < SECONDS['h1']
         if not setup_fresh:
             f.update(status='unverified', direction=None, primary_path='H1セットアップは確定足未確認')
