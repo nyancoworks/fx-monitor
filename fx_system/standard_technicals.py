@@ -328,7 +328,7 @@ def wave(rows,direction):
 
 def assess(pair,strategy,track,clock):
     r={'pair':pair,'strategy':strategy,'evaluated_at':clock,'method_version':METHOD,
-       'standard_technical_version':2,'technical_entry_version':1,'bollinger_regime_version':2,'sb_detail_version':1,'span_special_version':1,'scenario_state_version':1,'timing_text_version':1,'standard_inputs':deepcopy(track['standard_inputs']),
+       'standard_technical_version':2,'technical_entry_version':1,'bollinger_regime_version':2,'sb_detail_version':1,'span_special_version':1,'span_transition_version':1,'scenario_state_version':1,'timing_text_version':1,'standard_inputs':deepcopy(track['standard_inputs']),
        'currency_strength_context':deepcopy(track.get('currency_strength_context')),
        'macro_context':deepcopy(track.get('macro_context',{})),
        'execution_authority':'none','advisory_only':True,'reference_timeframe':track['base_timeframe'],
@@ -392,6 +392,8 @@ def refresh(r):
     state_version = r.get('scenario_state_version')
     if 'scenario_state_version' in r and (type(state_version) is not int or state_version != 1):
         raise ValueError('unsupported scenario state interpretation')
+    if 'span_transition_version' in r and (type(r['span_transition_version']) is not int or r['span_transition_version'] != 1):
+        raise ValueError('unsupported span transition version')
     span_version = r.get('span_special_version')
     if 'span_special_version' in r and (type(span_version) is not int or span_version != 1):
         raise ValueError('unsupported Span Special interpretation')
@@ -408,7 +410,7 @@ def refresh(r):
                           bollinger_regimes=regime_version in (1, 2), regime_transitions=regime_version == 2, sb_details=details_version == 1, direction_context=state_version == 1)
     if span_version == 1:
         from .span_special import apply as apply_span
-        background = apply_span(base, background)
+        background = apply_span(base, background, transitions=r.get('span_transition_version') == 1)
     f = background
     direction = f['direction']
     setup_opposed = False
@@ -426,7 +428,7 @@ def refresh(r):
                      structure_state=setup_structure.get('closed_bar_structure', {}).get('state'),
                      bollinger_regimes=True, setup_synthesis=synthesis, regime_transitions=regime_version == 2, sb_details=details_version == 1, direction_context=state_version == 1)
         if span_version == 1:
-            f = apply_span(setup, f)
+            f = apply_span(setup, f, transitions=r.get('span_transition_version') == 1)
             f['span_background'] = deepcopy(background.get('span_special'))
         setup_fresh = setup.get('verified') is True and 0 <= clock - setup.get('closed_at', 0) < SECONDS['h1']
         if not setup_fresh:

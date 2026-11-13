@@ -4,7 +4,7 @@ import math
 GRACE = {'w1':5, 'd1':5, 'h4':5, 'h1':5, 'm15':7, 'm5':8}
 
 
-def observe(rows, timeframe):
+def observe(rows, timeframe, *, transitions=False):
     out = {'status':'unavailable', 'reason':'スパン計算に必要な確定足が不足',
            'parameters':[9,26,52], 'lag_intervals':26, 'cloud_shift':0}
     if timeframe not in GRACE or not isinstance(rows, list) or len(rows) < 53:
@@ -42,7 +42,22 @@ def observe(rows, timeframe):
                    'within_grace':age<GRACE[timeframe]}
             break
     change=last['red']-previous['red']
+    changes = []
+    if transitions:
+        for field in ('blue_position', 'lag_candle', 'lag_zone'):
+            before, after = previous[field], last[field]
+            if 'unavailable' not in (before, after) and before != after:
+                changes.append({'component':field, 'before':before, 'after':after,
+                                'timestamp':last['timestamp']})
+        if len(points) >= 3:
+            old_change = previous['red']-points[-3]['red']
+            before = 'up' if old_change>0 else 'down' if old_change<0 else 'flat'
+            after = 'up' if change>0 else 'down' if change<0 else 'flat'
+            if before != after:
+                changes.append({'component':'red_slope', 'before':before, 'after':after,
+                                'timestamp':last['timestamp']})
     return {**out,'status':'available','reason':None,'last':last,'previous':previous,
+            **({'confirmed_changes':changes} if transitions else {}),
             'red_slope':'up' if change>0 else 'down' if change<0 else 'flat',
             'signal_event':event}
 
@@ -56,8 +71,8 @@ def timing(rows, timeframe, direction):
     return ['span_blue_recovery'] if last['blue_position']==own and prior['blue_position']!=own else []
 
 
-def apply(frame, forecast):
-    obs=observe(frame.get('bars',[]), frame['timeframe']) if frame.get('status')=='available' else {'status':'unavailable','reason':'確定足未確認'}
+def apply(frame, forecast, *, transitions=False):
+    obs=observe(frame.get('bars',[]), frame['timeframe'], transitions=transitions) if frame.get('status')=='available' else {'status':'unavailable','reason':'確定足未確認'}
     forecast['span_special']=obs
     if obs['status']!='available':
         forecast['cautions'].append(frame['timeframe'].upper()+'スパン：'+obs['reason'])
@@ -67,6 +82,15 @@ def apply(frame, forecast):
     text=(frame['timeframe'].upper()+'スパン：価格は青色の'+words[last['blue_position']]+
           '、赤色'+{'up':'上向き','down':'下向き','flat':'横ばい'}[obs['red_slope']]+
           '、遅行は過去足の'+words[last['lag_candle']]+'／雲の'+words[last['lag_zone']])
+    if transitions and obs['confirmed_changes']:
+        names = {'blue_position':'価格と青色', 'lag_candle':'遅行と過去足',
+                 'lag_zone':'遅行と雲', 'red_slope':'赤色の向き'}
+        slope_words = {'up':'上向き','down':'下向き','flat':'横ばい'}
+        descriptions = []
+        for item in obs['confirmed_changes']:
+            labels = slope_words if item['component']=='red_slope' else words
+            descriptions.append(names[item['component']]+'：'+labels[item['before']]+'→'+labels[item['after']])
+        text+='。確定足の変化：'+'、'.join(descriptions)
     event=obs['signal_event']
     if event and event['within_grace']:
         side={'long':'買い','short':'売り',None:'未確定'}[event['sign']]
