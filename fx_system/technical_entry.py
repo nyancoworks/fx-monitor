@@ -118,6 +118,12 @@ def describe(record):
             wait += '（青色スパン回復も確認）'
         summary = (frame+'の確定足で'+'・'.join(labels[s] for s in signals)+'を観測'
                    if signals else frame+'の確定足で'+wait)
+        if current and record.get('timing_text_version') == 1 and not signals:
+            choices = ['RCI9反転', 'MACDシグナル交差',
+                       '終値の'+band_cross+'または'+('上側' if direction == 'long' else '下側')+'維持']
+            if 'span_blue_recovery' in kinds:
+                choices.append('終値の青色スパン'+('上抜け' if direction == 'long' else '下抜け'))
+            summary = frame+'確定で、次のいずれかの反応待ち：'+'／'.join(choices)+'（全一致は不要）'
         return {**result, 'status':'conditions_observed' if signals else 'waiting',
                 'summary':summary, 'reason':summary,
                 'conditions':[{'kind':kind} for kind in kinds],

@@ -328,7 +328,7 @@ def wave(rows,direction):
 
 def assess(pair,strategy,track,clock):
     r={'pair':pair,'strategy':strategy,'evaluated_at':clock,'method_version':METHOD,
-       'standard_technical_version':2,'technical_entry_version':1,'bollinger_regime_version':2,'sb_detail_version':1,'span_special_version':1,'scenario_state_version':1,'standard_inputs':deepcopy(track['standard_inputs']),
+       'standard_technical_version':2,'technical_entry_version':1,'bollinger_regime_version':2,'sb_detail_version':1,'span_special_version':1,'scenario_state_version':1,'timing_text_version':1,'standard_inputs':deepcopy(track['standard_inputs']),
        'currency_strength_context':deepcopy(track.get('currency_strength_context')),
        'macro_context':deepcopy(track.get('macro_context',{})),
        'execution_authority':'none','advisory_only':True,'reference_timeframe':track['base_timeframe'],
@@ -387,6 +387,8 @@ def refresh(r):
         r['base_structure_state'] = {'state': state,
             'pivot_timestamp': evidence.get('pivot_timestamp'),
             'break_bar_timestamp': evidence.get('break_bar_timestamp')}
+    if 'timing_text_version' in r and (type(r['timing_text_version']) is not int or r['timing_text_version'] != 1):
+        raise ValueError('unsupported timing text version')
     state_version = r.get('scenario_state_version')
     if 'scenario_state_version' in r and (type(state_version) is not int or state_version != 1):
         raise ValueError('unsupported scenario state interpretation')

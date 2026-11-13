@@ -74,3 +74,12 @@ A verified directional view with no constructible wave plan is a skip with
 base/setup data remains evaluation_pending. This does not manufacture targets or
 withdrawal prices. Historical records without scenario_state_version retain their
 original interpretation and exact restoration.
+
+## Timing text version 1
+
+New records explicitly label the existing alternative timing observations as
+“いずれかの反応待ち” and include blue-span recovery in that same alternative list.
+This changes wording only: observed signals, conditions, direction, grades and
+price plans remain unchanged. Records without timing_text_version retain their
+original wording for exact restoration. Observing a local condition does not
+confirm the whole trading scenario.

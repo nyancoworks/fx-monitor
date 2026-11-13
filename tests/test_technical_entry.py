@@ -17,6 +17,32 @@ def record(strategy='daytrade'):
 
 
 class TechnicalEntryTests(unittest.TestCase):
+    def test_alternative_timing_wording_preserves_decisions_and_legacy(self):
+        for strategy in ('swing', 'daytrade'):
+            for direction in ('long', 'short'):
+                r = record(strategy)
+                r['direction'] = direction
+                price = r['standard_inputs']['trigger']['bars'][-1]['close']
+                sign = 1 if direction == 'long' else -1
+                r['reference_levels'].update(invalidation=price-sign, scenario_target=price+sign)
+                old = deepcopy(r); old.pop('timing_text_version')
+                for observed in ([], ['macd_signal_cross']):
+                    with patch('fx_system.technical_entry.timing_signals', return_value=observed), patch('fx_system.span_special.timing', return_value=[]):
+                        new_result, old_result = describe(r), describe(old)
+                    if not observed:
+                        self.assertIn('いずれかの反応待ち', new_result['summary'])
+                        self.assertIn('全一致は不要', new_result['summary'])
+                        self.assertIn('青色スパン'+('上抜け' if direction == 'long' else '下抜け'), new_result['summary'])
+                        self.assertNotIn('いずれかの反応待ち', old_result['summary'])
+                    for key in ('summary', 'reason'):
+                        new_result.pop(key); old_result.pop(key)
+                    self.assertEqual(new_result, old_result)
+        r = record(); self.assertEqual(refresh(deepcopy(r)), r)
+        old = deepcopy(r); old.pop('timing_text_version'); refresh(old)
+        self.assertEqual(refresh(deepcopy(old)), old)
+        r['timing_text_version'] = True
+        with self.assertRaises(ValueError): refresh(r)
+
     def test_rci_extreme_and_turn_both_required_but_not_a_candle(self):
         for v,p,d,expected in [(-79,-90,'long',True),(-85,-90,'long',True),
                 (-90,-85,'long',False),(-70,-75,'long',False),(-80,-80,'long',False),
