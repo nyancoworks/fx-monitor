@@ -58,6 +58,8 @@ def describe(record):
         result.update(basis='h1_price_reaction_v1', route='continuation_breakout',
                       scope='h1_price_reaction_with_rci_context')
     if record.get('expiry',{}).get('status')=='withdrawn':return unavailable('旧経路は終了。新しい価格計画を待つ','withdrawn')
+    if record.get('skip_reason') == 'price_plan_unformed':
+        return unavailable('確定足は取得済み。目標・無効化を伴う価格計画を構成できないため見送り','not_applicable')
     if record.get('assessment')!='review':return unavailable('主要材料の不足または方向未確定で条件を具体化できない','not_applicable')
     f=record['standard_inputs']['trigger'];sec={'m5':300,'m15':900,'h1':3600}[tf];rci=f.get('rci',{}).get('9',{})
     rows=f.get('bars',[]);closed=f.get('closed_at');value,previous=rci.get('value'),rci.get('previous')

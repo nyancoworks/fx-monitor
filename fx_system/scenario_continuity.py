@@ -126,7 +126,7 @@ def render(rows, previous_clock, current_clock):
                 label = '仕掛け計画停止：' if current.get('swing_context', {}).get('entry_status') == 'paused' else '今回保存は撤回状態：'
                 text+='。'+label+str(current['expiry'].get('reason') or current.get('skip_reason') or current.get('grade_reason') or '理由は今回評価を参照')
             elif row['status']=='no_longer_reviewed':
-                text+='。今回理由：'+str(current.get('skip_reason') or current.get('grade_reason') or '今回評価を参照')
+                text+='。今回理由：'+str(('確定足は取得済み・価格計画を構成できず見送り' if current.get('skip_reason') == 'price_plan_unformed' else current.get('skip_reason')) or current.get('grade_reason') or '今回評価を参照')
             follow=row.get('previous_condition_followthrough',{})
             observation=follow.get('condition_observation')
             if observation:
