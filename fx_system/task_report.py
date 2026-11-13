@@ -64,6 +64,10 @@ def _build_task_report(report, strength, slot, continuity):
             conflict = report.get('conflict_role_lines', {}).get(pair)
             if conflict and strategy == 'swing':
                 parts.append(('方向競合', conflict))
+            from .followthrough_summary import describe as describe_followthrough
+            outcome = describe_followthrough(row)
+            if outcome:
+                parts.append(('前回経過', outcome))
             stop, invalidate = field('局所停止：'), field('大局撤回：')
             if stop or invalidate:
                 parts.append(('見直し', (stop or '局所停止未確認')+'／大局撤回：'+(invalidate or '未確認')))

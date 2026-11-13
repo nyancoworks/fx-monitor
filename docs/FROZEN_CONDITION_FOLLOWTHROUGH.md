@@ -36,3 +36,18 @@
 同方向でも旧水準の継続有効性は証明されない。後の再評価を前回へ上書きせず、
 今回の候補判断と固定条件の観測を分ける。通知の到達時刻・その後の約定・
 売買成績は測定しない。反復する保存判断を独立した取引標本として合算しない。
+
+## Chronological outcome explanation
+
+The saved observation and subsequent close-based events are separate facts.
+`followthrough_summary.describe` orders the recorded condition observation,
+local setup stop, thesis invalidation and objective events by their saved close
+times. Events at the same timestamp have unknown intrabar ordering. A target
+touch alone is not labelled a close-based objective achievement. No event is
+not evidence that a scenario succeeded. Already-observed conditions retain
+that description rather than inventing an observation time.
+
+Continuity text and the compact task report use the same short explanation.
+Only candidates with a recorded terminal event gain a previous-outcome line;
+current direction, grade, timing conditions and ranking are unchanged. Original
+records are not rewritten. These facts are neither fills nor measured profit.
