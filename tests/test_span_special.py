@@ -10,6 +10,35 @@ def rows(values):
 
 
 class SpanSpecialTests(unittest.TestCase):
+    def test_confirmed_changes_are_directional_and_not_missing_history(self):
+        for sign,side,slope in ((1,'above','up'),(-1,'below','down')):
+            data=rows([100.]*80+[100+sign*10])
+            changes=observe(data,'h1',transitions=True)['confirmed_changes']
+            by={x['component']:x for x in changes}
+            for component in ('blue_position','lag_candle','lag_zone'):
+                self.assertEqual(by[component]['before'],'inside')
+                self.assertEqual(by[component]['after'],side)
+                self.assertEqual(by[component]['timestamp'],data[-1]['timestamp'])
+            self.assertEqual(by['red_slope']['before'],'flat')
+            self.assertEqual(by['red_slope']['after'],slope)
+            # One more unchanged bar flattens the red span; it does not reverse it.
+            later=observe(rows([100.]*80+[100+sign*10]*2),'h1',transitions=True)
+            red=next(x for x in later['confirmed_changes'] if x['component']=='red_slope')
+            self.assertEqual(red['after'],'flat')
+        partial=observe(rows([100.]*77+[110.]),'h1',transitions=True)
+        self.assertNotIn('lag_zone',[x['component'] for x in partial['confirmed_changes']])
+        self.assertNotIn('confirmed_changes',observe(rows([100.]*90),'h1'))
+
+    def test_transition_evidence_preserves_grades_and_old_restoration(self):
+        r=record('swing');self.assertEqual(refresh(deepcopy(r)),r)
+        old=deepcopy(r);old.pop('span_transition_version');refresh(old)
+        self.assertEqual(refresh(deepcopy(old)),old)
+        self.assertNotIn('confirmed_changes',old['technical_outlook']['forecast']['span_special'])
+        for key in ('direction','grade','assessment','scenario_conditions','reference_levels'):
+            self.assertEqual(r[key],old[key])
+        r['span_transition_version']=True
+        with self.assertRaises(ValueError):refresh(r)
+
     def test_flat_and_midpoint_formula(self):
         result=observe(rows([100.]*90),'h1')
         self.assertEqual(result['last']['blue'],100)
