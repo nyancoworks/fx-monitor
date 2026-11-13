@@ -140,15 +140,10 @@ def render(rows, previous_clock, current_clock):
                 text+='。前回固定条件の再試しは終値で維持できず'
             elif follow and follow.get('status') not in ('not_monitorable_at_save','already_observed_at_save','close_based_withdrawal_observed'):
                 text+='。前回固定条件の保存間検証は未確認'
-            if follow.get('base_close_withdrawal'):
-                text+='。前回固定水準の基準足終値による撤回条件を観測'
-            if follow.get('trigger_close_withdrawal'):
-                text+=('。前回の局所仕掛け停止・経路目標到達を観測（基準足の大局撤回とは別）'
-                       if follow.get('trigger_withdrawal_scope')=='local_entry_only' else
-                       '。前回M15仕掛け計画の停止条件を観測（H4大局の撤回とは別）'
-                       if row['previous'].get('swing_context') else '。前回固定水準の確認足終値による撤回条件を観測')
-            if follow.get('base_objective_observation'):
-                text+='。前回の経路目標への到達を基準足で観測（約定・大局撤回ではない）'
+            from .followthrough_summary import describe as describe_followthrough
+            outcome = describe_followthrough(row)
+            if outcome:
+                text+='。'+outcome
             if current.get('swing_context'):
                 text+='。大局：'+current['swing_context']['summary']
             lines.append(text)
