@@ -4,7 +4,7 @@ import math
 GRACE = {'w1':5, 'd1':5, 'h4':5, 'h1':5, 'm15':7, 'm5':8}
 
 
-def observe(rows, timeframe, *, transitions=False):
+def observe(rows, timeframe, *, transitions=False, extreme_turns=False):
     out = {'status':'unavailable', 'reason':'スパン計算に必要な確定足が不足',
            'parameters':[9,26,52], 'lag_intervals':26, 'cloud_shift':0}
     if timeframe not in GRACE or not isinstance(rows, list) or len(rows) < 53:
@@ -42,6 +42,20 @@ def observe(rows, timeframe, *, transitions=False):
                    'within_grace':age<GRACE[timeframe]}
             break
     change=last['red']-previous['red']
+    red_slope='up' if change>0 else 'down' if change<0 else 'flat'
+    red_turn=None
+    if extreme_turns:
+        # A rolling midpoint can move merely because an old extreme expires.
+        # Do not call that a new red-span turn without a fresh 52-bar extreme.
+        def qualified(i):
+            if i < 52:
+                return 'unavailable'
+            prior=rows[i-52:i]
+            high=rows[i]['high']>max(bar['high'] for bar in prior)
+            low=rows[i]['low']<min(bar['low'] for bar in prior)
+            delta=points[i-51]['red']-points[i-52]['red']
+            return ('up' if high and delta>0 else 'down' if low and delta<0 else 'flat')
+        red_turn=qualified(len(rows)-1)
     changes = []
     if transitions:
         for field in ('blue_position', 'lag_candle', 'lag_zone'):
@@ -51,14 +65,15 @@ def observe(rows, timeframe, *, transitions=False):
                                 'timestamp':last['timestamp']})
         if len(points) >= 3:
             old_change = previous['red']-points[-3]['red']
-            before = 'up' if old_change>0 else 'down' if old_change<0 else 'flat'
-            after = 'up' if change>0 else 'down' if change<0 else 'flat'
-            if before != after:
+            before = qualified(len(rows)-2) if extreme_turns else 'up' if old_change>0 else 'down' if old_change<0 else 'flat'
+            after = red_turn if extreme_turns else red_slope
+            if before != after and 'unavailable' not in (before,after):
                 changes.append({'component':'red_slope', 'before':before, 'after':after,
                                 'timestamp':last['timestamp']})
     return {**out,'status':'available','reason':None,'last':last,'previous':previous,
             **({'confirmed_changes':changes} if transitions else {}),
-            'red_slope':'up' if change>0 else 'down' if change<0 else 'flat',
+            'red_slope':red_slope,
+            **({'red_extreme_turn':red_turn} if extreme_turns else {}),
             'signal_event':event}
 
 
@@ -71,21 +86,25 @@ def timing(rows, timeframe, direction):
     return ['span_blue_recovery'] if last['blue_position']==own and prior['blue_position']!=own else []
 
 
-def apply(frame, forecast, *, transitions=False):
-    obs=observe(frame.get('bars',[]), frame['timeframe'], transitions=transitions) if frame.get('status')=='available' else {'status':'unavailable','reason':'確定足未確認'}
+def apply(frame, forecast, *, transitions=False, extreme_turns=False):
+    obs=observe(frame.get('bars',[]), frame['timeframe'], transitions=transitions, extreme_turns=extreme_turns) if frame.get('status')=='available' else {'status':'unavailable','reason':'確定足未確認'}
     forecast['span_special']=obs
     if obs['status']!='available':
         forecast['cautions'].append(frame['timeframe'].upper()+'スパン：'+obs['reason'])
         return forecast
     last=obs['last'];direction=forecast['direction']
     words={'above':'上','below':'下','inside':'絡み','unavailable':'未確認'}
+    red_direction=obs['red_extreme_turn'] if extreme_turns else obs['red_slope']
+    red_words={'up':'上向き（52本高値更新）','down':'下向き（52本安値更新）',
+               'flat':'方向更新なし','unavailable':'向き未確認'} if extreme_turns else {'up':'上向き','down':'下向き','flat':'横ばい'}
     text=(frame['timeframe'].upper()+'スパン：価格は青色の'+words[last['blue_position']]+
-          '、赤色'+{'up':'上向き','down':'下向き','flat':'横ばい'}[obs['red_slope']]+
+          '、赤色'+red_words[red_direction]+
           '、遅行は過去足の'+words[last['lag_candle']]+'／雲の'+words[last['lag_zone']])
     if transitions and obs['confirmed_changes']:
         names = {'blue_position':'価格と青色', 'lag_candle':'遅行と過去足',
                  'lag_zone':'遅行と雲', 'red_slope':'赤色の向き'}
-        slope_words = {'up':'上向き','down':'下向き','flat':'横ばい'}
+        slope_words = {'up':'上向き','down':'下向き',
+                       'flat':'方向更新なし' if extreme_turns else '横ばい'}
         descriptions = []
         for item in obs['confirmed_changes']:
             labels = slope_words if item['component']=='red_slope' else words
@@ -99,7 +118,7 @@ def apply(frame, forecast, *, transitions=False):
     opposed='below' if direction=='long' else 'above'
     conflict=direction in ('long','short') and last['blue_position']==opposed
     background_conflict = direction in ('long','short') and (
-        obs['red_slope']==('down' if direction=='long' else 'up') or last['lag_candle']==opposed or last['lag_zone']==opposed)
+        red_direction==('down' if direction=='long' else 'up') or last['lag_candle']==opposed or last['lag_zone']==opposed)
     forecast['cautions' if conflict or background_conflict else 'support'].append(text)
     # Span positioning alone never downgrades. Adverse price reaction and
     # independently calculated momentum together challenge continuation.
