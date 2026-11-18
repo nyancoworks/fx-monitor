@@ -128,7 +128,8 @@ def describe(record):
         if (record.get('murphy_timing_context_version') == 1
                 and record.get('span_special_version') == 1 and current):
             from .murphy_timing_context import describe as describe_murphy
-            context = describe_murphy(f, direction)
+            context = describe_murphy(f, direction,
+                extreme_turns=record.get('span_red_turn_version') == 1)
             evidence['murphy_context'] = context
             summary += '。'+context['concise_summary']
             if signals:
