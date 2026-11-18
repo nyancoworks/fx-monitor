@@ -51,3 +51,15 @@ class TaskReportTests(unittest.TestCase):
         self.assertEqual(build_task_report(r,s,slot,c)['status'],'unavailable')
         r,s,slot,c=inputs();r['status']='unavailable'
         self.assertEqual(build_task_report(r,s,slot,c)['status'],'unavailable')
+
+    def test_condensed_display_keeps_opposed_h4_and_exact_levels(self):
+        r,s,slot,c=inputs()
+        r['report_text']=r['report_text'].replace(
+            '懸念：勢い未確認',
+            '懸念：RCI9は短期逆行。調整進行を確認／H4の背景：買い方向。H1のセットアップと逆方向／W1上位SB背景が予測方向と競合。伸びに注意／MACDが混在')
+        original=r['report_text']
+        out=build_task_report(r,s,slot,c)
+        self.assertIn('H4が逆方向／W1も逆方向',out['report_text'])
+        self.assertIn('M15終値2以上／大局撤回：H4終値3以上',out['report_text'])
+        self.assertNotIn('調整進行を確認',out['report_text'])
+        self.assertEqual(r['report_text'],original)
