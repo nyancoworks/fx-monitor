@@ -124,12 +124,21 @@ def describe(record):
             if 'span_blue_recovery' in kinds:
                 choices.append('終値の青色スパン'+('上抜け' if direction == 'long' else '下抜け'))
             summary = frame+'確定で、次のいずれかの反応待ち：'+'／'.join(choices)+'（全一致は不要）'
+        evidence = {'closed_at':closed,'signals':signals}
+        if (record.get('murphy_timing_context_version') == 1
+                and record.get('span_special_version') == 1 and current):
+            from .murphy_timing_context import describe as describe_murphy
+            context = describe_murphy(f, direction)
+            evidence['murphy_context'] = context
+            summary += '。'+context['concise_summary']
+            if signals:
+                summary += '。局所反応の観測であり、シナリオ全体の成立ではない'
         return {**result, 'status':'conditions_observed' if signals else 'waiting',
                 'summary':summary, 'reason':summary,
                 'conditions':[{'kind':kind} for kind in kinds],
                 'observed_at':closed if signals else None,
                 'observed_close':price if signals else None,
-                'evidence':{'closed_at':closed,'signals':signals},
+                'evidence':evidence,
                 'withdrawal_conditions':deepcopy(record.get('expiry',{}).get('withdrawal_conditions',[]))}
     text=tf.upper()+'のRCI9が'+('−80以下から上向く押し目回復' if direction=='long' else '＋80以上から下向く戻りの収束')+'を確定足で確認する。ローソク足パターンは必須にしない'
     return {**result,'status':'conditions_observed' if observed else 'waiting',
