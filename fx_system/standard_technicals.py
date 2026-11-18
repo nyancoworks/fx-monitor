@@ -336,6 +336,7 @@ def assess(pair,strategy,track,clock):
     if track['trigger_timeframe'] in ('m15', 'm5'):
         r['multi_timing_version'] = 3
         r['murphy_timing_context_version'] = 1
+        r['scenario_completion_version'] = 1
     if track['base_timeframe'] == 'h4':
         r['structure_interpretation_version'] = 1
         if 'h1_setup' in track['standard_inputs']:
@@ -346,6 +347,10 @@ def assess(pair,strategy,track,clock):
 
 
 def refresh(r):
+    if 'scenario_completion_version' in r and (
+            type(r['scenario_completion_version']) is not int
+            or r['scenario_completion_version'] != 1):
+        raise ValueError('unsupported scenario completion interpretation')
     if 'murphy_timing_context_version' in r and (
             type(r['murphy_timing_context_version']) is not int
             or r['murphy_timing_context_version'] != 1):
@@ -571,8 +576,14 @@ def refresh(r):
     status=('evaluation_pending' if r['assessment']=='evaluation_pending' else 'direction_watch' if r['assessment']=='skip' else
             'event_recheck' if events else 'price_plan_recheck' if 'completed_retest' in p else 'technical_recheck' if f['conviction']=='weak' or f['phase']=='pullback_deepening' or setup_opposed else
             'entry_recheck' if local_paused else 'price_plan_recheck' if not risk or risk<=0 or not reward or reward<=0 or not room or room<=0 else 'entry_recheck' if not defined else 'technical_watch')
-    r['grade']='C' if r['assessment']=='review' and f['conviction']=='weak' else 'A' if status=='technical_watch' and f['phase']=='continuation' and not f['material_cautions'] else 'B' if r['assessment']=='review' else None
+    # A describes a formed scenario; a defined but unobserved reaction is B.
+    # This is not an indicator-agreement threshold or trade permission.
+    reaction_observed = r['scenario_conditions']['status'] == 'conditions_observed'
+    complete = r.get('scenario_completion_version') != 1 or reaction_observed
+    r['grade']='C' if r['assessment']=='review' and f['conviction']=='weak' else 'A' if status=='technical_watch' and f['phase']=='continuation' and not f['material_cautions'] and complete else 'B' if r['assessment']=='review' else None
     r['grade_reason']=f['primary_path']+'。'+{'technical_watch':'保存条件の反応と価格経路を監視','technical_recheck':'勢い・構造の再評価待ち','price_plan_recheck':('到達済みの節目に代わる価格計画待ち' if 'completed_retest' in p else '未確認の拡張や通過済み目標を追わず価格計画を再評価'),'entry_recheck':'局所条件を再評価','event_recheck':'発表後に再評価','direction_watch':'旧経路終了、新しい構造待ち','evaluation_pending':'方向・確定波の主要材料不足'}[status]
+    if r.get('scenario_completion_version') == 1 and r['grade'] == 'B' and not reaction_observed and defined:
+        r['grade_reason'] += '。'+tt.upper()+'の反応は未観測のため、シナリオ成立前のB評価'
     if plan_unformed:
         r['grade_reason'] = f['primary_path']+'。確定足は取得済みだが、目標・無効化を伴う価格計画を構成できないため見送り'
     r['practical_review']={'schema':'standard_practical_review_v1','status':status,'summary':r['grade_reason'],'reference_margin_sufficient':bool(risk and reward and reward>risk),'events':events}
