@@ -335,6 +335,7 @@ def assess(pair,strategy,track,clock):
        'trigger_timeframe':track['trigger_timeframe']}
     if track['trigger_timeframe'] in ('m15', 'm5'):
         r['multi_timing_version'] = 3
+        r['murphy_timing_context_version'] = 1
     if track['base_timeframe'] == 'h4':
         r['structure_interpretation_version'] = 1
         if 'h1_setup' in track['standard_inputs']:
@@ -345,6 +346,10 @@ def assess(pair,strategy,track,clock):
 
 
 def refresh(r):
+    if 'murphy_timing_context_version' in r and (
+            type(r['murphy_timing_context_version']) is not int
+            or r['murphy_timing_context_version'] != 1):
+        raise ValueError('unsupported Murphy timing context')
     if r.get('method_version')!=METHOD or type(r.get('standard_technical_version')) is not int or r['standard_technical_version'] not in (1,2):
         raise ValueError('unsupported standard technical profile')
     if 'technical_entry_version' in r and (type(r['technical_entry_version']) is not int or r['technical_entry_version']!=1):
