@@ -6,13 +6,13 @@ It deliberately does not turn oscillator events into a complete trade setup.
 from .span_special import observe
 
 
-def describe(frame, direction):
+def describe(frame, direction, *, extreme_turns=False):
     from .standard_technicals import bollinger_regime
 
     rows = frame.get('bars', [])
     sb = frame.get('super_bollinger', {})
     movement, regime = bollinger_regime(sb, [r['close'] for r in rows])
-    span = observe(rows, frame['timeframe'], transitions=True)
+    span = observe(rows, frame['timeframe'], transitions=True, extreme_turns=extreme_turns)
     labels = {'trend':'トレンド', 'expanding_trend':'拡大トレンド',
               'gradual_trend':'緩やかなトレンド', 'correction':'調整',
               'range':'レンジ', 'transition':'移行中', 'unverified':'未確認'}
@@ -32,15 +32,18 @@ def describe(frame, direction):
             unavailable.append('lag_zone')
         positions = {'above':'上', 'below':'下', 'inside':'絡み', 'unavailable':'未確認'}
         slope = {'up':'上向き', 'down':'下向き', 'flat':'横ばい'}
+        red_direction = span['red_extreme_turn'] if extreme_turns else span['red_slope']
+        red_label = (slope[red_direction] if red_direction in ('up','down')
+                     else '新たな52本高安更新なし' if red_direction == 'flat' else '未確認') if extreme_turns else slope[red_direction]
         parts += ['価格は青色の'+positions[last['blue_position']],
-                  '赤色'+slope[span['red_slope']],
+                  '赤色'+red_label,
                   '遅行は過去足の'+positions[last['lag_candle']]+'・雲の'+positions[last['lag_zone']]]
         if direction in ('long', 'short'):
             opposite = 'below' if direction == 'long' else 'above'
             for key in ('blue_position', 'lag_candle', 'lag_zone'):
                 if last[key] == opposite:
                     opposing.append(key)
-            if span['red_slope'] == ('down' if direction == 'long' else 'up'):
+            if red_direction == ('down' if direction == 'long' else 'up'):
                 opposing.append('red_slope')
         event = span['signal_event']
         if event and event['within_grace']:

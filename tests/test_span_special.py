@@ -10,6 +10,40 @@ def rows(values):
 
 
 class SpanSpecialTests(unittest.TestCase):
+    def test_rolling_extreme_expiry_is_not_a_fresh_red_turn(self):
+        data=rows([100.]*40+[110.]+[100.]*52)
+        legacy=observe(data,'h1',transitions=True)
+        current=observe(data,'h1',transitions=True,extreme_turns=True)
+        self.assertEqual(legacy['red_slope'],'down')
+        self.assertEqual(current['red_slope'],'down')  # The plotted midpoint did move.
+        self.assertEqual(current['red_extreme_turn'],'flat')
+        self.assertFalse(any(x['component']=='red_slope' for x in current['confirmed_changes']))
+        frame={'status':'available','timeframe':'h1','bars':data}
+        forecast={'direction':'long','support':[],'cautions':[],'material_cautions':[],
+                  'evolution':{'momentum':'directional_building'},'conviction':'developing',
+                  'phase':'continuation','primary_path':'trend'}
+        old=apply(frame,deepcopy(forecast),transitions=True)
+        revised=apply(frame,deepcopy(forecast),transitions=True,extreme_turns=True)
+        self.assertIn('赤色下向き',str(old['support']+old['cautions']))
+        self.assertIn('赤色方向更新なし',str(revised['support']+revised['cautions']))
+        self.assertNotIn('赤色の向き：横ばい→下向き',str(revised['support']+revised['cautions']))
+        for sign, direction in ((1,'up'),(-1,'down')):
+            changed=observe(rows([100.]*90+[100+sign*10]),'h1',
+                            transitions=True,extreme_turns=True)
+            self.assertEqual(changed['red_extreme_turn'],direction)
+            self.assertEqual(next(x for x in changed['confirmed_changes']
+                                  if x['component']=='red_slope')['after'],direction)
+
+    def test_red_turn_version_preserves_old_saved_interpretation(self):
+        r=record('swing')
+        self.assertEqual(r['span_red_turn_version'],1)
+        self.assertEqual(refresh(deepcopy(r)),r)
+        old=deepcopy(r);old.pop('span_red_turn_version');refresh(old)
+        self.assertNotIn('red_extreme_turn',old['technical_outlook']['forecast']['span_special'])
+        self.assertEqual(refresh(deepcopy(old)),old)
+        r['span_red_turn_version']=True
+        with self.assertRaises(ValueError):refresh(r)
+
     def test_confirmed_changes_are_directional_and_not_missing_history(self):
         for sign,side,slope in ((1,'above','up'),(-1,'below','down')):
             data=rows([100.]*80+[100+sign*10])
@@ -78,7 +112,7 @@ class SpanSpecialTests(unittest.TestCase):
         self.assertEqual(r['span_special_version'],1)
         self.assertIn('span_special',r['technical_outlook']['forecast'])
         self.assertEqual(refresh(deepcopy(r)),r)
-        old=deepcopy(r);old.pop('span_special_version');refresh(old)
+        old=deepcopy(r);old.pop('span_special_version');old.pop('span_red_turn_version');refresh(old)
         self.assertNotIn('span_special',old['technical_outlook']['forecast'])
         self.assertNotIn('span_model',old['technical_profile'])
         self.assertEqual(refresh(deepcopy(old)),old)
