@@ -7,6 +7,27 @@ HEADER = re.compile(r'^([A-Z]{3})/([A-Z]{3})｜(スイング|デイトレード)
 JST = timezone(timedelta(hours=9))
 
 
+def _first_sentence(value):
+    return value.split('。', 1)[0] if value else None
+
+
+def _brief_outlook(value):
+    return '。'.join(value.split('。')[:2]) if value else None
+
+
+def _main_conflict(value):
+    if not value:
+        return None
+    parts = value.split('／')
+    # The full saved assessment retains every indicator. Lead with an opposed
+    # base timeframe when present; otherwise show the first stated caution.
+    opposed = next((part for part in parts if 'H4の背景：' in part and '逆方向' in part), None)
+    if opposed:
+        higher = '／W1も逆方向' if any('W1上位SB背景' in part for part in parts) else ''
+        return 'H4が逆方向' + higher + ('／ほかの逆行材料あり' if len(parts) > 1 else '')
+    return _first_sentence(parts[0]) + ('／ほかの逆行材料あり' if len(parts) > 1 else '')
+
+
 def _build_task_report(report, strength, slot, continuity):
     source = report['source']
     blob = report['snapshot_git_blob_sha']
@@ -54,13 +75,18 @@ def _build_task_report(report, strength, slot, continuity):
         if excluded:
             candidate['text'] = heading+'\n前回目標到達 → 新しい価格計画待ち：'+str(target)
         else:
-            parts = [('次に見る',field('確認足 ')), ('値幅',field('残り値幅：')),
-                     ('水準',field('途中障害：')), ('根拠',field('見通し：')),
-                     ('懸念',field('懸念：'))]
+            condition = field('確認足 ')
+            if condition:
+                condition = condition.split('。', 1)[0].replace('｜待つ条件：', '｜')
+                condition = condition.replace('次のいずれかの反応待ち：', '反応待ち：')
+                condition = condition.replace('（全一致は不要）', '')
+            parts = [('確認', condition), ('値幅',field('残り値幅：')),
+                     ('目標',field('途中障害：')), ('見通し',_brief_outlook(field('見通し：'))),
+                     ('注意',_main_conflict(field('懸念：')))]
             evidence = field('根拠：') or ''
             changes = re.findall(r'(H[14])スパン：[^\n]*?確定足の変化：([^／\n]+)', evidence)
             if changes:
-                parts.append(('変化', '／'.join(tf+' '+change for tf,change in changes)))
+                parts.append(('変化', '／'.join(tf+' '+change for tf, change in changes)))
             conflict = report.get('conflict_role_lines', {}).get(pair)
             if conflict and strategy == 'swing':
                 parts.append(('方向競合', conflict))
@@ -70,7 +96,8 @@ def _build_task_report(report, strength, slot, continuity):
                 parts.append(('前回経過', outcome))
             stop, invalidate = field('局所停止：'), field('大局撤回：')
             if stop or invalidate:
-                parts.append(('見直し', (stop or '局所停止未確認')+'／大局撤回：'+(invalidate or '未確認')))
+                parts.append(('見直し', (_first_sentence(stop) or '局所停止未確認')+
+                              '／大局撤回：'+(invalidate or '未確認')))
             candidate['text'] = '**'+heading+'**\n'+'\n'.join(
                 '- **'+label+'** '+value for label,value in parts if value)
         sections[strategy].append(candidate)
