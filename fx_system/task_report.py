@@ -23,9 +23,37 @@ def _main_conflict(value):
     # base timeframe when present; otherwise show the first stated caution.
     opposed = next((part for part in parts if 'H4の背景：' in part and '逆方向' in part), None)
     if opposed:
-        higher = '／W1も逆方向' if any('W1上位SB背景' in part for part in parts) else ''
-        return 'H4が逆方向' + higher + ('／ほかの逆行材料あり' if len(parts) > 1 else '')
-    return _first_sentence(parts[0]) + ('／ほかの逆行材料あり' if len(parts) > 1 else '')
+        higher = '、W1も逆方向' if any('W1上位SB背景' in part for part in parts) else ''
+        return 'H4が逆方向' + higher
+    return _first_sentence(parts[0])
+
+
+def _price_path(width, levels):
+    if not width:
+        return levels
+    if not levels or '／経路目標：' not in levels:
+        return width + ('／'+levels if levels else '')
+    pieces = width.split('｜')
+    if len(pieces) != 3:
+        return width + '／' + levels
+    near, objective = levels.split('／経路目標：', 1)
+    first_distance = pieces[1].removeprefix('手前の節目 ').strip()
+    wave_distance = pieces[2].removeprefix('波の目標 ').strip()
+    first = ('最初の節目 '+near + ('（'+first_distance+'先）' if 'pips' in first_distance else '')
+             if near != '未確認' else '最初の節目 未確認')
+    wave = '波の目標 '+objective + ('（'+wave_distance+'先）' if 'pips' in wave_distance else '')
+    return pieces[0].strip()+' → '+first+' → '+wave
+
+
+def _plain_heading(heading):
+    parts = heading.split('｜')
+    if len(parts) != 4:
+        return heading
+    match = re.fullmatch(r'(買い|売り)([ABC])', parts[2])
+    if not match:
+        return heading
+    state = {'条件待ち':'まだ待つ', '局所条件観測済み':'反応は確認済み'}.get(parts[3], parts[3])
+    return '｜'.join(parts[:2])+'｜'+match[1]+'を監視（'+match[2]+'・'+state+'）'
 
 
 def _build_task_report(report, strength, slot, continuity):
@@ -80,13 +108,15 @@ def _build_task_report(report, strength, slot, continuity):
                 condition = condition.split('。', 1)[0].replace('｜待つ条件：', '｜')
                 condition = condition.replace('次のいずれかの反応待ち：', '反応待ち：')
                 condition = condition.replace('（全一致は不要）', '')
-            parts = [('確認', condition), ('値幅',field('残り値幅：')),
-                     ('目標',field('途中障害：')), ('見通し',_brief_outlook(field('見通し：'))),
-                     ('注意',_main_conflict(field('懸念：')))]
+            outlook = _brief_outlook(field('見通し：'))
+            concern = _main_conflict(field('懸念：'))
+            situation = (outlook or '方向の根拠は保存評価を参照') + ('。ただし '+concern if concern else '')
+            parts = [('いま', situation), ('次に確認', condition),
+                     ('価格',_price_path(field('残り値幅：'),field('途中障害：')))]
             evidence = field('根拠：') or ''
             changes = re.findall(r'(H[14])スパン：[^\n]*?確定足の変化：([^／\n]+)', evidence)
             if changes:
-                parts.append(('変化', '／'.join(tf+' '+change for tf, change in changes)))
+                parts.append(('指標の変化', '／'.join(tf+' '+change for tf, change in changes)))
             conflict = report.get('conflict_role_lines', {}).get(pair)
             if conflict and strategy == 'swing':
                 parts.append(('方向競合', conflict))
@@ -96,9 +126,9 @@ def _build_task_report(report, strength, slot, continuity):
                 parts.append(('前回経過', outcome))
             stop, invalidate = field('局所停止：'), field('大局撤回：')
             if stop or invalidate:
-                parts.append(('見直し', (_first_sentence(stop) or '局所停止未確認')+
-                              '／大局撤回：'+(invalidate or '未確認')))
-            candidate['text'] = '**'+heading+'**\n'+'\n'.join(
+                parts.append(('見直す', (_first_sentence(stop) or '局所停止未確認')+
+                              '／大局の撤回：'+(invalidate or '未確認')))
+            candidate['text'] = '**'+_plain_heading(heading)+'**\n'+'\n'.join(
                 '- **'+label+'** '+value for label,value in parts if value)
         sections[strategy].append(candidate)
     clock = datetime.fromtimestamp(source['evaluated_at'], JST)
