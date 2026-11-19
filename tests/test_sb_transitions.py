@@ -42,7 +42,7 @@ class PhaseTests(unittest.TestCase):
             self.assertIn('維持',describe(r)['summary'])
         self.assertEqual(validate_conditions(r),[])
         for v in (1,2,3):
-            old=deepcopy(r);old['multi_timing_version']=v
+            old=deepcopy(r);old.pop('three_indicator_version',None);old['multi_timing_version']=v
             old['bollinger_regime_version']=1 if v<3 else 2
             restored=refresh(old)
             self.assertEqual(refresh(deepcopy(restored)),restored)
