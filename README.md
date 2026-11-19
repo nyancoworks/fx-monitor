@@ -14,7 +14,7 @@
 
 ## 現在の本番機能と確認範囲
 
-現行の判断仕様は[3指標版](docs/THREE_INDICATOR_PROFILE.md)、反映状況と自然確認は[管理Issue #1](https://github.com/nyancoworks/fx-monitor/issues/1)を参照してください。
+現行の判断仕様は[3指標版](docs/THREE_INDICATOR_PROFILE.md)、時間分析の参考観測は[公開規則ベースの実装](docs/ACTIVATE_TIME.md)、反映状況と自然確認は[管理Issue #1](https://github.com/nyancoworks/fx-monitor/issues/1)を参照してください。
 
 - 16ペア×スイング/デイトレの全32評価を非公開保存。品質不足は評価保留として、候補なしと区別します。
 - 新規判断の指標はスーパーボリンジャー＋スパンモデル、補助の通常MACD（12・26・9、EMA9シグナル）です。確認済み価格構造を価格計画に使います。SMA50/200・RCI9/26/52・通常Fibは旧保存の再現専用です。買いの下ヒゲ/強い陽線は補足のみで、PAパターンを必須条件にしません。多数決や全指標一致では判定しません。
