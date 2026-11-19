@@ -24,7 +24,7 @@ class TaskReportTests(unittest.TestCase):
         out=build_task_report(r,s,slot,c)
         line=next(x for x in out['report_text'].splitlines() if x.startswith('- **価格**'))
         self.assertIn('保存M15終値 1.00（11/19 10:45 JST） → 最初の節目 0.9（0.4 pips先） → 波の目標 0.8（72.3 pips先）',line)
-        self.assertIn('手前の節目までの値幅が大局撤回幅以下（参考）',line)
+        self.assertIn('手前余地に注意',line)
         self.assertNotIn('／0.9／経路目標：',line)
 
     def test_both_top3_survive_missing_supplementary_checks(self):
@@ -70,7 +70,7 @@ class TaskReportTests(unittest.TestCase):
             '懸念：RCI9は短期逆行。調整進行を確認／H4の背景：買い方向。H1のセットアップと逆方向／W1上位SB背景が予測方向と競合。伸びに注意／MACDが混在')
         original=r['report_text']
         out=build_task_report(r,s,slot,c)
-        self.assertIn('EUR/USD｜スイング｜売りを監視（B・まだ待つ）',out['report_text'])
+        self.assertIn('EUR/USD｜売りB・確認待ち',out['report_text'])
         self.assertIn('H4が逆方向、W1も逆方向',out['report_text'])
         self.assertIn('M15終値2以上／大局の撤回：H4終値3以上',out['report_text'])
         self.assertNotIn('調整進行を確認',out['report_text'])
