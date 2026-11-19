@@ -2,6 +2,7 @@ import json
 import math
 import unittest
 from copy import deepcopy
+from unittest.mock import patch
 from fx_system.standard_technicals import macd,frame,PROFILE,NY_CLOSE_PROFILE,METHOD,prepare,assess,refresh
 from fx_system.scheduled_outlook import build_scheduled_outlook
 from fx_system.strategy_report_export import build_strategy_report_export,restore_strategy_report_export
@@ -25,6 +26,32 @@ def inputs(sign=1,count=220):
 
 
 class StandardTechnicalTests(unittest.TestCase):
+    def test_far_wave_target_cannot_hide_a_near_obstacle_in_saved_margin(self):
+        from fx_system.standard_technicals import wave, _saved_distance_line
+        d,q,_=inputs()
+        r=build_scheduled_outlook({'EURUSD':d},{'EURUSD':q},evaluated_at=CLOCK)['strategy_assessments'][0]
+        price=r['trigger_price_review']['saved_close']
+        p=wave(r['standard_inputs']['base']['bars'],'long')
+        p['thesis_invalidation']=price-1
+        p['retest_objective']['price']=price+2
+        p['first_obstacle']['price']=price+.1
+        p['obstacles']=[deepcopy(p['first_obstacle'])]
+        with patch('fx_system.standard_technicals.wave',return_value=p):
+            refresh(r)
+        self.assertEqual(r['assessment'],'review')
+        self.assertEqual(r['practical_review']['status'],'technical_watch')
+        self.assertEqual(r['trigger_price_review']['risk_distance'],1)
+        self.assertEqual(r['trigger_price_review']['reward_distance'],2)
+        self.assertAlmostEqual(r['trigger_price_review']['first_obstacle_reward'],.1)
+        self.assertFalse(r['practical_review']['reference_margin_sufficient'])
+        self.assertIn('手前の節目までの値幅が大局撤回幅以下',_saved_distance_line(r))
+        old=deepcopy(r)
+        old.pop('practical_margin_version')
+        with patch('fx_system.standard_technicals.wave',return_value=p):
+            refresh(old)
+        self.assertTrue(old['practical_review']['reference_margin_sufficient'])
+        self.assertNotIn('大局撤回幅以下',_saved_distance_line(old))
+
     def test_broken_h4_structure_is_neither_intact_opposition_nor_confirmed_reversal(self):
         from fx_system.standard_technicals import forecast
         data, _, _ = inputs()
@@ -185,7 +212,7 @@ class StandardTechnicalTests(unittest.TestCase):
         pending['standard_inputs']['base']=frame(b['bars'],'h4',CLOCK,False,calculation_version=3)
         refresh(pending);self.assertEqual(pending['assessment'],'evaluation_pending')
         self.assertNotEqual(pending['practical_review']['entry_status'],'paused')
-        old=deepcopy(r);old['standard_technical_version']=1;old['practical_review'].pop('entry_status')
+        old=deepcopy(r);old['standard_technical_version']=1;old.pop('practical_margin_version');old['practical_review'].pop('entry_status')
         old['trigger_timeframe']='m15'
         old['standard_inputs']['trigger']=deepcopy(d['standard_technical_frames']['m15'])
         refresh(old);self.assertNotIn('entry_status',old['practical_review'])

@@ -328,7 +328,7 @@ def wave(rows,direction):
 
 def assess(pair,strategy,track,clock):
     r={'pair':pair,'strategy':strategy,'evaluated_at':clock,'method_version':METHOD,
-       'standard_technical_version':2,'technical_entry_version':1,'bollinger_regime_version':2,'sb_detail_version':1,'span_special_version':1,'span_transition_version':1,'span_red_turn_version':1,'scenario_state_version':1,'timing_text_version':1,'standard_inputs':deepcopy(track['standard_inputs']),
+       'standard_technical_version':2,'technical_entry_version':1,'bollinger_regime_version':2,'sb_detail_version':1,'span_special_version':1,'span_transition_version':1,'span_red_turn_version':1,'practical_margin_version':1,'scenario_state_version':1,'timing_text_version':1,'standard_inputs':deepcopy(track['standard_inputs']),
        'currency_strength_context':deepcopy(track.get('currency_strength_context')),
        'macro_context':deepcopy(track.get('macro_context',{})),
        'execution_authority':'none','advisory_only':True,'reference_timeframe':track['base_timeframe'],
@@ -347,6 +347,9 @@ def assess(pair,strategy,track,clock):
 
 
 def refresh(r):
+    if 'practical_margin_version' in r and (type(r['practical_margin_version']) is not int
+            or r['practical_margin_version'] != 1 or r.get('standard_technical_version') != 2):
+        raise ValueError('unsupported practical margin interpretation')
     if 'scenario_completion_version' in r and (
             type(r['scenario_completion_version']) is not int
             or r['scenario_completion_version'] != 1):
@@ -590,8 +593,13 @@ def refresh(r):
         r['grade_reason'] += '。'+tt.upper()+'の反応は未観測のため、シナリオ成立前のB評価'
     if plan_unformed:
         r['grade_reason'] = f['primary_path']+'。確定足は取得済みだが、目標・無効化を伴う価格計画を構成できないため見送り'
-    r['practical_review']={'schema':'standard_practical_review_v1','status':status,'summary':r['grade_reason'],'reference_margin_sufficient':bool(risk and reward and reward>risk),'events':events}
+    margin=(bool(risk and risk>0 and reward and reward>risk and room and room>risk)
+            if r.get('practical_margin_version') == 1 else bool(risk and reward and reward>risk))
+    r['practical_review']={'schema':'standard_practical_review_v1','status':status,'summary':r['grade_reason'],
+                           'reference_margin_sufficient':margin,'events':events}
     if r['standard_technical_version']==2:
+        if r.get('practical_margin_version') == 1:
+            r['practical_review']['margin_basis']='saved_trigger_to_first_obstacle_and_wave_target_vs_base_invalidation_before_costs'
         r['practical_review']['entry_status']='paused' if local_paused else 'timing_reference' if fresh else 'unverified'
         if local_paused:
             r['grade_reason']='確認足終値が局所セットアップ停止水準を通過。大局撤回とは別に仕掛けを再評価'
@@ -670,8 +678,15 @@ def _saved_distance_line(record):
         return '0.01 pips未満'
 
     jst = datetime.fromtimestamp(closed, ZoneInfo('Asia/Tokyo'))
-    return (f'残り値幅：保存{timeframe.upper()}終値 {price}（{jst:%m/%d %H:%M JST}）'
-            f'｜手前の節目 {distance("structural_target")}｜波の目標 {distance("scenario_target")}')
+    line=(f'残り値幅：保存{timeframe.upper()}終値 {price}（{jst:%m/%d %H:%M JST}）'
+          f'｜手前の節目 {distance("structural_target")}｜波の目標 {distance("scenario_target")}')
+    if record.get('practical_review',{}).get('margin_basis') == 'saved_trigger_to_first_obstacle_and_wave_target_vs_base_invalidation_before_costs':
+        risk=recent.get('risk_distance');front=recent.get('first_obstacle_reward');reward=recent.get('reward_distance')
+        if valid_price(levels.get('structural_target')) and valid_price(risk) and valid_price(front) and front<=risk:
+            line+='｜手前の節目までの値幅が大局撤回幅以下（参考）'
+        elif valid_price(risk) and valid_price(reward) and reward<=risk:
+            line+='｜波の目標までの値幅が大局撤回幅以下（参考）'
+    return line
 
 
 def render_lines(r, *, presentation_version=1):
