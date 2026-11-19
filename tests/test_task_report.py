@@ -22,7 +22,7 @@ class TaskReportTests(unittest.TestCase):
             '残り値幅：保存終値1',
             '残り値幅：保存M15終値 1.00（11/19 10:45 JST）｜手前の節目 0.4 pips｜波の目標 72.3 pips｜手前の節目までの値幅が大局撤回幅以下（参考）')
         out=build_task_report(r,s,slot,c)
-        line=next(x for x in out['report_text'].splitlines() if x.startswith('- **水準**'))
+        line=next(x for x in out['report_text'].splitlines() if x.startswith('- **保存時の水準**'))
         self.assertIn('保存M15終値 1.00（11/19 10:45 JST） → 最初の節目 0.9（0.4 pips先） → 波の目標 0.8（72.3 pips先）',line)
         self.assertIn('手前余地に注意',line)
         self.assertNotIn('／0.9／経路目標：',line)
@@ -70,13 +70,33 @@ class TaskReportTests(unittest.TestCase):
             '懸念：RCI9は短期逆行。調整進行を確認／H4の背景：買い方向。H1のセットアップと逆方向／W1上位SB背景が予測方向と競合。伸びに注意／MACDが混在')
         original=r['report_text']
         out=build_task_report(r,s,slot,c)
-        self.assertIn('EUR/USD｜売りB・確認待ち',out['report_text'])
+        self.assertIn('EUR/USD｜売り方向の監視候補（B）｜足の確認待ち',out['report_text'])
         self.assertIn('H4が逆方向、W1も逆方向',out['report_text'])
         self.assertIn('局所停止 M15終値2以上／大局撤回 H4終値3以上',out['report_text'])
-        self.assertEqual(out['report_text'].count('- **水準**'), 6)
+        self.assertEqual(out['report_text'].count('- **保存時の水準**'), 6)
         self.assertNotIn('- **見直す**',out['report_text'])
         self.assertNotIn('調整進行を確認',out['report_text'])
         self.assertEqual(r['report_text'],original)
+
+    def test_observed_reaction_does_not_read_as_trade_permission(self):
+        r,s,slot,c=inputs()
+        r['report_text']=r['report_text'].replace('条件待ち','局所条件観測済み')
+        out=build_task_report(r,s,slot,c)
+        self.assertIn('反応あり・再確認',out['report_text'])
+        self.assertIn('売買前に現在値と指定の確定足を確認',out['report_text'])
+        self.assertNotIn('買い推奨',out['report_text'])
+
+    def test_first_glance_exposes_price_caution_without_reordering(self):
+        r,s,slot,c=inputs()
+        r['report_text']=r['report_text'].replace(
+            '残り値幅：保存終値1',
+            '残り値幅：保存M15終値 1.00｜手前の節目 0.4 pips｜波の目標 72.3 pips｜手前の節目までの値幅が大局撤回幅以下（参考）')
+        out=build_task_report(r,s,slot,c)
+        glance=out['report_text'].split('## 通貨強弱')[0]
+        self.assertIn('スイング：EUR/USD・売り方向の監視候補（B）・足の確認待ち。手前の節目が近いので価格を再確認',glance)
+        self.assertIn('デイトレ：EUR/USD',glance)
+        self.assertNotIn('GBP/USD',glance)
+        self.assertEqual(len(out['sections']['swing']),3)
 
     def test_repeated_macd_caution_is_not_printed_twice(self):
         r,s,slot,c=inputs()

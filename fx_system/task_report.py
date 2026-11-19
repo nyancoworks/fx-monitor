@@ -57,8 +57,21 @@ def _plain_heading(heading):
     match = re.fullmatch(r'(買い|売り)([ABC])', parts[2])
     if not match:
         return heading
-    state = {'条件待ち':'確認待ち', '局所条件観測済み':'反応確認'}.get(parts[3], parts[3])
-    return parts[0]+'｜'+match[1]+match[2]+'・'+state
+    state = {'条件待ち':'足の確認待ち', '局所条件観測済み':'反応あり・再確認'}.get(parts[3], parts[3])
+    return parts[0]+'｜'+match[1]+'方向の監視候補（'+match[2]+'）｜'+state
+
+
+def _first_glance(candidate):
+    """Lead with the saved top candidate; never turn it into a trade signal."""
+    heading = _plain_heading(candidate['heading']).replace('｜', '・')
+    if candidate['excluded_target_reached']:
+        return heading+'。前回目標到達、新しい価格計画待ち'
+    text = candidate['text']
+    if '手前余地に注意' in text:
+        return heading+'。手前の節目が近いので価格を再確認'
+    if '目標余地に注意' in text:
+        return heading+'。波の目標までの余地を再確認'
+    return heading+'。現在値と確認足を再確認'
 
 
 def _build_task_report(report, strength, slot, continuity):
@@ -123,23 +136,23 @@ def _build_task_report(report, strength, slot, continuity):
             situation = (outlook or '方向の根拠は保存評価を参照')
             if concern and concern not in situation:
                 situation += '。ただし '+concern
-            parts = [('見立て', situation), ('確認', condition)]
+            parts = [('理由と注意', situation), ('次に見る', condition)]
             evidence = field('根拠：') or ''
             changes = re.findall(r'(H[14])スパン：[^\n]*?確定足の変化：([^／\n]+)', evidence)
             if changes:
-                parts[0] = ('見立て', situation+'／'+ '／'.join(tf+' '+change for tf, change in changes))
+                parts[0] = ('理由と注意', situation+'／'+ '／'.join(tf+' '+change for tf, change in changes))
             conflict = report.get('conflict_role_lines', {}).get(pair)
             if conflict and strategy == 'swing':
-                parts[0] = ('見立て', parts[0][1]+'／方向競合：'+conflict)
+                parts[0] = ('理由と注意', parts[0][1]+'／方向競合：'+conflict)
             from .followthrough_summary import describe as describe_followthrough
             outcome = describe_followthrough(row)
             if outcome:
-                parts[0] = ('見立て', parts[0][1]+'／前回：'+outcome)
+                parts[0] = ('理由と注意', parts[0][1]+'／前回：'+outcome)
             stop, invalidate = field('局所停止：'), field('大局撤回：')
             price = _price_path(field('残り値幅：'), field('途中障害：'))
             withdrawal = ('局所停止 '+(_first_sentence(stop) or '未確認')+
                           '／大局撤回 '+(invalidate or '未確認'))
-            parts.append(('水準', (price+'｜' if price else '')+withdrawal))
+            parts.append(('保存時の水準', (price+'｜' if price else '')+withdrawal))
             candidate['text'] = '**'+_plain_heading(heading)+'**\n'+'\n'.join(
                 '- **'+label+'** '+value for label,value in parts if value)
         sections[strategy].append(candidate)
@@ -147,7 +160,12 @@ def _build_task_report(report, strength, slot, continuity):
     target_clock = out['target_scheduled_for']
     title = (datetime.fromtimestamp(target_clock,JST).strftime('%m/%d %H:%M')+' JST'
              if target_clock else '対象枠未確認')
-    text = ['# FX判断｜'+title+'（保存評価 '+clock.strftime('%H:%M')+'）', '## 通貨強弱']
+    text = ['# FX監視候補｜'+title+'（保存評価 '+clock.strftime('%H:%M')+'）',
+            '## まず見る（保存時点）']
+    for strategy, label in (('swing', 'スイング'), ('daytrade', 'デイトレ')):
+        if sections[strategy]:
+            text.append('- '+label+'：'+_first_glance(sections[strategy][0]))
+    text.extend(['売買前に現在値と指定の確定足を確認してください。', '## 通貨強弱'])
     if same(strength) and strength.get('status') == 'saved':
         from .strength_export import render_strength_summary
         text.append(render_strength_summary(strength['currency_strength'],source['evaluated_at']).splitlines()[0])
@@ -158,7 +176,7 @@ def _build_task_report(report, strength, slot, continuity):
         text.extend(c['text'] for c in sections[strategy])
         if not sections[strategy]:
             text.append('保存レポートの優先掲載候補なし。全体の見送りを意味しません。')
-    text.append('強弱は参考。価格は保存確定足、余地は大局撤回幅との比較（費用前）。反応観測は約定ではありません。')
+    text.append('A/B/Cはシナリオの完成度です。価格は保存確定足、余地は大局撤回幅との比較（費用前）。反応観測は約定ではありません。')
     out.update(status='saved', sections=sections, report_text='\n\n'.join(text))
     return out
 
