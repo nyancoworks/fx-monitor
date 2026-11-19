@@ -50,26 +50,42 @@ def _price_path(width, levels):
     return pieces[0].strip()+' → '+first+' → '+wave+caution
 
 
-def _plain_heading(heading):
+def _price_and_caution(value):
+    if not value:
+        return None, None
+    for suffix, caution in (('｜手前余地に注意', '手前の節目が近い'),
+                            ('｜目標余地に注意', '波の目標までの余地に注意')):
+        if value.endswith(suffix):
+            return value[:-len(suffix)], caution
+    return value, None
+
+
+def _plain_heading(heading, plan_wait=False):
     parts = heading.split('｜')
     if len(parts) != 4:
         return heading
     match = re.fullmatch(r'(買い|売り)([ABC])', parts[2])
     if not match:
         return heading
-    state = {'条件待ち':'足の確認待ち', '局所条件観測済み':'反応あり・再確認'}.get(parts[3], parts[3])
-    return parts[0]+'｜'+match[1]+'方向の監視候補（'+match[2]+'）｜'+state
+    if plan_wait:
+        symbol, state = '⚪', '新しい価格計画待ち'
+    else:
+        symbol, state = {
+            '条件待ち':('🟡', '足の確認待ち'),
+            '局所条件観測済み':('🔵', '反応あり・再確認'),
+        }.get(parts[3], ('', parts[3]))
+    return (symbol+' ' if symbol else '')+parts[0]+'｜'+match[1]+'方向の監視候補（'+match[2]+'）｜'+state
 
 
 def _first_glance(candidate):
     """Lead with the saved top candidate; never turn it into a trade signal."""
-    heading = _plain_heading(candidate['heading']).replace('｜', '・')
+    heading = _plain_heading(candidate['heading'], candidate['excluded_target_reached']).replace('｜', '・')
     if candidate['excluded_target_reached']:
         return heading+'。前回目標到達、新しい価格計画待ち'
     text = candidate['text']
-    if '手前余地に注意' in text:
+    if '手前の節目が近い' in text:
         return heading+'。手前の節目が近いので価格を再確認'
-    if '目標余地に注意' in text:
+    if '波の目標までの余地に注意' in text:
         return heading+'。波の目標までの余地を再確認'
     return heading+'。現在値と確認足を再確認'
 
@@ -119,7 +135,7 @@ def _build_task_report(report, strength, slot, continuity):
         candidate = {'pair':pair, 'strategy':strategy, 'heading':heading,
                      'excluded_target_reached':excluded}
         if excluded:
-            candidate['text'] = heading+'\n前回目標到達 → 新しい価格計画待ち：'+str(target)
+            candidate['text'] = '**'+_plain_heading(heading, plan_wait=True)+'**\n前回目標到達 → 新しい価格計画待ち：'+str(target)
         else:
             condition = field('確認足 ')
             if condition:
@@ -136,23 +152,25 @@ def _build_task_report(report, strength, slot, continuity):
             situation = (outlook or '方向の根拠は保存評価を参照')
             if concern and concern not in situation:
                 situation += '。ただし '+concern
-            parts = [('理由と注意', situation), ('次に見る', condition)]
+            parts = [('見る', condition)]
             evidence = field('根拠：') or ''
             changes = re.findall(r'(H[14])スパン：[^\n]*?確定足の変化：([^／\n]+)', evidence)
             if changes:
-                parts[0] = ('理由と注意', situation+'／'+ '／'.join(tf+' '+change for tf, change in changes))
+                situation += '／'+ '／'.join(tf+' '+change for tf, change in changes)
             conflict = report.get('conflict_role_lines', {}).get(pair)
             if conflict and strategy == 'swing':
-                parts[0] = ('理由と注意', parts[0][1]+'／方向競合：'+conflict)
+                situation += '／方向競合：'+conflict
             from .followthrough_summary import describe as describe_followthrough
             outcome = describe_followthrough(row)
             if outcome:
-                parts[0] = ('理由と注意', parts[0][1]+'／前回：'+outcome)
+                situation += '／前回：'+outcome
             stop, invalidate = field('局所停止：'), field('大局撤回：')
-            price = _price_path(field('残り値幅：'), field('途中障害：'))
+            price, caution = _price_and_caution(_price_path(field('残り値幅：'), field('途中障害：')))
             withdrawal = ('局所停止 '+(_first_sentence(stop) or '未確認')+
                           '／大局撤回 '+(invalidate or '未確認'))
-            parts.append(('保存時の水準', (price+'｜' if price else '')+withdrawal))
+            parts.extend([('価格の流れ', price),
+                          ('理由と注意', situation+('。'+caution if caution else '')),
+                          ('見直す水準', withdrawal)])
             candidate['text'] = '**'+_plain_heading(heading)+'**\n'+'\n'.join(
                 '- **'+label+'** '+value for label,value in parts if value)
         sections[strategy].append(candidate)
@@ -176,7 +194,7 @@ def _build_task_report(report, strength, slot, continuity):
         text.extend(c['text'] for c in sections[strategy])
         if not sections[strategy]:
             text.append('保存レポートの優先掲載候補なし。全体の見送りを意味しません。')
-    text.append('A/B/Cはシナリオの完成度です。価格は保存確定足、余地は大局撤回幅との比較（費用前）。反応観測は約定ではありません。')
+    text.append('🟡 足の確認待ち／🔵 反応あり・再確認／⚪ 新しい価格計画待ち。A/B/Cはシナリオの完成度です。価格は保存確定足、余地は大局撤回幅との比較（費用前）。反応観測は約定ではありません。')
     out.update(status='saved', sections=sections, report_text='\n\n'.join(text))
     return out
 
