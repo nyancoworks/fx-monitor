@@ -201,6 +201,12 @@ class StandardTechnicalTests(unittest.TestCase):
                 {p:q for p in __import__('fx_system.monitor_pairs',fromlist=['PAIR_KEYS']).PAIR_KEYS},evaluated_at=CLOCK)
             self.assertEqual(validate_strategy_snapshot({'evaluated_at':CLOCK,'scheduled_outlook':o}),[])
             self.assertEqual(len(o['strategy_assessments']),32)
+            self.assertEqual(o['activate_time_version'],1)
+            self.assertEqual(len(o['activate_time_context']),16)
+            without_time=deepcopy(o)
+            without_time.pop('activate_time_version');without_time.pop('activate_time_context')
+            from fx_system.strategy_report import report_records
+            self.assertEqual(report_records(o),report_records(without_time))
             swing = next(r for r in o['strategy_assessments'] if r['strategy'] == 'swing')
             self.assertEqual(swing['trigger_timeframe'], 'm15')
             self.assertEqual(swing['standard_inputs']['h1_setup']['timeframe'], 'h1')
@@ -214,6 +220,9 @@ class StandardTechnicalTests(unittest.TestCase):
             self.assertEqual(v['scheduled_outlook']['strategy_assessments'],o['strategy_assessments'])
             broken=deepcopy(o['strategy_assessments'][0]);broken['standard_inputs']['base']['macd']['observations'][-1]['histogram']+=1
             with self.assertRaises(ValueError):refresh(broken)
+            tampered=deepcopy(o)
+            tampered['activate_time_context']['EURUSD']['timeframes']['d1']['observation']['basic']=[{'unsupported':True}]
+            self.assertIn('scheduled public time analysis mismatch',validate_strategy_snapshot({'evaluated_at':CLOCK,'scheduled_outlook':tampered}))
 
     def test_missing_sma200_is_auxiliary_not_all_pairs_pending(self):
         d,q,_=inputs(count=100)

@@ -490,6 +490,13 @@ def build_scheduled_outlook(pairs, quality, *, evaluated_at, economic_calendar=N
                 for state in ("directional_watch","conditional_watch","skip","unassessed")},
             "note":"Saved H4/H1 directional research, not current M15/M5 entry or execution clearance"}
 
+    # Research-only time/price context. It never enters assess_strategy or the
+    # ranking path, and the saved bounded inputs allow deterministic rereads.
+    from .activate_time import observe_pair
+    outlook['activate_time_version'] = 1
+    outlook['activate_time_context'] = {
+        pair: observe_pair(_dict(_dict(pairs.get(pair)).get('standard_technical_frames')), evaluated_at)
+        for pair in PAIR_KEYS}
 
     from .pair_market_context import attach as attach_pair_context
     attach_pair_context(outlook)
