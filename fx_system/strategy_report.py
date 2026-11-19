@@ -139,6 +139,9 @@ def render_strategy_report(snapshot, *, include_all_reviews=False, complete_evid
         from .standard_technicals import METHOD as STANDARD_METHOD, render_lines as standard_lines
         if r.get('method_version')==STANDARD_METHOD:
             lines.extend(standard_lines(r, presentation_version=presentation_version))
+            if r['strategy']=='swing' and outlook.get('activate_time_version')==1:
+                from .activate_time import swing_line
+                lines.append(swing_line(outlook['activate_time_context'].get(r['pair'])))
             lines.extend(calendar_lines(r,_clock, presentation_version=presentation_version))
             continue
         from .technical_scenario import METHOD as TECHNICAL_METHOD, render_lines
