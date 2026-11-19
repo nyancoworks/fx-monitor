@@ -16,6 +16,17 @@ def inputs():
 
 
 class TaskReportTests(unittest.TestCase):
+    def test_price_path_keeps_nearest_obstacle_caution_in_compact_format(self):
+        r,s,slot,c=inputs()
+        r['report_text']=r['report_text'].replace(
+            '残り値幅：保存終値1',
+            '残り値幅：保存M15終値 1.00（11/19 10:45 JST）｜手前の節目 0.4 pips｜波の目標 72.3 pips｜手前の節目までの値幅が大局撤回幅以下（参考）')
+        out=build_task_report(r,s,slot,c)
+        line=next(x for x in out['report_text'].splitlines() if x.startswith('- **価格**'))
+        self.assertIn('保存M15終値 1.00（11/19 10:45 JST） → 最初の節目 0.9（0.4 pips先） → 波の目標 0.8（72.3 pips先）',line)
+        self.assertIn('手前の節目までの値幅が大局撤回幅以下（参考）',line)
+        self.assertNotIn('／0.9／経路目標：',line)
+
     def test_both_top3_survive_missing_supplementary_checks(self):
         r,s,slot,c=inputs()
         r['report_text']=r['report_text'].replace('見通し：調整中', '見通し：調整中\n根拠：H1スパン：価格は青色の上。確定足の変化：遅行と過去足：下→上')

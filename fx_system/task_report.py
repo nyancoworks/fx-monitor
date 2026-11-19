@@ -34,7 +34,7 @@ def _price_path(width, levels):
     if not levels or '／経路目標：' not in levels:
         return width + ('／'+levels if levels else '')
     pieces = width.split('｜')
-    if len(pieces) != 3:
+    if len(pieces) < 3 or not pieces[1].startswith('手前の節目 ') or not pieces[2].startswith('波の目標 '):
         return width + '／' + levels
     near, objective = levels.split('／経路目標：', 1)
     first_distance = pieces[1].removeprefix('手前の節目 ').strip()
@@ -42,7 +42,8 @@ def _price_path(width, levels):
     first = ('最初の節目 '+near + ('（'+first_distance+'先）' if 'pips' in first_distance else '')
              if near != '未確認' else '最初の節目 未確認')
     wave = '波の目標 '+objective + ('（'+wave_distance+'先）' if 'pips' in wave_distance else '')
-    return pieces[0].strip()+' → '+first+' → '+wave
+    caution = '｜'+'｜'.join(pieces[3:]) if len(pieces)>3 else ''
+    return pieces[0].strip()+' → '+first+' → '+wave+caution
 
 
 def _plain_heading(heading):
