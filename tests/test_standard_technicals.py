@@ -218,6 +218,20 @@ class StandardTechnicalTests(unittest.TestCase):
             b=build_strategy_report_export(json.dumps({'evaluated_at':CLOCK,'scheduled_outlook':o}).encode(),SOURCE)
             self.assertEqual(b['status'],'saved');v=restore_strategy_report_export(b,SOURCE,b['snapshot_git_blob_sha'])
             self.assertEqual(v['scheduled_outlook']['strategy_assessments'],o['strategy_assessments'])
+            digest=b['research_digest']
+            self.assertEqual(digest['schema'],'private_research_digest_v1')
+            self.assertEqual(len(digest['observations']),32)
+            self.assertLessEqual(len(digest['report_selection_before_continuity']),6)
+            from fx_system.task_report import build_task_report
+            slot={'source':SOURCE,'snapshot_git_blob_sha':b['snapshot_git_blob_sha'],
+                  'status':'assigned','target_scheduled_for':CLOCK+3600}
+            task=build_task_report(b,{},slot,{})
+            self.assertEqual(task['status'],'saved')
+            self.assertEqual(task['research_digest'],digest)
+            tampered_bundle=deepcopy(b)
+            tampered_bundle['research_digest']['observations'][0]['basic_count']+=1
+            with self.assertRaises(ValueError):
+                restore_strategy_report_export(tampered_bundle,SOURCE,b['snapshot_git_blob_sha'])
             broken=deepcopy(o['strategy_assessments'][0]);broken['standard_inputs']['base']['macd']['observations'][-1]['histogram']+=1
             with self.assertRaises(ValueError):refresh(broken)
             tampered=deepcopy(o)
