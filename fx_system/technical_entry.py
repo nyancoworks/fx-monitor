@@ -12,14 +12,14 @@ SIGNAL_LABELS = {
 }
 
 
-def timing_signals(closes, direction, *, continuation=False):
+def timing_signals(closes, direction, *, continuation=False, include_rci=True):
     from .advisory_indicators import stddev_bands
     from .indicator_research import rci_series
     from .standard_technicals import macd
 
     sign = 1 if direction == 'long' else -1
     signals = []
-    if len(closes) >= 10:
+    if include_rci and len(closes) >= 10:
         rci = rci_series(closes[-10:], 9)
         if turn_observed(rci[-1], rci[-2], direction):
             signals.append('rci9_extreme_recovery')
@@ -95,11 +95,14 @@ def describe(record):
                 'withdrawal_conditions':deepcopy(record.get('expiry',{}).get('withdrawal_conditions',[]))}
     if multi:
         pullback = record.get('multi_timing_version') == 2 and record.get('timing_context') == 'pullback'
-        kinds = ('sb_one_sigma_cross',) if pullback else tuple(SIGNAL_LABELS)
+        three_indicators = record.get('three_indicator_version') == 1
+        kinds = ('sb_one_sigma_cross',) if pullback else tuple(k for k in SIGNAL_LABELS if not three_indicators or k != 'rci9_extreme_recovery')
         current = record.get('multi_timing_version') == 3
         if current:
             kinds = (*kinds, 'sb_one_sigma_hold')
         options = {'continuation': True} if current else {}
+        if three_indicators:
+            options['include_rci'] = False
         signals = [kind for kind in timing_signals([bar['close'] for bar in rows], direction, **options) if kind in kinds]
         if record.get('span_special_version') == 1 and current:
             from .span_special import timing
@@ -114,12 +117,14 @@ def describe(record):
                 'RCI9反転・MACD交差・終値が'+band_cross+'る動きのいずれかを待つ')
         if current:
             wait = 'RCI9反転、MACD交差、終値が'+band_cross+'る動き、または'+('＋1σより上' if direction == 'long' else '−1σより下')+'の維持を確認待ち'
+        if three_indicators:
+            wait = 'MACD交差、終値が'+band_cross+'る動き、または'+('＋1σより上' if direction == 'long' else '−1σより下')+'の維持を確認待ち'
         if record.get('span_special_version') == 1 and current:
             wait += '（青色スパン回復も確認）'
         summary = (frame+'の確定足で'+'・'.join(labels[s] for s in signals)+'を観測'
                    if signals else frame+'の確定足で'+wait)
         if current and record.get('timing_text_version') == 1 and not signals:
-            choices = ['RCI9反転', 'MACDシグナル交差',
+            choices = ([] if three_indicators else ['RCI9反転']) + ['MACDシグナル交差',
                        '終値の'+band_cross+'または'+('上側' if direction == 'long' else '下側')+'維持']
             if 'span_blue_recovery' in kinds:
                 choices.append('終値の青色スパン'+('上抜け' if direction == 'long' else '下抜け'))
