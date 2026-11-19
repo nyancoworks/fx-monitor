@@ -1,5 +1,7 @@
 # コードと仕様の参照先
 
+新規の判断指標は [3指標版](THREE_INDICATOR_PROFILE.md) に固定する。旧版の技術文書は保存判断の復元仕様として読む。
+
 現行の新規判断は[標準テクニカル構成](STANDARD_TECHNICAL_PROFILE.md)を使用する。実装・本番反映・自然実行の状態は[管理Issue #1](https://github.com/nyancoworks/fx-monitor/issues/1)で管理する。
 
 | 役割 | コード・文書 |
