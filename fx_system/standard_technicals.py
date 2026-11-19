@@ -299,7 +299,7 @@ def forecast(f,structure, *, structure_state=None, bollinger_regimes=False, setu
         'timing':{'rci':deepcopy(f.get('rci',{}))},'timeframe':f['timeframe'],'evaluated_at':f['evaluated_at']}
 
 
-def wave(rows,direction):
+def wave(rows,direction, *, local_stop_version=1):
     out={'status':'unverified','thesis_invalidation':None,'local_setup_failure':None,'first_obstacle':None,
          'retest_objective':None,'extension_zone':None,'pullback_zone':None,'reference_close':rows[-1]['close'] if rows else None,
          'reference_close_timestamp':rows[-1]['timestamp'] if rows else None,'path_stage':'unverified',
@@ -316,7 +316,8 @@ def wave(rows,direction):
     start=viable[0];end=max((e for e in ends if e['timestamp']>start['timestamp']),key=lambda e:sign*e['price'])
     c=rows[-1]['close'];width=sign*(end['price']-start['price']);ext=[start['price']+sign*width*x for x in (1.272,1.618)]
     ahead=[p for p in ends if sign*(p['price']-c)>0]
-    stop=[p for p in starts if sign*(c-p['price'])>0]
+    stop=[p for p in starts if sign*(c-p['price'])>0 and
+          (local_stop_version == 1 or sign*(p['price']-start['price'])>0)]
     out.update(obstacles=ends,status='objective_reached' if sign*(c-ext[1])>=0 else 'available',thesis_invalidation=start['price'],
         local_setup_failure=stop[-1]['price'] if stop else None,
         first_obstacle=min(ahead,key=lambda p:sign*(p['price']-c)) if ahead else None,
@@ -328,7 +329,7 @@ def wave(rows,direction):
 
 def assess(pair,strategy,track,clock):
     r={'pair':pair,'strategy':strategy,'evaluated_at':clock,'method_version':METHOD,
-       'standard_technical_version':2,'technical_entry_version':1,'bollinger_regime_version':2,'sb_detail_version':1,'span_special_version':1,'span_transition_version':1,'span_red_turn_version':1,'practical_margin_version':1,'scenario_state_version':1,'timing_text_version':1,'standard_inputs':deepcopy(track['standard_inputs']),
+       'standard_technical_version':2,'local_stop_version':2,'technical_entry_version':1,'bollinger_regime_version':2,'sb_detail_version':1,'span_special_version':1,'span_transition_version':1,'span_red_turn_version':1,'practical_margin_version':1,'scenario_state_version':1,'timing_text_version':1,'standard_inputs':deepcopy(track['standard_inputs']),
        'currency_strength_context':deepcopy(track.get('currency_strength_context')),
        'macro_context':deepcopy(track.get('macro_context',{})),
        'execution_authority':'none','advisory_only':True,'reference_timeframe':track['base_timeframe'],
@@ -347,6 +348,8 @@ def assess(pair,strategy,track,clock):
 
 
 def refresh(r):
+    if 'local_stop_version' in r and (type(r['local_stop_version']) is not int or r['local_stop_version'] != 2):
+        raise ValueError('unsupported local stop interpretation')
     if 'practical_margin_version' in r and (type(r['practical_margin_version']) is not int
             or r['practical_margin_version'] != 1 or r.get('standard_technical_version') != 2):
         raise ValueError('unsupported practical margin interpretation')
@@ -494,7 +497,7 @@ def refresh(r):
             f['support'].append(name.upper()+'はSBレンジ局面')
         elif (context.get('super_bollinger') or {}).get('centerline_direction')==('down' if direction=='long' else 'up'):
             f['cautions'].append(name.upper()+'上位SB背景が予測方向と競合。伸びの制約に注意');f['material_cautions'].append(name+'_background_opposed')
-    p=wave(base.get('bars',[]),direction);rows=base.get('bars',[]);recent=trigger.get('bars',[])
+    p=wave(base.get('bars',[]),direction,local_stop_version=r.get('local_stop_version',1));rows=base.get('bars',[]);recent=trigger.get('bars',[])
     active=(len(rows)>=2 and p.get('retest_objective') and all(sign*(b['close']-p['retest_objective']['price'])>0 for b in rows[-2:]) and (not h1_primary or background['direction']==direction) and background['evolution']['momentum']=='directional_building')
     target=(p['retest_objective']['price'] if p.get('retest_objective') and sign*(p['retest_objective']['price']-p['reference_close'])>0 else
             p['extension_zone']['near'] if active and sign*(p['extension_zone']['near']-p['reference_close'])>0 else p['extension_zone']['far'] if active else None)

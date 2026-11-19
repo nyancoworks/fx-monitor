@@ -218,6 +218,19 @@ class StandardTechnicalTests(unittest.TestCase):
         refresh(old);self.assertNotIn('entry_status',old['practical_review'])
         self.assertEqual(refresh(deepcopy(old)),old)
 
+    def test_new_local_stop_stays_inside_base_invalidation(self):
+        from fx_system.standard_technicals import wave
+        lows=[104,103,100,103,104,103,99,103,104,103,104]
+        highs=[106,106,105,107,110,107,105,106,108,107,107]
+        bars=[{'timestamp':i*14400,'low':lo,'high':hi,'close':105}
+              for i,(lo,hi) in enumerate(zip(lows,highs))]
+        old=wave(bars,'long')
+        new=wave(bars,'long',local_stop_version=2)
+        self.assertEqual(old['thesis_invalidation'],100)
+        self.assertEqual(old['local_setup_failure'],99)
+        self.assertIsNone(new['local_setup_failure'])
+        self.assertEqual(new['thesis_invalidation'],100)
+
     def test_invalid_quality_does_not_become_market_skip(self):
         d,q,_=inputs();q['timeframes']['h4']['ok']=False
         o=build_scheduled_outlook({'EURUSD':d},{'EURUSD':q},evaluated_at=CLOCK)

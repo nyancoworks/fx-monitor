@@ -77,3 +77,10 @@ class TaskReportTests(unittest.TestCase):
         self.assertNotIn('- **見直す**',out['report_text'])
         self.assertNotIn('調整進行を確認',out['report_text'])
         self.assertEqual(r['report_text'],original)
+
+    def test_repeated_macd_caution_is_not_printed_twice(self):
+        r,s,slot,c=inputs()
+        r['report_text']=r['report_text'].replace('見通し：調整中\n懸念：勢い未確認',
+            '見通し：方向側MACDの変化が混在。\n懸念：方向側MACDの変化が混在')
+        out=build_task_report(r,s,slot,c)
+        self.assertEqual(out['sections']['swing'][0]['text'].count('方向側MACDの変化が混在'),1)
