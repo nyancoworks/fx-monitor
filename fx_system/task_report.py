@@ -121,23 +121,23 @@ def _build_task_report(report, strength, slot, continuity):
             outlook = _brief_outlook(field('見通し：'))
             concern = _main_conflict(field('懸念：'))
             situation = (outlook or '方向の根拠は保存評価を参照') + ('。ただし '+concern if concern else '')
-            parts = [('いま', situation), ('次に確認', condition),
-                     ('価格',_price_path(field('残り値幅：'),field('途中障害：')))]
+            parts = [('見立て', situation), ('確認', condition)]
             evidence = field('根拠：') or ''
             changes = re.findall(r'(H[14])スパン：[^\n]*?確定足の変化：([^／\n]+)', evidence)
             if changes:
-                parts[0] = ('いま', situation+'／'+ '／'.join(tf+' '+change for tf, change in changes))
+                parts[0] = ('見立て', situation+'／'+ '／'.join(tf+' '+change for tf, change in changes))
             conflict = report.get('conflict_role_lines', {}).get(pair)
             if conflict and strategy == 'swing':
-                parts.append(('方向競合', conflict))
+                parts[0] = ('見立て', parts[0][1]+'／方向競合：'+conflict)
             from .followthrough_summary import describe as describe_followthrough
             outcome = describe_followthrough(row)
             if outcome:
-                parts.append(('前回経過', outcome))
+                parts[0] = ('見立て', parts[0][1]+'／前回：'+outcome)
             stop, invalidate = field('局所停止：'), field('大局撤回：')
-            if stop or invalidate:
-                parts.append(('見直す', (_first_sentence(stop) or '局所停止未確認')+
-                              '／大局の撤回：'+(invalidate or '未確認')))
+            price = _price_path(field('残り値幅：'), field('途中障害：'))
+            withdrawal = ('局所停止 '+(_first_sentence(stop) or '未確認')+
+                          '／大局撤回 '+(invalidate or '未確認'))
+            parts.append(('水準', (price+'｜' if price else '')+withdrawal))
             candidate['text'] = '**'+_plain_heading(heading)+'**\n'+'\n'.join(
                 '- **'+label+'** '+value for label,value in parts if value)
         sections[strategy].append(candidate)
