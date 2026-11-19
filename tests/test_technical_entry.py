@@ -68,7 +68,7 @@ class TechnicalEntryTests(unittest.TestCase):
         self.assertEqual(r['scenario_conditions']['route'],'multi_technical_recovery')
         bad=deepcopy(r);bad['scenario_conditions']['status']='conditions_observed'
         if bad!=r:self.assertTrue(validate_conditions(bad))
-        old=deepcopy(r);old.pop('multi_timing_version');old.pop('technical_entry_version');old.pop('candle_reference');old.pop('price_path_context')
+        old=deepcopy(r);old.pop('three_indicator_version',None);old.pop('multi_timing_version');old.pop('technical_entry_version');old.pop('candle_reference');old.pop('price_path_context')
         old['standard_technical_version']=1;old.pop('practical_margin_version');refresh(old)
         self.assertIn('obstacle_path_review',old);self.assertEqual(old['scenario_conditions']['basis'],'contextual_saved_price_action_v1')
         self.assertEqual(refresh(deepcopy(old)),old)
