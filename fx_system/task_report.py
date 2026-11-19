@@ -185,7 +185,10 @@ def _build_task_report(report, strength, slot, continuity):
 def build_task_report(report, strength, slot, continuity):
     # This optional projection must not prevent saving the original judgment.
     try:
-        return _build_task_report(report, strength, slot, continuity)
+        result = _build_task_report(report, strength, slot, continuity)
+        if result['status'] == 'saved' and 'research_digest' in report:
+            result['research_digest'] = deepcopy(report['research_digest'])
+        return result
     except Exception:
         return {'schema':'saved_task_report_v1', 'source':deepcopy(report.get('source')),
                 'snapshot_git_blob_sha':report.get('snapshot_git_blob_sha'),

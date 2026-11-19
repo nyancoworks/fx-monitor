@@ -106,6 +106,9 @@ def build_strategy_report_export(snapshot_bytes, source):
             'payload_base64': base64.b64encode(gzip.compress(raw, mtime=0)).decode('ascii')}
         if projected.get('pair_context_version') == 4:
             saved['conflict_role_lines'] = conflict_role_lines(projected)
+        if projected.get('activate_time_version') == 1:
+            from .research_digest import build as build_research_digest
+            saved['research_digest'] = build_research_digest(projected)
         if compact_rows:
             saved['payload_layout']='standard_inputs_v3' if table_layout else 'canonical_rows_v2'
         if len(_json(saved)) > MAX_EXPORT_BYTES:
@@ -201,6 +204,10 @@ def restore_strategy_report_export(bundle, source, snapshot_blob_sha):
         if ('conflict_role_lines' in bundle
                 and bundle['conflict_role_lines'] != conflict_role_lines(view['scheduled_outlook'])):
             raise ValueError
+        if 'research_digest' in bundle:
+            from .research_digest import build as build_research_digest
+            if bundle['research_digest'] != build_research_digest(view['scheduled_outlook']):
+                raise ValueError
         return view
     except Exception:
         raise ValueError('saved strategy report export invalid or unavailable') from None
