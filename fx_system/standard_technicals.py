@@ -329,7 +329,7 @@ def wave(rows,direction, *, local_stop_version=1):
 
 def assess(pair,strategy,track,clock):
     r={'pair':pair,'strategy':strategy,'evaluated_at':clock,'method_version':METHOD,
-       'standard_technical_version':2,'local_stop_version':2,'technical_entry_version':1,'bollinger_regime_version':2,'sb_detail_version':1,'span_special_version':1,'span_transition_version':1,'span_red_turn_version':1,'practical_margin_version':1,'scenario_state_version':1,'timing_text_version':1,'standard_inputs':deepcopy(track['standard_inputs']),
+       'standard_technical_version':2,'local_stop_version':2,'technical_entry_version':1,'bollinger_regime_version':2,'sb_detail_version':1,'span_special_version':1,'span_transition_version':1,'span_red_turn_version':1,'practical_margin_version':1,'scenario_state_version':1,'timing_text_version':1,'murphy_primary_version':1,'standard_inputs':deepcopy(track['standard_inputs']),
        'currency_strength_context':deepcopy(track.get('currency_strength_context')),
        'macro_context':deepcopy(track.get('macro_context',{})),
        'execution_authority':'none','advisory_only':True,'reference_timeframe':track['base_timeframe'],
@@ -348,6 +348,12 @@ def assess(pair,strategy,track,clock):
 
 
 def refresh(r):
+    if 'murphy_primary_version' in r and (
+            type(r['murphy_primary_version']) is not int
+            or r['murphy_primary_version'] != 1
+            or r.get('murphy_timing_context_version') != 1
+            or r.get('span_special_version') != 1):
+        raise ValueError('unsupported Murphy primary interpretation')
     if 'local_stop_version' in r and (type(r['local_stop_version']) is not int or r['local_stop_version'] != 2):
         raise ValueError('unsupported local stop interpretation')
     if 'practical_margin_version' in r and (type(r['practical_margin_version']) is not int
@@ -590,10 +596,22 @@ def refresh(r):
     # This is not an indicator-agreement threshold or trade permission.
     reaction_observed = r['scenario_conditions']['status'] == 'conditions_observed'
     complete = r.get('scenario_completion_version') != 1 or reaction_observed
+    murphy_context = r['scenario_conditions'].get('evidence', {}).get('murphy_context', {})
+    opposed = set(murphy_context.get('opposing_components', [])) if isinstance(murphy_context, dict) else set()
+    # An oscillator reaction cannot complete an A scenario when both primary
+    # confirmation components point against it. Individual disagreements
+    # remain cautions; this does not require every indicator to agree.
+    murphy_core_conflict = (r.get('murphy_primary_version') == 1 and reaction_observed
+                            and {'sb_movement', 'blue_position'} <= opposed)
+    if murphy_core_conflict:
+        f['cautions'].append('確認足のSB方向と青色スパンがともにシナリオと逆。局所反応だけで主軸の確認済みとはしない')
+        f['material_cautions'].append('murphy_confirmation_opposed')
     r['grade']='C' if r['assessment']=='review' and f['conviction']=='weak' else 'A' if status=='technical_watch' and f['phase']=='continuation' and not f['material_cautions'] and complete else 'B' if r['assessment']=='review' else None
     r['grade_reason']=f['primary_path']+'。'+{'technical_watch':'保存条件の反応と価格経路を監視','technical_recheck':'勢い・構造の再評価待ち','price_plan_recheck':('到達済みの節目に代わる価格計画待ち' if 'completed_retest' in p else '未確認の拡張や通過済み目標を追わず価格計画を再評価'),'entry_recheck':'局所条件を再評価','event_recheck':'発表後に再評価','direction_watch':'旧経路終了、新しい構造待ち','evaluation_pending':'方向・確定波の主要材料不足'}[status]
     if r.get('scenario_completion_version') == 1 and r['grade'] == 'B' and not reaction_observed and defined:
         r['grade_reason'] += '。'+tt.upper()+'の反応は未観測のため、シナリオ成立前のB評価'
+    if murphy_core_conflict and r['grade'] == 'B':
+        r['grade_reason'] += '。SB方向と青色スパンがともに逆で、局所反応のみ観測'
     if plan_unformed:
         r['grade_reason'] = f['primary_path']+'。確定足は取得済みだが、目標・無効化を伴う価格計画を構成できないため見送り'
     margin=(bool(risk and risk>0 and reward and reward>risk and room and room>risk)
