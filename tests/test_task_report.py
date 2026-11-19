@@ -86,22 +86,22 @@ class TaskReportTests(unittest.TestCase):
         out=build_task_report(r,s,slot,c)
         self.assertIn('反応あり・再確認',out['report_text'])
         self.assertIn('🔵 EUR/USD',out['report_text'])
-        self.assertIn('売買前に現在値と指定の確定足を確認',out['report_text'])
+        self.assertIn('売買前に現在値と確定足を確認',out['report_text'])
         self.assertNotIn('買い推奨',out['report_text'])
 
-    def test_first_glance_exposes_price_caution_without_reordering(self):
+    def test_no_duplicate_preface_keeps_price_caution_and_order(self):
         r,s,slot,c=inputs()
         r['report_text']=r['report_text'].replace(
             '残り値幅：保存終値1',
             '残り値幅：保存M15終値 1.00｜手前の節目 0.4 pips｜波の目標 72.3 pips｜手前の節目までの値幅が大局撤回幅以下（参考）')
         out=build_task_report(r,s,slot,c)
-        glance=out['report_text'].split('## 通貨強弱')[0]
-        self.assertIn('スイング：🟡 EUR/USD・売り方向の監視候補（B）・足の確認待ち。手前の節目が近いので価格を再確認',glance)
-        self.assertIn('デイトレ：🟡 EUR/USD',glance)
-        self.assertNotIn('GBP/USD',glance)
+        self.assertNotIn('## まず見る',out['report_text'])
+        self.assertEqual(out['report_text'].count('🟡 EUR/USD'),2)
+        self.assertIn('手前の節目が近い',out['sections']['swing'][0]['text'])
+        self.assertLess(out['report_text'].index('## 通貨強弱'),out['report_text'].index('## 短期スイング TOP3'))
         self.assertEqual(len(out['sections']['swing']),3)
 
-    def test_reached_target_is_shown_as_plan_wait_in_both_places(self):
+    def test_reached_target_is_shown_as_plan_wait_in_candidate(self):
         r,s,slot,c=inputs()
         c['rows']=[{'pair':'EURUSD','strategy':'swing',
                     'previous':{'direction':'short'},
@@ -110,7 +110,6 @@ class TaskReportTests(unittest.TestCase):
                         'original_target':.8,
                         'trigger_close_withdrawal':{'condition':'path_objective_reached'}}}]
         out=build_task_report(r,s,slot,c)
-        self.assertIn('スイング：⚪ EUR/USD',out['report_text'])
         self.assertIn('**⚪ EUR/USD',out['sections']['swing'][0]['text'])
         self.assertIn('🟡 足の確認待ち／🔵 反応あり・再確認／⚪ 新しい価格計画待ち',out['report_text'])
 
