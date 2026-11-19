@@ -120,7 +120,9 @@ def _build_task_report(report, strength, slot, continuity):
                 condition = condition.replace('を上抜けまたは上側維持', '上抜け・維持')
             outlook = _brief_outlook(field('見通し：'))
             concern = _main_conflict(field('懸念：'))
-            situation = (outlook or '方向の根拠は保存評価を参照') + ('。ただし '+concern if concern else '')
+            situation = (outlook or '方向の根拠は保存評価を参照')
+            if concern and concern not in situation:
+                situation += '。ただし '+concern
             parts = [('見立て', situation), ('確認', condition)]
             evidence = field('根拠：') or ''
             changes = re.findall(r'(H[14])スパン：[^\n]*?確定足の変化：([^／\n]+)', evidence)
