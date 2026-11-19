@@ -13,6 +13,7 @@ from .strategy_strength import interpret
 METHOD='contextual_scenario_review_v13_standard_technicals'
 SECONDS={'m5':300,'m15':900,'h1':3600,'h4':14400,'d1':86400,'w1':604800}
 PROFILE={'super_bollinger':[21,21],'macd':[12,26,9],'sma':[50,200],'rci':[9,26,52],'fibonacci':'standard'}
+THREE_INDICATOR_PROFILE={'super_bollinger':[21,21],'span_model':{'periods':[9,26,52],'lag_intervals':26,'cloud_shift':0},'macd':[12,26,9],'macd_signal':'EMA9'}
 NY_CLOSE_PROFILE={**PROFILE,'macd_signal':'EMA9','h4_calendar':'mt4_ny_close_h4_v1'}
 
 def ema(values,period):
@@ -126,7 +127,7 @@ def bollinger_regime(sb, closes=None):
     return trend, 'trend' if outside_one else 'gradual_trend'
 
 
-def forecast(f,structure, *, structure_state=None, bollinger_regimes=False, setup_synthesis=False, regime_transitions=False, sb_details=False, direction_context=False):
+def forecast(f,structure, *, structure_state=None, bollinger_regimes=False, setup_synthesis=False, regime_transitions=False, sb_details=False, direction_context=False, three_indicators=False):
     sb=f.get('super_bollinger',{});m=f.get('macd',{}).get('observations',[])
     hist=[x.get('histogram') for x in m]
     direction={'up':'long','down':'short'}.get(sb.get('centerline_direction'))
@@ -161,7 +162,7 @@ def forecast(f,structure, *, structure_state=None, bollinger_regimes=False, setu
                     'short' if slow.get('slope')=='down' and slow.get('value') is not None and rows and rows[-1]['close']<slow['value'] else None)
     # A recovering price/medium background with directional momentum may
     # challenge SB. This is a reversal hypothesis, not a vote or proven turn.
-    if not bollinger_regimes and status and slow_direction and slow_direction!=center:
+    if not three_indicators and not bollinger_regimes and status and slow_direction and slow_direction!=center:
         candidate=[(1 if slow_direction=='long' else -1)*v for v in hist]
         if candidate[-1]>0 and candidate[0]<candidate[1]<candidate[2]:
             direction=slow_direction;basis='sma50_macd_reversal_hypothesis'
@@ -191,19 +192,19 @@ def forecast(f,structure, *, structure_state=None, bollinger_regimes=False, setu
     if sb.get('status')=='calculated':
         support.append('SB遅行は過去足の'+str(sb.get('lagging_span',{}).get('location'))+'、帯幅は'+str(sb.get('bandwidth_state','unverified'))+'。位置と拡がりを一つの環境として読む')
     short=f.get('rci',{}).get('9',{})
-    if direction and short.get('movement')==('falling' if sign==1 else 'rising'):
+    if not three_indicators and direction and short.get('movement')==('falling' if sign==1 else 'rising'):
         cautions.append('RCI9は短期逆行。調整進行と反応のタイミングを確認し、大局方向を単独で変えない')
     for period in ('26','52'):
-        if direction and f.get('rci',{}).get(period,{}).get('extreme_run',{}).get('zone')==('upper' if sign==1 else 'lower'):
+        if not three_indicators and direction and f.get('rci',{}).get(period,{}).get('extreme_run',{}).get('zone')==('upper' if sign==1 else 'lower'):
             support.append('RCI'+period+'は方向側の極端域。張り付きは持続性の参考で、逆張り理由にはしない')
     sma=f.get('sma',{})
     close=f.get('bars',[{}])[-1].get('close') if f.get('bars') else None
-    for p in ('50','200'):
+    for p in (() if three_indicators else ('50','200')):
         v=sma.get(p,{}).get('value')
         if v is None:cautions.append('SMA'+p+'は履歴不足。補助背景の不足として扱う')
         elif direction and sign*(close-v)<0:
             cautions.append('価格はSMA'+p+'の方向反対側。中長期背景との競合を確認');material.append('sma'+p+'_opposed')
-    for p in ('26','52'):
+    for p in (() if three_indicators else ('26','52')):
         r=f.get('rci',{}).get(p,{})
         if direction and r.get('movement')==('falling' if sign==1 else 'rising'):
             cautions.append('RCI'+p+'が予測方向に逆行。傾き・転換・張り付きの解消を監視');material.append('rci'+p+'_opposed')
@@ -237,7 +238,7 @@ def forecast(f,structure, *, structure_state=None, bollinger_regimes=False, setu
                 rci26 = f.get('rci', {}).get('26', {})
                 rci52 = f.get('rci', {}).get('52', {})
                 opposing_zone = 'lower' if sign == 1 else 'upper'
-                if h[-1] < 0 and (
+                if not three_indicators and h[-1] < 0 and (
                         rci26.get('movement') == ('falling' if sign == 1 else 'rising')
                         or rci52.get('extreme_run', {}).get('zone') == opposing_zone):
                     weak = True
@@ -245,7 +246,7 @@ def forecast(f,structure, *, structure_state=None, bollinger_regimes=False, setu
                     cautions.append('MACDと中長期RCIが逆行。H1セットアップの継続を再評価')
             elif sign * line > 0 and h[-1] > 0:
                 support.append('MACD本線とシグナルの関係が方向を支持')
-        for period in ('50', '200'):
+        for period in (() if three_indicators else ('50', '200')):
             average = sma.get(period, {})
             value = average.get('value')
             if value is not None and close is not None:
@@ -293,10 +294,10 @@ def forecast(f,structure, *, structure_state=None, bollinger_regimes=False, setu
     return {'schema':'standard_direction_forecast_v1','status':'available' if status and direction else 'no_direction' if status else 'unverified',
         **({'direction_context':context} if direction_context else {}),
         'direction':direction,'direction_basis':basis,'phase':phase,'conviction':'weak' if weak else 'developing',
-        'primary_path':primary,'alternative_path':'SB方向背景と価格構造が崩れれば継続仮説を取り下げる。短期RCIや局所反応だけで反転しない',
-        'support':support,'cautions':cautions,'material_cautions':material,'background':{'sma':deepcopy(sma)},
+        'primary_path':primary,'alternative_path':('SB方向背景と価格構造が崩れれば継続仮説を取り下げる。局所反応だけで反転しない' if three_indicators else 'SB方向背景と価格構造が崩れれば継続仮説を取り下げる。短期RCIや局所反応だけで反転しない'),
+        'support':support,'cautions':cautions,'material_cautions':material,'background':{} if three_indicators else {'sma':deepcopy(sma)},
         'evolution':{'status':'available' if h else 'unverified','momentum':momentum},
-        'timing':{'rci':deepcopy(f.get('rci',{}))},'timeframe':f['timeframe'],'evaluated_at':f['evaluated_at']}
+        'timing':{} if three_indicators else {'rci':deepcopy(f.get('rci',{}))},'timeframe':f['timeframe'],'evaluated_at':f['evaluated_at']}
 
 
 def wave(rows,direction, *, local_stop_version=1):
@@ -329,7 +330,7 @@ def wave(rows,direction, *, local_stop_version=1):
 
 def assess(pair,strategy,track,clock):
     r={'pair':pair,'strategy':strategy,'evaluated_at':clock,'method_version':METHOD,
-       'standard_technical_version':2,'local_stop_version':2,'technical_entry_version':1,'bollinger_regime_version':2,'sb_detail_version':1,'span_special_version':1,'span_transition_version':1,'span_red_turn_version':1,'practical_margin_version':1,'scenario_state_version':1,'timing_text_version':1,'murphy_primary_version':1,'standard_inputs':deepcopy(track['standard_inputs']),
+       'standard_technical_version':2,'three_indicator_version':1,'local_stop_version':2,'technical_entry_version':1,'bollinger_regime_version':2,'sb_detail_version':1,'span_special_version':1,'span_transition_version':1,'span_red_turn_version':1,'practical_margin_version':1,'scenario_state_version':1,'timing_text_version':1,'murphy_primary_version':1,'standard_inputs':deepcopy(track['standard_inputs']),
        'currency_strength_context':deepcopy(track.get('currency_strength_context')),
        'macro_context':deepcopy(track.get('macro_context',{})),
        'execution_authority':'none','advisory_only':True,'reference_timeframe':track['base_timeframe'],
@@ -348,6 +349,11 @@ def assess(pair,strategy,track,clock):
 
 
 def refresh(r):
+    three_indicators = 'three_indicator_version' in r
+    if three_indicators and (type(r['three_indicator_version']) is not int or r['three_indicator_version'] != 1
+            or r.get('span_special_version') != 1 or r.get('multi_timing_version') != 3
+            or r.get('standard_technical_version') != 2):
+        raise ValueError('unsupported three indicator interpretation')
     if 'murphy_primary_version' in r and (
             type(r['murphy_primary_version']) is not int
             or r['murphy_primary_version'] != 1
@@ -388,7 +394,7 @@ def refresh(r):
         if fdata.get('bars') and frame(fdata['bars'],tfname,clock,fdata['verified'],fdata.get('calendar'),fdata.get('calculation_version',1))!=fdata:
             raise ValueError('standard frame calculations differ from retained full-prefix candles')
     r['technical_order_version']=1
-    r['technical_profile']=deepcopy(PROFILE)
+    r['technical_profile']=deepcopy(THREE_INDICATOR_PROFILE if three_indicators else PROFILE)
     if base.get('calculation_version',1)!=trigger.get('calculation_version',1):raise ValueError('mixed calculation profiles')
     if base.get('calculation_version') in (2,3):
         r['technical_profile'].update(macd_signal='EMA9',h4_calendar='mt4_ny_close_h4_v1')
@@ -431,7 +437,7 @@ def refresh(r):
         raise ValueError('unsupported Bollinger regime interpretation')
     r['base_structure'] = i['structure']
     background = forecast(base, i['structure'], structure_state=state,
-                          bollinger_regimes=regime_version in (1, 2), regime_transitions=regime_version == 2, sb_details=details_version == 1, direction_context=state_version == 1)
+                          bollinger_regimes=regime_version in (1, 2), regime_transitions=regime_version == 2, sb_details=details_version == 1, direction_context=state_version == 1, three_indicators=three_indicators)
     if span_version == 1:
         from .span_special import apply as apply_span
         background = apply_span(base, background, transitions=r.get('span_transition_version') == 1,
@@ -451,7 +457,7 @@ def refresh(r):
         setup_structure = technical(setup.get('bars', []))
         f = forecast(setup, setup_structure.get('structure', 'unconfirmed'),
                      structure_state=setup_structure.get('closed_bar_structure', {}).get('state'),
-                     bollinger_regimes=True, setup_synthesis=synthesis, regime_transitions=regime_version == 2, sb_details=details_version == 1, direction_context=state_version == 1)
+                     bollinger_regimes=True, setup_synthesis=synthesis, regime_transitions=regime_version == 2, sb_details=details_version == 1, direction_context=state_version == 1, three_indicators=three_indicators)
         if span_version == 1:
             f = apply_span(setup, f, transitions=r.get('span_transition_version') == 1,
                            extreme_turns=r.get('span_red_turn_version') == 1)
@@ -473,7 +479,7 @@ def refresh(r):
         else:
             f['support'].append(note)
     elif setup is not None:
-        setup_view = forecast(setup, 'unconfirmed', bollinger_regimes=True)
+        setup_view = forecast(setup, 'unconfirmed', bollinger_regimes=True, three_indicators=three_indicators)
         setup_ready = setup.get('verified') is True and 0 <= clock-setup.get('closed_at', 0) < SECONDS['h1']
         setup_side = setup_view['direction'] if setup_ready and setup_view['status'] == 'available' else None
         setup_opposed = bool(direction and setup_side and direction != setup_side)
@@ -491,7 +497,7 @@ def refresh(r):
             f['cautions'].append('H1セットアップは確定足未確認')
     r['direction'] = direction
     sign = 1 if direction == 'long' else -1
-    if timing is not None and timing.get('verified') is True and 0 <= clock-timing.get('closed_at', 0) < SECONDS['m5']:
+    if not three_indicators and timing is not None and timing.get('verified') is True and 0 <= clock-timing.get('closed_at', 0) < SECONDS['m5']:
         from .technical_entry import turn_observed
         rci = timing.get('rci', {}).get('9', {})
         if turn_observed(rci.get('value'), rci.get('previous'), direction):
@@ -504,7 +510,13 @@ def refresh(r):
         elif (context.get('super_bollinger') or {}).get('centerline_direction')==('down' if direction=='long' else 'up'):
             f['cautions'].append(name.upper()+'上位SB背景が予測方向と競合。伸びの制約に注意');f['material_cautions'].append(name+'_background_opposed')
     p=wave(base.get('bars',[]),direction,local_stop_version=r.get('local_stop_version',1));rows=base.get('bars',[]);recent=trigger.get('bars',[])
+    if three_indicators:
+        p['extension_zone'] = p['pullback_zone'] = None
+        if p['status'] == 'objective_reached':
+            p['status'] = 'available'
     active=(len(rows)>=2 and p.get('retest_objective') and all(sign*(b['close']-p['retest_objective']['price'])>0 for b in rows[-2:]) and (not h1_primary or background['direction']==direction) and background['evolution']['momentum']=='directional_building')
+    if three_indicators:
+        active = False
     target=(p['retest_objective']['price'] if p.get('retest_objective') and sign*(p['retest_objective']['price']-p['reference_close'])>0 else
             p['extension_zone']['near'] if active and sign*(p['extension_zone']['near']-p['reference_close'])>0 else p['extension_zone']['far'] if active else None)
     if 'swing_objective_version' in r:
@@ -529,6 +541,8 @@ def refresh(r):
                 target = None
                 f['cautions'].append('前回の節目目標は確認足終値で到達済み。新しい価格計画待ち')
     p['path_stage']='withdrawn' if p['status']=='objective_reached' else 'retest' if target is not None and not active else 'extension_active' if active else 'extension_wait'
+    if three_indicators and target is None and p['status'] == 'available':
+        p['path_stage'] = 'new_plan_wait'
     if 'completed_retest' in p:
         p['path_stage'] = 'completed_retest_wait'
     r['wave_price_plan']=p
@@ -607,7 +621,7 @@ def refresh(r):
         f['cautions'].append('確認足のSB方向と青色スパンがともにシナリオと逆。局所反応だけで主軸の確認済みとはしない')
         f['material_cautions'].append('murphy_confirmation_opposed')
     r['grade']='C' if r['assessment']=='review' and f['conviction']=='weak' else 'A' if status=='technical_watch' and f['phase']=='continuation' and not f['material_cautions'] and complete else 'B' if r['assessment']=='review' else None
-    r['grade_reason']=f['primary_path']+'。'+{'technical_watch':'保存条件の反応と価格経路を監視','technical_recheck':'勢い・構造の再評価待ち','price_plan_recheck':('到達済みの節目に代わる価格計画待ち' if 'completed_retest' in p else '未確認の拡張や通過済み目標を追わず価格計画を再評価'),'entry_recheck':'局所条件を再評価','event_recheck':'発表後に再評価','direction_watch':'旧経路終了、新しい構造待ち','evaluation_pending':'方向・確定波の主要材料不足'}[status]
+    r['grade_reason']=f['primary_path']+'。'+{'technical_watch':'保存条件の反応と価格経路を監視','technical_recheck':'勢い・構造の再評価待ち','price_plan_recheck':('到達済みの節目に代わる価格計画待ち' if 'completed_retest' in p else '通過済みの波の目標に代わる価格計画待ち' if three_indicators else '未確認の拡張や通過済み目標を追わず価格計画を再評価'),'entry_recheck':'局所条件を再評価','event_recheck':'発表後に再評価','direction_watch':'旧経路終了、新しい構造待ち','evaluation_pending':'方向・確定波の主要材料不足'}[status]
     if r.get('scenario_completion_version') == 1 and r['grade'] == 'B' and not reaction_observed and defined:
         r['grade_reason'] += '。'+tt.upper()+'の反応は未観測のため、シナリオ成立前のB評価'
     if murphy_core_conflict and r['grade'] == 'B':
@@ -726,8 +740,13 @@ def render_lines(r, *, presentation_version=1):
         '局所停止参考：'+fmt(p['local_setup_failure'])+'。大局撤回と別。実際の成立価格・損失幅・費用は未確定',
         *((['ローソク足の補足：'+r['candle_reference']['summary']]) if r.get('candle_reference',{}).get('status') in ('observed','not_observed') else []),
         '使用指標：'+('スパンモデルスペシャル、' if r.get('span_special_version') == 1 else 'SB、')+'通常MACD12/26/9、通常Fib、SMA50/200、RCI9/26/52']
+    def current_profile_lines(items):
+        if r.get('three_indicator_version') != 1:
+            return items
+        return [('使用指標：スーパーボリンジャー、スパンモデル、通常MACD12/26/9（EMA9シグナル）' if item.startswith('使用指標：') else item)
+                for item in items if not item.startswith('通常Fib')]
     if presentation_version == 1:
-        return lines
+        return current_profile_lines(lines)
     paused = r.get('practical_review',{}).get('entry_status') == 'paused'
     state = ('経路終了・再評価' if r.get('expiry',{}).get('status') == 'withdrawn' else
              '局所停止・再評価' if paused else
@@ -748,9 +767,9 @@ def render_lines(r, *, presentation_version=1):
         slope = sb.get('centerline_direction') if d1.get('verified') and sb.get('status') == 'calculated' else None
         direction = {'up':'上向き', 'down':'下向き', 'flat':'横ばい'}.get(slope, '未確認')
         background.append('D1環境：スーパーボリンジャー中心線 '+direction+'｜H4の波：'+f['primary_path'])
-    return ['', title, *background, '確認足 '+r['trigger_timeframe'].upper()+'｜'+lines[5],
+    return current_profile_lines(['', title, *background, '確認足 '+r['trigger_timeframe'].upper()+'｜'+lines[5],
             stop_line, lines[6], lines[7],
-            *([_saved_distance_line(r)] if presentation_version == 3 else []), *lines[2:5], *lines[8:10], *lines[11:]]
+            *([_saved_distance_line(r)] if presentation_version == 3 else []), *lines[2:5], *lines[8:10], *lines[11:]])
 
 
 def pair_context(records,clock, *, version=3):
@@ -763,6 +782,8 @@ def pair_context(records,clock, *, version=3):
         if any(f.get('status')!='available' for f in (fs,fd)) or fs['direction']==fd['direction']:continue
         if any(r.get('method_version')!=METHOD or r.get('evaluated_at')!=clock for r in (s,d)):continue
         def backing(r,f):
+            if r.get('three_indicator_version') == 1:
+                return False
             v=f['background']['sma']['50'];close=r['reference_plan']['reference_close'];direction=r['direction']
             if 'swing_setup_version' in r:
                 bars = r['standard_inputs']['h1_setup']['bars']
@@ -785,10 +806,12 @@ def pair_context(records,clock, *, version=3):
             else:
                 label = 'スイング回復の確認：' if key == 'swing' else '短期調整継続の対案：'
             resolution+=label+p['wait']+'。'+p['timeframe'].upper()+'確定終値'+price+('以下' if p['direction']=='long' else '以上')+'で当該仮説を撤回。'
-        resolution+='局所条件の観測や片側撤回だけで他方成立としない。SMA50/200の背景、MACD経過、RCI26/52の持続を再評価し、障害と目標で反応を確認する'
+        resolution+=('局所条件の観測や片側撤回だけで他方成立としない。SBとスパンモデルの背景、MACD経過、障害と目標で反応を確認する'
+                     if s.get('three_indicator_version') == d.get('three_indicator_version') == 1 else
+                     '局所条件の観測や片側撤回だけで他方成立としない。SMA50/200の背景、MACD経過、RCI26/52の持続を再評価し、障害と目標で反応を確認する')
         result.append({'pair':pair,'evaluated_at':clock,'preferred_strategy':primary,
             'phase':'recovery_hypothesis' if primary=='swing' else 'lower_timeframe_continuation' if primary else 'opposing_hypotheses_unresolved',
             'range_assessment':'range_not_established',
-            'summary':('主監視は'+('スイング' if primary=='swing' else 'デイトレード')+'、逆方向は対案。' if primary else '主方向は未確定。')+'SBの方向背景と通常MACD・SMA50/200・RCIの経過を比較。逆方向だけでレンジとは断定しない',
+            'summary':('主監視は'+('スイング' if primary=='swing' else 'デイトレード')+'、逆方向は対案。' if primary else '主方向は未確定。')+('SB・スパンモデルと通常MACDの経過を比較。' if s.get('three_indicator_version') == d.get('three_indicator_version') == 1 else 'SBの方向背景と通常MACD・SMA50/200・RCIの経過を比較。')+'逆方向だけでレンジとは断定しない',
             'plans':plans,'resolution':resolution})
     return result
