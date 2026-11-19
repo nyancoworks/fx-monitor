@@ -29,6 +29,14 @@ def validate_strategy_snapshot(snapshot):
         failures.append('scheduled strategy universe incomplete or duplicated')
     if outlook.get('strategy_assessment_count') != len(expected):
         failures.append('scheduled strategy total mismatch')
+    if 'activate_time_version' in outlook or 'activate_time_context' in outlook:
+        from .activate_time import validate_pair
+        context = outlook.get('activate_time_context')
+        if (type(outlook.get('activate_time_version')) is not int
+                or outlook['activate_time_version'] != 1 or not isinstance(context,dict)
+                or set(context) != set(PAIR_KEYS)
+                or any(not validate_pair(value,clock) for value in context.values())):
+            failures.append('scheduled public time analysis mismatch')
     if 'pair_market_context' in outlook and 'pair_context_version' not in outlook:
         failures.append('scheduled pair market context version missing')
     if 'pair_context_version' in outlook:
