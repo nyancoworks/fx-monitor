@@ -42,7 +42,11 @@ def _price_path(width, levels):
     first = ('最初の節目 '+near + ('（'+first_distance+'先）' if 'pips' in first_distance else '')
              if near != '未確認' else '最初の節目 未確認')
     wave = '波の目標 '+objective + ('（'+wave_distance+'先）' if 'pips' in wave_distance else '')
-    caution = '｜'+'｜'.join(pieces[3:]) if len(pieces)>3 else ''
+    caution = ''
+    if any('手前の節目までの値幅が大局撤回幅以下' in item for item in pieces[3:]):
+        caution = '｜手前余地に注意'
+    elif any('波の目標までの値幅が大局撤回幅以下' in item for item in pieces[3:]):
+        caution = '｜目標余地に注意'
     return pieces[0].strip()+' → '+first+' → '+wave+caution
 
 
@@ -53,8 +57,8 @@ def _plain_heading(heading):
     match = re.fullmatch(r'(買い|売り)([ABC])', parts[2])
     if not match:
         return heading
-    state = {'条件待ち':'まだ待つ', '局所条件観測済み':'反応は確認済み'}.get(parts[3], parts[3])
-    return '｜'.join(parts[:2])+'｜'+match[1]+'を監視（'+match[2]+'・'+state+'）'
+    state = {'条件待ち':'確認待ち', '局所条件観測済み':'反応確認'}.get(parts[3], parts[3])
+    return parts[0]+'｜'+match[1]+match[2]+'・'+state
 
 
 def _build_task_report(report, strength, slot, continuity):
@@ -109,6 +113,11 @@ def _build_task_report(report, strength, slot, continuity):
                 condition = condition.split('。', 1)[0].replace('｜待つ条件：', '｜')
                 condition = condition.replace('次のいずれかの反応待ち：', '反応待ち：')
                 condition = condition.replace('（全一致は不要）', '')
+                condition = condition.replace('局所条件観測済み：', '観測：')
+                condition = condition.replace('15分足の確定足で', '').replace('5分足の確定足で', '')
+                condition = condition.replace('動きを観測', '').replace('MACDシグナル交差', 'MACD交差')
+                condition = condition.replace('終値の', '').replace('を下抜けまたは下側維持', '下抜け・維持')
+                condition = condition.replace('を上抜けまたは上側維持', '上抜け・維持')
             outlook = _brief_outlook(field('見通し：'))
             concern = _main_conflict(field('懸念：'))
             situation = (outlook or '方向の根拠は保存評価を参照') + ('。ただし '+concern if concern else '')
@@ -117,7 +126,7 @@ def _build_task_report(report, strength, slot, continuity):
             evidence = field('根拠：') or ''
             changes = re.findall(r'(H[14])スパン：[^\n]*?確定足の変化：([^／\n]+)', evidence)
             if changes:
-                parts.append(('指標の変化', '／'.join(tf+' '+change for tf, change in changes)))
+                parts[0] = ('いま', situation+'／'+ '／'.join(tf+' '+change for tf, change in changes))
             conflict = report.get('conflict_role_lines', {}).get(pair)
             if conflict and strategy == 'swing':
                 parts.append(('方向競合', conflict))
@@ -139,7 +148,7 @@ def _build_task_report(report, strength, slot, continuity):
     text = ['# FX判断｜'+title+'（保存評価 '+clock.strftime('%H:%M')+'）', '## 通貨強弱']
     if same(strength) and strength.get('status') == 'saved':
         from .strength_export import render_strength_summary
-        text.append(render_strength_summary(strength['currency_strength'],source['evaluated_at']))
+        text.append(render_strength_summary(strength['currency_strength'],source['evaluated_at']).splitlines()[0])
     else:
         text.append('通貨強弱のみ未確認。候補は同時刻の保存評価を掲載。')
     for strategy,label in (('swing','短期スイング TOP3'),('daytrade','デイトレ TOP3')):
@@ -147,7 +156,7 @@ def _build_task_report(report, strength, slot, continuity):
         text.extend(c['text'] for c in sections[strategy])
         if not sections[strategy]:
             text.append('保存レポートの優先掲載候補なし。全体の見送りを意味しません。')
-    text.append('価格は保存確定足の値です。局所条件観測は約定ではありません。')
+    text.append('強弱は参考。価格は保存確定足、余地は大局撤回幅との比較（費用前）。反応観測は約定ではありません。')
     out.update(status='saved', sections=sections, report_text='\n\n'.join(text))
     return out
 
