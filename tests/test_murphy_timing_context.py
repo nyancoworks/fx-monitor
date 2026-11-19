@@ -59,7 +59,9 @@ class MurphyTimingContextTests(unittest.TestCase):
 
     def test_old_records_restore_without_new_evidence(self):
         r = record()
-        old = deepcopy(r); old.pop('murphy_timing_context_version'); refresh(old)
+        old = deepcopy(r); old.pop('murphy_timing_context_version')
+        old.pop('murphy_primary_version', None)
+        refresh(old)
         self.assertNotIn('murphy_context', old['scenario_conditions'].get('evidence', {}))
         self.assertEqual(refresh(deepcopy(old)), old)
         for key in ('direction','grade','assessment','reference_levels'):
