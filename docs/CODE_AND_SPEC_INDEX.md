@@ -18,4 +18,4 @@
 
 参照・復元用途のない旧PA/RCI shadow、旧H4セットアップと近傍目標提案、H1/H4比較、参考ゾーン、観測H1からの旧マクロ参考生成、旧screeningラッパーと入力層診断、未使用のEMA10/20/30等の一括診断は撤去した。履歴原本・非公開証跡は削除しない。
 
-現行スパンモデル復活: [SPAN_MODEL_SPECIAL.md](SPAN_MODEL_SPECIAL.md)。旧 `span_model.py` の一律雲判定は復元専用、新規は `span_special.py` でSBと併用する。
+現行スパンモデル仕様: [SPAN_MODEL_SPECIAL.md](SPAN_MODEL_SPECIAL.md)。旧 `span_model.py` の一律雲判定は復元専用、新規は `span_special.py` でSBと併用する。
