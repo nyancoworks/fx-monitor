@@ -26,6 +26,34 @@ def inputs(sign=1,count=220):
 
 
 class StandardTechnicalTests(unittest.TestCase):
+    def test_three_indicator_decision_ignores_legacy_auxiliaries(self):
+        from fx_system.standard_technicals import forecast, render_lines
+        from fx_system.technical_entry import describe as describe_timing
+        d, q, _ = inputs()
+        r = build_scheduled_outlook({'EURUSD':d}, {'EURUSD':q}, evaluated_at=CLOCK)['strategy_assessments'][0]
+        self.assertEqual(r['three_indicator_version'], 1)
+        self.assertEqual(refresh(deepcopy(r)), r)
+        self.assertTrue({'sma','rci','fibonacci'}.isdisjoint(r['technical_profile']))
+        self.assertIsNone(r['wave_price_plan']['extension_zone'])
+        self.assertIsNone(r['wave_price_plan']['pullback_zone'])
+        self.assertNotIn('RCI', '\n'.join(render_lines(r, presentation_version=3)))
+        self.assertNotIn('通常Fib', '\n'.join(render_lines(r, presentation_version=3)))
+        f = deepcopy(r['standard_inputs']['h1_setup'])
+        original = forecast(f, 'unconfirmed', bollinger_regimes=True, setup_synthesis=True,
+                            three_indicators=True)
+        f['sma'] = {}
+        f['rci'] = {}
+        stripped = forecast(f, 'unconfirmed', bollinger_regimes=True, setup_synthesis=True,
+                            three_indicators=True)
+        self.assertEqual(stripped, original)
+        with patch('fx_system.technical_entry.timing_signals', return_value=['rci9_extreme_recovery']), patch('fx_system.span_special.timing', return_value=[]):
+            self.assertNotEqual(describe_timing(r)['status'], 'conditions_observed')
+        legacy = deepcopy(r)
+        legacy.pop('three_indicator_version')
+        refresh(legacy)
+        self.assertEqual(refresh(deepcopy(legacy)), legacy)
+        self.assertIn('fibonacci', legacy['technical_profile'])
+
     def test_far_wave_target_cannot_hide_a_near_obstacle_in_saved_margin(self):
         from fx_system.standard_technicals import wave, _saved_distance_line
         d,q,_=inputs()
@@ -178,7 +206,7 @@ class StandardTechnicalTests(unittest.TestCase):
             self.assertEqual(swing['standard_inputs']['h1_setup']['timeframe'], 'h1')
             self.assertEqual(swing['standard_inputs']['m5_timing']['timeframe'], 'm5')
             for r in o['strategy_assessments']:
-                self.assertEqual(r['method_version'],METHOD);self.assertEqual(r['technical_profile'],{**NY_CLOSE_PROFILE,'span_model':{'periods':[9,26,52],'lag_intervals':26,'cloud_shift':0}})
+                self.assertEqual(r['method_version'],METHOD);self.assertEqual(r['three_indicator_version'],1);self.assertEqual(r['technical_profile'],{k:v for k,v in {**NY_CLOSE_PROFILE,'span_model':{'periods':[9,26,52],'lag_intervals':26,'cloud_shift':0}}.items() if k not in ('sma','rci','fibonacci')})
                 self.assertNotIn('span_model_version',r);self.assertNotIn('forecast_wave_version',r)
                 self.assertNotIn('DMA',json.dumps(r,ensure_ascii=False));self.assertNotIn('stochastic',json.dumps(r))
             b=build_strategy_report_export(json.dumps({'evaluated_at':CLOCK,'scheduled_outlook':o}).encode(),SOURCE)
@@ -212,7 +240,7 @@ class StandardTechnicalTests(unittest.TestCase):
         pending['standard_inputs']['base']=frame(b['bars'],'h4',CLOCK,False,calculation_version=3)
         refresh(pending);self.assertEqual(pending['assessment'],'evaluation_pending')
         self.assertNotEqual(pending['practical_review']['entry_status'],'paused')
-        old=deepcopy(r);old['standard_technical_version']=1;old.pop('practical_margin_version');old['practical_review'].pop('entry_status')
+        old=deepcopy(r);old.pop('three_indicator_version',None);old['standard_technical_version']=1;old.pop('practical_margin_version');old['practical_review'].pop('entry_status')
         old['trigger_timeframe']='m15'
         old['standard_inputs']['trigger']=deepcopy(d['standard_technical_frames']['m15'])
         refresh(old);self.assertNotIn('entry_status',old['practical_review'])
