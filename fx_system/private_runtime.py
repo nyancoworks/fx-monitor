@@ -195,6 +195,24 @@ def save_snapshot(root, run_id, source_commit):
     (root/'data/scenario-continuity.json').chmod(0o600)
     from .task_report import build_task_report
     task_report = build_task_report(strategy_report, compact, slot, continuity)
+    if (task_report['status'] == 'saved' and strategy_report.get('research_digest')
+            and isinstance(snapshot.get('scheduled_outlook'), dict)):
+        previous_ledger = None
+        try:
+            previous_task = json.loads(git(root, 'show', 'HEAD:data/task-report.json'))
+            if (previous_task.get('source') == previous_source
+                    and previous_task.get('snapshot_git_blob_sha') == previous_blob):
+                previous_ledger = previous_task.get('research_followup')
+        except (ValueError, OSError, TypeError):
+            pass
+        try:
+            from .research_followup import build as build_research_followup
+            task_report['research_followup'] = build_research_followup(
+                snapshot['scheduled_outlook'], strategy_report['research_digest'], previous_ledger)
+        except (KeyError, ValueError, TypeError, AttributeError, OverflowError):
+            task_report['research_followup'] = {
+                'schema': 'private_plan_followup_v1', 'evaluated_at': source['evaluated_at'],
+                'status': 'unavailable', 'anchors': []}
     (root/'data/task-report.json').write_text(json.dumps(task_report,ensure_ascii=False,sort_keys=True,allow_nan=False)+'\n')
     (root/'data/task-report.json').chmod(0o600)
     # Save a bounded diagnostic view in the same private Git push.
