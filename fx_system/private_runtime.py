@@ -237,9 +237,30 @@ def save_snapshot(root, run_id, source_commit):
     (root/'data/strategy-report.json').write_text(json.dumps(strategy_report, ensure_ascii=False,
                                                           sort_keys=True, allow_nan=False) + '\n')
     (root/'data/strategy-report.json').chmod(0o600)
-    git(root, 'add', '--', 'data/cache.json', 'data/latest.json', 'data/source.json', 'data/currency-strength.json', 'data/run-diagnostics.json', 'data/strategy-report.json', 'data/scenario-continuity.json', 'data/report-slot.json', 'data/task-report.json')
+    # One private research copy from the already restored H1 archive. It is
+    # independent of the canonical judgment and adds no provider request.
+    history_path = root/'data/time-history.json'
+    if history_path.is_symlink() or not history_path.resolve().is_relative_to(root):
+        raise ValueError('private history research path invalid')
+    if not history_path.exists():
+        try:
+            from .research_time_history import build as build_time_history
+            history = build_time_history(root/'.private-ny17/ny17-checkpoint.json',
+                                         source['evaluated_at'])
+            history_path.write_text(json.dumps(history, ensure_ascii=False,
+                                               sort_keys=True, allow_nan=False) + '\n')
+            history_path.chmod(0o600)
+        except (ValueError, KeyError, TypeError, OSError, OverflowError):
+            pass  # Research availability cannot block an otherwise valid save.
+    staged_paths = ['data/cache.json', 'data/latest.json', 'data/source.json',
+                    'data/currency-strength.json', 'data/run-diagnostics.json',
+                    'data/strategy-report.json', 'data/scenario-continuity.json',
+                    'data/report-slot.json', 'data/task-report.json']
+    if history_path.exists():
+        staged_paths.append('data/time-history.json')
+    git(root, 'add', '--', *staged_paths)
     staged = git(root, 'diff', '--cached', '--name-only').splitlines()
-    if not set(staged) <= {'data/cache.json', 'data/latest.json', 'data/source.json', 'data/currency-strength.json', 'data/run-diagnostics.json', 'data/strategy-report.json', 'data/scenario-continuity.json', 'data/report-slot.json', 'data/task-report.json'}:
+    if not set(staged) <= set(staged_paths):
         raise ValueError('unexpected staged private files')
     git(root, '-c', 'user.name=github-actions[bot]', '-c',
         'user.email=41898286+github-actions[bot]@users.noreply.github.com',
