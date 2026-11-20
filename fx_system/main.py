@@ -569,6 +569,24 @@ def _refresh(ny=None):
     else:
         from .historical_shape_reference import build_references
         result['historical_shape_references'] = build_references(cache, result['scheduled_outlook'], final_now)
+        # Optional, bounded historical H1 research. The canonical assessment
+        # above is frozen; recovered rows never enter the decision feed.
+        request_path = CACHE.parent/'research-gap-request.json'
+        receipt_path = CACHE.parent/'research-gap-audit.json'
+        if (request_path.is_file() and not request_path.is_symlink()
+                and not receipt_path.is_symlink() and time.time() >= cache.get('_primary_retry_after_until', 0)):
+            try:
+                from .research_gap_probe import probe
+                configured = json.loads(request_path.read_bytes())
+                previous = json.loads(receipt_path.read_bytes()) if receipt_path.exists() else None
+                audit, _ = probe(configured, previous, session, key, budget,
+                                 int(time.time()), minute_quota, deadline)
+                receipt_path.write_text(json.dumps(audit, sort_keys=True, allow_nan=False)+'\n')
+                receipt_path.chmod(0o600)
+            except (ValueError, KeyError, TypeError, OSError, RuntimeError, requests.RequestException):
+                pass  # Research cannot block scheduled monitoring.
+        result['api_budget'] = {**budget, 'remaining_safe_requests':
+                                max(0, DAILY_LIMIT-DAILY_RESERVE-budget['credits'])}
         CACHE.write_text(json.dumps(cache,separators=(",",":")))
         OUTPUT.write_text(json.dumps(result,separators=(",",":")))
     print("READY_PAIRS",len(result["ready_pairs"]),"/",len(PAIRS),flush=True)
