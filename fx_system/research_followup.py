@@ -5,15 +5,75 @@ high/low; local and thesis withdrawals require their respective closes. This
 research ledger cannot establish an order within one candle or a trade fill.
 """
 from copy import deepcopy
+import datetime as dt
 import hashlib
 import json
 import math
+from zoneinfo import ZoneInfo
 
 SCHEMA = 'private_plan_followup_v1'
 LIMIT = 1024
 HORIZON = {'swing': 72 * 3600, 'daytrade': 24 * 3600}
 TRIGGER = {'swing': ('m15', 900), 'daytrade': ('m5', 300)}
 BASE = {'swing': ('h4', 14400), 'daytrade': ('h1', 3600)}
+NY = ZoneInfo('America/New_York')
+
+
+def _nominal_market_closed(stamp):
+    """Conventional FX weekend, not evidence of a provider's actual session."""
+    local = dt.datetime.fromtimestamp(stamp, NY)
+    weekday = local.weekday()
+    return (weekday == 5 or (weekday == 4 and local.hour >= 17)
+            or (weekday == 6 and local.hour < 17))
+
+
+def _advance_market_coverage(anchor, record, clock):
+    """Separate observable candle duration from the frozen wall-clock ledger."""
+    tf, seconds = TRIGGER[anchor['strategy']]
+    initial = ((anchor['start_at'] + seconds - 1) // seconds) * seconds
+    coverage = anchor.setdefault('market_coverage', {
+        'version': 1, 'calendar': 'nominal_ny_fx_weekend_v1',
+        'next_open': initial, 'open_observed': 0, 'open_missing': 0,
+        'closed_empty': 0, 'closed_observed': 0,
+        'first_observed_close': None, 'last_observed_close': None})
+    if (coverage.get('version') != 1 or type(coverage.get('next_open')) is not int
+            or not initial <= coverage['next_open'] <= anchor['until'] + seconds):
+        coverage['status'] = 'invalid_prior_coverage'
+        return
+    trigger = record.get('standard_inputs', {}).get('trigger', {})
+    if trigger.get('timeframe') != tf or trigger.get('verified') is not True:
+        coverage['status'] = 'input_unverified'
+        return
+    bars = {bar['timestamp']: bar for bar in trigger.get('bars', [])
+            if isinstance(bar, dict) and type(bar.get('timestamp')) is int}
+    through = min(clock, anchor['until'])
+    stamp = coverage['next_open']
+    while stamp + seconds <= through:
+        closed = _nominal_market_closed(stamp)
+        present = stamp in bars
+        name = ('closed_observed' if present else 'closed_empty') if closed else (
+            'open_observed' if present else 'open_missing')
+        coverage[name] += 1
+        if present:
+            coverage['first_observed_close'] = coverage['first_observed_close'] or stamp + seconds
+            coverage['last_observed_close'] = stamp + seconds
+        stamp += seconds
+    coverage['next_open'] = stamp
+    coverage['observed_trigger_hours'] = round(
+        (coverage['open_observed'] + coverage['closed_observed']) * seconds / 3600, 3)
+    coverage['evaluated_through'] = through
+    if clock < anchor['until']:
+        coverage['status'] = 'tracking'
+    elif coverage['closed_observed']:
+        coverage['status'] = 'nominal_calendar_conflict'
+    elif coverage['open_missing'] and coverage['closed_empty']:
+        coverage['status'] = 'closed_weekend_and_unverified_open_hours'
+    elif coverage['open_missing']:
+        coverage['status'] = 'unverified_open_hours'
+    elif coverage['closed_empty']:
+        coverage['status'] = 'calendar_window_interrupted_by_weekend'
+    else:
+        coverage['status'] = 'calendar_window_observed'
 
 
 def _price(value):
@@ -162,6 +222,7 @@ def build(outlook, digest, previous=None):
     for anchor in anchors:
         if anchor['status'] == 'tracking':
             _advance(anchor, records[anchor['pair'], anchor['strategy']], clock)
+        _advance_market_coverage(anchor, records[anchor['pair'], anchor['strategy']], clock)
     result = {'schema': SCHEMA, 'evaluated_at': clock, 'status': 'saved',
               'scope': 'saved_candles_not_trade_or_profit',
               'lineage': 'continued' if prior else 'initialized_without_prior',
