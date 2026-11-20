@@ -9,9 +9,24 @@ from .economic_calendar_report import calendar_lines
 from .report_plan_comparison import saved_plan_comparison, comparison_explanations
 
 
-def _ordered_reviews(outlook, *, selection_version=4):
+def _path_room(record):
+    """Saved obstacle distance relative to the local structural level, not entry RR."""
+    plan = record.get('wave_price_plan') or {}
+    recent = record.get('trigger_price_review') or {}
+    if (plan.get('status') != 'available' or recent.get('status') != 'observed_reference'
+            or record.get('direction') not in ('long', 'short')):
+        return None
+    close, local, room = (recent.get('saved_close'), plan.get('local_setup_failure'),
+                          recent.get('first_obstacle_reward'))
+    if any(type(x) not in (int, float) or not math.isfinite(x) for x in (close, local, room)):
+        return None
+    distance = (1 if record['direction'] == 'long' else -1) * (close - local)
+    return room / distance if distance > 0 and room > 0 else None
+
+
+def _ordered_reviews(outlook, *, selection_version=5):
     """All reviews; grade first, then headroom in matching contexts."""
-    if type(selection_version) is not int or selection_version not in (1, 2, 3, 4):
+    if type(selection_version) is not int or selection_version not in (1, 2, 3, 4, 5):
         raise ValueError('unsupported saved report selection version')
     priority = {(c['pair'], c['strategy']): i for i, c in enumerate(outlook.get('strategy_candidates', []))}
     canonical_order={(r['pair'],r['strategy']):i for i,r in enumerate(outlook['strategy_assessments'])}
@@ -41,10 +56,24 @@ def _ordered_reviews(outlook, *, selection_version=4):
         ranked = sorted(members, key=lambda item: -item[2])
         for (index, _, _), (_, record, _) in zip(members, ranked):
             ordered[index] = record
+    # New Murphy-profile presentation only. A/B/C and practical status retain
+    # precedence. A continuing SB/Span phase comes next; saved path geometry
+    # breaks ties before observed reaction. The latter cannot turn a nearby
+    # obstacle into a favorable path. Old saved selection versions remain exact.
+    if (selection_version == 5 and ordered
+            and all(r.get('three_indicator_version') == 1 for r in ordered)):
+        def priority(record):
+            room = _path_room(record)
+            return (practicality(record), 'ABC'.index(record['grade']),
+                    presentation_pending(record),
+                    record.get('technical_outlook', {}).get('forecast', {}).get('phase') != 'continuation',
+                    room is None, -room if room is not None else 0,
+                    record.get('scenario_conditions', {}).get('status') != 'conditions_observed')
+        ordered.sort(key=priority)
     return ordered
 
 
-def report_records(outlook, *, selection_version=4):
+def report_records(outlook, *, selection_version=5):
     """Up to three per strategy; do not change any saved assessment."""
     ordered = _ordered_reviews(outlook, selection_version=selection_version)
     if selection_version>=3:
@@ -94,7 +123,7 @@ def _label(r):
 
 
 def render_strategy_report(snapshot, *, include_all_reviews=False, complete_evidence=False,
-                           selection_version=4, comparison_explanation_version=1,
+                           selection_version=5, comparison_explanation_version=1,
                            presentation_version=1):
     if type(presentation_version) is not int or presentation_version not in (1, 2, 3):
         raise ValueError('unsupported report presentation version')
@@ -115,11 +144,13 @@ def render_strategy_report(snapshot, *, include_all_reviews=False, complete_evid
     lines = [f"保存評価：{_clock(snapshot['evaluated_at'])}（保存値に基づく判断）",
              f"{len(rows)}戦略：検討{counts['review']}（A{grades['A']}/B{grades['B']}/C{grades['C']}）｜見送り{counts['skip']}｜評価保留{counts['evaluation_pending']}",
              ('A/B/Cはシナリオの優位性・完成度。同評価では具体的な待つ条件を示せる候補を先に掲載。条件の組み直し・再試し失敗・確認状況不明の候補も評価を維持する。同じ確認段階と反対根拠の候補間で保存価格の余地を比較する。'
-              if selection_version in (2,3,4) else
+              if selection_version in (2,3,4,5) else
               'A/B/Cはシナリオの優位性・完成度。同評価・同じ確認段階と反対根拠の候補間で保存価格の余地を比較し、比較条件が異なる候補の掲載枠は維持する。'),
              '参考RRは保存価格基準で、スプレッド・手数料・滑りを含まない。']
     if any(r.get('method_version') in ('contextual_scenario_review_v10_technical_wave','contextual_scenario_review_v11_technical_evolution','contextual_scenario_review_v12_technical_forecast') for r in rows):
         lines[2]='A/B/Cは基準足のテクニカル見通しと波の価格計画の完成度。局所PAの観測や売買許可とは別。見通し→押し戻り→経路目標・条件付き拡張→仕掛け確認の順に読む。同じ確認段階と反対根拠の候補だけを比較し、RRだけで順位を上げない。'
+    if selection_version == 5 and rows and all(r.get('three_indicator_version') == 1 for r in rows):
+        lines[2]='A/B/Cと実用状態を先に見て、同段階ではSB＋スパンモデルの継続局面、手前の節目と局所停止参考の相対距離、確認足の反応観測で掲載順を決める。距離は仕掛けRRや売買許可ではない。'
     if selection_version>=3:
         if any(r.get('technical_interpretation_version')==1 for r in rows):
             lines[3]='大局撤回と目標までの保存価格の距離比は幾何学的参考。実際の仕掛け価格・損失幅・費用込みRRは未確定。'
