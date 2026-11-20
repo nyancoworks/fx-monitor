@@ -65,7 +65,7 @@ class StrategyReportExportTests(unittest.TestCase):
     def test_selection_versions_restore_exact_saved_text_and_reject_mislabelled_versions(self):
         saved = snapshot()
         bundle = build_strategy_report_export(json.dumps(saved).encode(), SOURCE)
-        self.assertEqual(bundle['selection_version'], 4)
+        self.assertEqual(bundle['selection_version'], 5)
         restore_strategy_report_export(bundle, SOURCE, bundle['snapshot_git_blob_sha'])
         legacy = deepcopy(bundle)
         legacy.pop('selection_version')
@@ -75,7 +75,7 @@ class StrategyReportExportTests(unittest.TestCase):
         legacy['review_context_text'] = render_strategy_report(
             saved, include_all_reviews=True, complete_evidence=True, selection_version=1)
         restore_strategy_report_export(legacy, SOURCE, bundle['snapshot_git_blob_sha'])
-        for version in (True, 0, 5, '2', 1):
+        for version in (True, 0, 6, '2', 1):
             with self.assertRaises(ValueError):
                 restore_strategy_report_export({**bundle, 'selection_version': version},
                                                SOURCE, bundle['snapshot_git_blob_sha'])
