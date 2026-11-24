@@ -369,6 +369,10 @@ def main():
         if args.stage in ('restore', 'archive') and rc == 0:
             # Commands emit a single JSON object; stderr must not be mixed into it.
             text = (logs/(args.stage+'.log')).read_text().strip()
+            # The transport emits a fixed capacity warning on stderr. The private
+            # capture combines streams, so remove only that exact known line.
+            warning = "::warning::NY17 archive at 75 percent capacity; review lossless retention before hard limit"
+            text = "\n".join(line for line in text.splitlines() if line != warning).strip()
             value = json.loads(text)
             expected = {'restored'} if args.stage == 'restore' else {'persisted', 'unchanged'}
             if value.get('status') not in expected:
