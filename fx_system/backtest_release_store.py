@@ -11,6 +11,7 @@ import gzip
 import hashlib
 import json
 import re
+import time
 from urllib.parse import urlparse, quote
 import zlib
 
@@ -84,7 +85,7 @@ def encode_bundle(key, partitions, now):
 
 
 class GitHubStorage:
-    """No retries/implicit redirects; count every HTTP request including redirects."""
+    """Bounded GET retries; count every HTTP request including redirects."""
     def __init__(self, token, *, session=None):
         if not token:
             raise ValueError('private writer credential required')
@@ -108,7 +109,9 @@ class GitHubStorage:
                    'Accept':'application/octet-stream' if binary else 'application/vnd.github+json'}
         if raw is not None:
             headers['Content-Type'] = 'application/octet-stream'
-        for hop in range(2):
+        hop = 0
+        retries = 0
+        while hop < 2:
             self.reserve(1)
             self.calls += 1
             self.last_status = 0
@@ -119,6 +122,12 @@ class GitHubStorage:
                 rate = response.headers.get('X-RateLimit-Remaining')
                 if rate is not None:
                     self.remaining = int(rate)
+                if method == 'GET' and response.status_code in (500, 502, 503, 504) and retries < 2:
+                    retries += 1
+                    response.close()
+                    self.reserve(1)
+                    time.sleep(2 ** retries)
+                    continue
                 if response.status_code in (301,302,303,307,308):
                     location = response.headers.get('Location','')
                     parsed = urlparse(location)
@@ -127,6 +136,7 @@ class GitHubStorage:
                             parsed.username or parsed.password or parsed.port not in (None,443)):
                         raise ValueError('unexpected storage redirect')
                     url, headers = location, {'Accept':'application/octet-stream'}
+                    hop += 1
                     continue
                 if response.status_code==404 and missing:
                     return None
