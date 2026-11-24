@@ -192,14 +192,26 @@ class TransportTests(unittest.TestCase):
         with self.assertRaises(ValueError):GitHubStorage('synthetic-token',session=s).request('GET','/releases/assets/1',binary=True)
         self.assertEqual(len(s.calls),1)
 
-    def test_rate_reserve_and_no_retry(self):
+    def test_rate_reserve(self):
         s=Session([Response(headers={'X-RateLimit-Remaining':'200'})]);a=GitHubStorage('synthetic-token',session=s)
         a.request('GET','')
         with self.assertRaises(ValueError):a.request('GET','')
         self.assertEqual(len(s.calls),1)
-        s=Session([Response(503)])
-        with self.assertRaises(ValueError):GitHubStorage('synthetic-token',session=s).request('GET','')
-        self.assertEqual(len(s.calls),1)
+    @patch('fx_system.backtest_release_store.time.sleep')
+    def test_transient_get_retry(self, sleep):
+        s=Session([Response(500),Response(503),Response()]);a=GitHubStorage('synthetic-token',session=s)
+        self.assertEqual(a.request('GET',''),{})
+        self.assertEqual(a.calls,3)
+        self.assertEqual([x.args[0] for x in sleep.call_args_list],[2,4])
+        s=Session([Response(503)]*3);a=GitHubStorage('synthetic-token',session=s)
+        with self.assertRaises(ValueError):a.request('GET','')
+        self.assertEqual(a.calls,3)
+
+    def test_write_failure_not_retried(self):
+        for method in ('UPLOAD','PATCH','DELETE'):
+            s=Session([Response(503)]);a=GitHubStorage('synthetic-token',session=s)
+            with self.assertRaises(ValueError):a.request(method,'/synthetic')
+            self.assertEqual(a.calls,1)
 
 
 if __name__=='__main__':unittest.main()
