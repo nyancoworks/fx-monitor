@@ -19,6 +19,12 @@ BASE = {'swing': ('h4', 14400), 'daytrade': ('h1', 3600)}
 NY = ZoneInfo('America/New_York')
 
 
+def _timeframes(record):
+    if record.get('daily_swing_version') == 1 and record['strategy'] == 'swing':
+        return ('h1', 3600), ('d1', 86400)
+    return TRIGGER[record['strategy']], BASE[record['strategy']]
+
+
 def _nominal_market_closed(stamp):
     """Conventional FX weekend, not evidence of a provider's actual session."""
     local = dt.datetime.fromtimestamp(stamp, NY)
@@ -29,7 +35,7 @@ def _nominal_market_closed(stamp):
 
 def _advance_market_coverage(anchor, record, clock):
     """Separate observable candle duration from the frozen wall-clock ledger."""
-    tf, seconds = TRIGGER[anchor['strategy']]
+    (tf, seconds), _ = _timeframes(anchor)
     initial = ((anchor['start_at'] + seconds - 1) // seconds) * seconds
     coverage = anchor.setdefault('market_coverage', {
         'version': 1, 'calendar': 'nominal_ny_fx_weekend_v1',
@@ -104,17 +110,23 @@ def _anchor(record, digest):
     clock = record['evaluated_at']
     identity = [record['pair'], strategy, record['direction'],
                 plan.get('reference_close_timestamp'), levels]
+    timing_profile = {'daily_swing_version': 1} if record.get('daily_swing_version') == 1 else {}
+    if timing_profile:
+        identity.append(timing_profile)
+    (_, seconds), _ = _timeframes(record)
     key = hashlib.sha256(json.dumps(identity, sort_keys=True,
                                     separators=(',', ':')).encode()).hexdigest()
     scenario_identity = [record['pair'], strategy, record['direction'],
                          plan.get('start_pivot'), plan.get('end_pivot')]
+    if timing_profile:
+        scenario_identity.append(timing_profile)
     if not isinstance(plan.get('start_pivot'), dict) or not isinstance(plan.get('end_pivot'), dict):
         scenario_identity.append(plan.get('reference_close_timestamp'))
     scenario_key = hashlib.sha256(json.dumps(scenario_identity, sort_keys=True,
                                              separators=(',', ':')).encode()).hexdigest()
     daily = next((item for item in digest['observations']
                   if item['pair'] == record['pair'] and item['timeframe'] == 'd1'), None)
-    return {'key': key, 'scenario_key': scenario_key,
+    return {**timing_profile, 'key': key, 'scenario_key': scenario_key,
             'pair': record['pair'], 'strategy': strategy,
             'direction': record['direction'], 'start_at': clock,
             'until': clock + HORIZON[strategy], 'levels': levels,
@@ -123,8 +135,7 @@ def _anchor(record, digest):
                 ('basic_count', 'equal_time_count', 'cycle_count'))),
             'reference_margin_sufficient': record.get('practical_review', {}).get(
                 'reference_margin_sufficient'),
-            'events': {}, 'next_trigger_open': ((clock + TRIGGER[strategy][1] - 1)
-                                                // TRIGGER[strategy][1] * TRIGGER[strategy][1]),
+            'events': {}, 'next_trigger_open': ((clock + seconds - 1) // seconds * seconds),
             'last_base_close': None, 'missing_trigger_bars': 0,
             'base_gap': False, 'status': 'tracking'}
 
@@ -132,9 +143,8 @@ def _anchor(record, digest):
 def _advance(anchor, record, clock):
     if anchor['status'] != 'tracking':
         return
-    strategy, direction = anchor['strategy'], anchor['direction']
-    tf, seconds = TRIGGER[strategy]
-    base_tf, base_seconds = BASE[strategy]
+    direction = anchor['direction']
+    (tf, seconds), (base_tf, base_seconds) = _timeframes(anchor)
     inputs = record.get('standard_inputs', {})
     trigger, base = inputs.get('trigger', {}), inputs.get('base', {})
     if (trigger.get('timeframe') != tf or base.get('timeframe') != base_tf or
@@ -165,7 +175,10 @@ def _advance(anchor, record, clock):
         if not isinstance(bar, dict) or type(bar.get('timestamp')) is not int:
             anchor['status'] = 'input_unverified'
             return
-        closed = bar['timestamp'] + base_seconds
+        closed = bar.get('session_end_utc') if base_tf == 'd1' else bar['timestamp'] + base_seconds
+        if type(closed) is not int:
+            anchor['status'] = 'input_unverified'
+            return
         if not anchor['start_at'] < closed <= through:
             continue
         last = anchor['last_base_close']

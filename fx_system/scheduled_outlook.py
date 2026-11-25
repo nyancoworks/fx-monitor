@@ -82,7 +82,7 @@ def _one(pair, data, source_quality, evaluated_at, assessment_method=None):
     data, source_quality = _dict(data), _dict(source_quality)
     if data.get('standard_technical_version')==1:
         from .standard_technicals import pair_row
-        return pair_row(pair,data,source_quality,evaluated_at)
+        return pair_row(pair,data,source_quality,evaluated_at,daily_swing=data.get('daily_swing_version') == 1)
     dq = _dict(data.get("decision_quality"))
     tfs = _dict(dq.get("timeframes"))
     published = _dict(source_quality.get("timeframes"))

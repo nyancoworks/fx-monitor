@@ -54,7 +54,7 @@ def describe(record):
     multi = record.get('multi_timing_version') in (1, 2, 3)
     if multi:
         result.update(basis=MULTI_BASIS, route='multi_technical_recovery', scope='alternative_technical_timing')
-    if tf == 'h1':
+    if tf == 'h1' and record.get('daily_swing_version') != 1:
         result.update(basis='h1_price_reaction_v1', route='continuation_breakout',
                       scope='h1_price_reaction_with_rci_context')
     if record.get('expiry',{}).get('status')=='withdrawn':return unavailable('旧経路は終了。新しい価格計画を待つ','withdrawn')
@@ -71,7 +71,7 @@ def describe(record):
     if (type(stop) not in (int,float) or type(target) not in (int,float)
             or not (stop<price<target if direction=='long' else target<price<stop)):
         return unavailable('方向仮説は保持するが、経路目標・撤回と確認足価格の関係を再評価する')
-    if tf == 'h1':
+    if tf == 'h1' and record.get('daily_swing_version') != 1:
         if len(rows) < 4 or any(b['timestamp']-a['timestamp'] != sec
                                 for a,b in zip(rows[-4:], rows[-3:])):
             return unavailable('連続するH1確定足が不足')
@@ -112,7 +112,7 @@ def describe(record):
         labels = {**SIGNAL_LABELS, 'sb_one_sigma_cross': '終値が'+band_cross+'る動き'}
         labels['sb_one_sigma_hold'] = '終値が'+('＋1σより上' if direction == 'long' else '−1σより下')+'を維持する動き'
         labels['span_blue_recovery'] = '終値が青色スパンの'+('上' if direction == 'long' else '下')+'へ回復する動き'
-        frame = {'m15':'15分足', 'm5':'5分足'}[tf]
+        frame = {'m15':'15分足', 'm5':'5分足', 'h1':'1時間足'}[tf]
         wait = ('1時間足の調整後、終値が'+band_cross+'るのを待つ' if pullback else
                 'RCI9反転・MACD交差・終値が'+band_cross+'る動きのいずれかを待つ')
         if current:
