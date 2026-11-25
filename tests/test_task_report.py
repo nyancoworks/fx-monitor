@@ -40,7 +40,7 @@ class TaskReportTests(unittest.TestCase):
         line=next(x for x in out['report_text'].splitlines() if x.startswith('- **価格の流れ**'))
         self.assertIn('保存M15終値 1.00（11/19 10:45 JST） → 最初の節目 0.9（0.4 pips先） → 波の目標 0.8（72.3 pips先）',line)
         self.assertNotIn('手前余地に注意',line)
-        self.assertIn('手前の節目が近い',out['sections']['swing'][0]['text'])
+        self.assertIn('手前の節目までの距離は大局撤回までの距離以下',out['sections']['swing'][0]['text'])
         self.assertNotIn('／0.9／経路目標：',line)
 
     def test_both_top3_survive_missing_supplementary_checks(self):
@@ -112,7 +112,7 @@ class TaskReportTests(unittest.TestCase):
         out=build_task_report(r,s,slot,c)
         self.assertNotIn('## まず見る',out['report_text'])
         self.assertEqual(out['report_text'].count('🟡 EUR/USD'),2)
-        self.assertIn('手前の節目が近い',out['sections']['swing'][0]['text'])
+        self.assertIn('手前の節目までの距離は大局撤回までの距離以下',out['sections']['swing'][0]['text'])
         self.assertLess(out['report_text'].index('## 通貨強弱'),out['report_text'].index('## 短期スイング TOP3'))
         self.assertEqual(len(out['sections']['swing']),3)
 

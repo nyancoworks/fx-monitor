@@ -3,7 +3,7 @@ from copy import deepcopy
 import unittest
 from unittest.mock import patch
 
-from fx_system.research_followup import build
+from fx_system.research_followup import build, build_top3_trace
 
 START = 360001
 
@@ -41,6 +41,30 @@ DIGEST = {'observations':[{'pair':'EURUSD','timeframe':'d1',
 
 
 class ResearchFollowupTests(unittest.TestCase):
+    def test_top3_listing_links_to_a_later_observed_plan_without_resetting_rank(self):
+        waiting = record(START, observed=False)
+        waiting['reference_levels'] = {'structural_target': 100.0004}
+        rows = {'daytrade': [{'pair': 'EURUSD'}]}
+        opening = outlook(START, waiting)
+        trace = build_top3_trace(opening, rows, build(opening, DIGEST))
+        listed = trace['entries'][0]
+        self.assertEqual(listed['first_obstacle_pips_at_listing'], 4)
+        self.assertEqual(listed['condition_at_listing'], 'waiting')
+        self.assertNotIn('fixed_plan_key', listed)
+        later = outlook(START + 3600, record(START + 3600))
+        plans = build(later, DIGEST)
+        linked = build_top3_trace(later, {}, plans, trace)['entries'][0]
+        self.assertEqual(linked['listed_at'], START)
+        self.assertEqual(linked['rank'], 1)
+        self.assertEqual(linked['fixed_plan_key'], plans['anchors'][0]['key'])
+
+    def test_top3_does_not_link_to_price_plan_observed_before_listing(self):
+        past = build(outlook(START, record(START)), DIGEST)
+        now = START + 3600
+        rows = {'daytrade': [{'pair': 'EURUSD'}]}
+        trace = build_top3_trace(outlook(now, record(now, observed=False)), rows, past)
+        self.assertNotIn('fixed_plan_key', trace['entries'][0])
+
     def test_complete_candle_path_and_same_bar_order_unknown(self):
         with patch.dict('fx_system.research_followup.HORIZON', daytrade=3600):
             initial=build(outlook(START,record(START)),DIGEST)
