@@ -196,8 +196,10 @@ class StandardTechnicalTests(unittest.TestCase):
 
     def test_32_new_records_export_restore_and_no_legacy_generation(self):
         for sign in (1,-1):
-            d,q,_=inputs(sign)
+            d,q,frames=inputs(sign)
             d['daily_swing_version'] = 1
+            prepare(d, frames, frames, q)
+            self.assertEqual(set(d['standard_technical_frames']), {'w1', 'd1', 'h1', 'm5'})
             o=build_scheduled_outlook({p:deepcopy(d) for p in __import__('fx_system.monitor_pairs',fromlist=['PAIR_KEYS']).PAIR_KEYS},
                 {p:q for p in __import__('fx_system.monitor_pairs',fromlist=['PAIR_KEYS']).PAIR_KEYS},evaluated_at=CLOCK)
             self.assertEqual(validate_strategy_snapshot({'evaluated_at':CLOCK,'scheduled_outlook':o}),[])

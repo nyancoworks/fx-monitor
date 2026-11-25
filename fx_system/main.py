@@ -433,8 +433,8 @@ def _refresh(ny=None):
         data["technical"]={tf:technical(indicator_frames[tf]) for tf in ("m5","m15","h1","h4","d1","w1")}
         # Current standard-only profile from verified retained candles.
         # No new provider requests or changes to the collection budget.
-        refresh_strategy_indicators(data,verified,indicator_frames,quality,{})
         data['daily_swing_version'] = 1
+        refresh_strategy_indicators(data,verified,indicator_frames,quality,{})
         data['standard_technical_health'] = indicator_health(data['standard_technical_frames'])
         q=result["quality"][name]
         q.update({"ok":quality["ready"] and all(quality["timeframes"][tf]["ok"] for tf in ("m5","h1","h4","d1")),"decision_data_ready":quality["ready"],
@@ -570,39 +570,6 @@ def _refresh(ny=None):
     else:
         from .historical_shape_reference import build_references
         result['historical_shape_references'] = build_references(cache, result['scheduled_outlook'], final_now)
-        # Optional, bounded historical H1 research. The canonical assessment
-        # above is frozen; recovered rows never enter the decision feed.
-        request_path = CACHE.parent/'research-gap-request.json'
-        receipt_path = CACHE.parent/'research-gap-audit.json'
-        if (request_path.is_file() and not request_path.is_symlink()
-                and not receipt_path.is_symlink() and time.time() >= cache.get('_primary_retry_after_until', 0)):
-            try:
-                from .research_gap_probe import probe
-                configured = json.loads(request_path.read_bytes())
-                previous = json.loads(receipt_path.read_bytes()) if receipt_path.exists() else None
-                audit, _ = probe(configured, previous, session, key, budget,
-                                 int(time.time()), minute_quota, deadline)
-                receipt_path.write_text(json.dumps(audit, sort_keys=True, allow_nan=False)+'\n')
-                receipt_path.chmod(0o600)
-            except (ValueError, KeyError, TypeError, OSError, RuntimeError, requests.RequestException):
-                pass  # Research cannot block scheduled monitoring.
-        result['api_budget'] = {**budget, 'remaining_safe_requests':
-                                max(0, DAILY_LIMIT-DAILY_RESERVE-budget['credits'])}
-        # Separate research-only bid-tick presence check. Never join quotes
-        # from different feeds into canonical H1 or scenario assessments.
-        backup_request = CACHE.parent/'research-backup-request.json'
-        backup_receipt = CACHE.parent/'research-backup-audit.json'
-        if (backup_request.is_file() and not backup_request.is_symlink()
-                and not backup_receipt.is_symlink() and time.monotonic()+12 < deadline):
-            try:
-                from .research_backup_probe import probe as backup_probe
-                configured = json.loads(backup_request.read_bytes())
-                previous = json.loads(backup_receipt.read_bytes()) if backup_receipt.exists() else None
-                audit, _ = backup_probe(configured, previous, session, int(time.time()), deadline)
-                backup_receipt.write_text(json.dumps(audit, sort_keys=True, allow_nan=False)+'\n')
-                backup_receipt.chmod(0o600)
-            except (ValueError, KeyError, TypeError, OSError, RuntimeError, requests.RequestException):
-                pass  # Research cannot block regular monitoring.
         CACHE.write_text(json.dumps(cache,separators=(",",":")))
         OUTPUT.write_text(json.dumps(result,separators=(",",":")))
     print("READY_PAIRS",len(result["ready_pairs"]),"/",len(PAIRS),flush=True)

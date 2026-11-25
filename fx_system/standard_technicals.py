@@ -78,9 +78,10 @@ def frame(rows,tf,clock,verified,calendar=None,calculation_version=1):
 def prepare(data,verified,indicator_frames,quality):
     clock=quality.get('evaluated_at')
     data['standard_technical_version']=1
+    timeframes = ('w1', 'd1', 'h1', 'm5') if data.get('daily_swing_version') == 1 else SECONDS
     data['standard_technical_frames']={tf:frame(indicator_frames[tf],tf,clock,
         quality.get('timeframes',{}).get(tf,{}).get('ok') is True,
-        quality.get('timeframes',{}).get(tf,{}).get('calendar'),calculation_version=3) for tf in SECONDS}
+        quality.get('timeframes',{}).get(tf,{}).get('calendar'),calculation_version=3) for tf in timeframes}
     # No retired indicator observations survive in a newly generated market view.
     for key in ('advisory_indicators','indicator_research','dinapoli_research','dinapoli_indicator_reference',
                 'span_model_version','span_model_inputs','forecast_wave_inputs','base_evolution_inputs',

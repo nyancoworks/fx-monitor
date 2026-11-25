@@ -75,7 +75,7 @@ def build_diagnostics(snapshot_bytes, source, *, validation_log='', returncode=N
                 tf: {k: v for k, v in health.get(tf, {}).items()
                      if k in ('input_count', 'sma200_required', 'slope_required', 'shortfall',
                               'sma200_available', 'slope_available', 'verified')
-                     and type(v) in (int, bool)} for tf in ('h4', 'm15', 'h1', 'm5')}
+                     and type(v) in (int, bool)} for tf in ('w1', 'd1', 'h4', 'm15', 'h1', 'm5') if tf in health}
         reuse = data.get('indicator_history', {})
         if reuse:
             pairs[pair]['indicator_history'] = {
