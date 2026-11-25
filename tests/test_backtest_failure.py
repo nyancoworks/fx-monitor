@@ -23,10 +23,10 @@ class FailureTests(unittest.TestCase):
         class Session:
             def request(self,*args,**kwargs): return Response()
         api=GitHubStorage('synthetic-token',session=Session())
-        with self.assertRaises(ValueError) as error:
+        with patch('fx_system.backtest_release_store.time.sleep'), self.assertRaises(ValueError) as error:
             api.request('GET','')
         self.assertEqual(metadata(error.exception,'storage',api),
-            {'code':'http_failure','phase':'storage','requests':1,'http_status':503})
+            {'code':'http_failure','phase':'storage','requests':3,'http_status':503})
         with patch.dict('sys.modules', requests=SimpleNamespace(Timeout=TimeoutError,ConnectionError=ConnectionError)):
             self.assertEqual(metadata(ConnectionError('secret'),'storage')['code'],'connection')
 
