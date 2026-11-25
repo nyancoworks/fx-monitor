@@ -159,7 +159,8 @@ def save_snapshot(root, run_id, source_commit):
     source = {'source_repository': CODE_REPOSITORY, 'source_commit': source_commit,
               'run_id': int(run_id), 'evaluated_at': snapshot['evaluated_at']}
     for name in ('data/source.json', 'data/currency-strength.json', 'data/run-diagnostics.json',
-                 'data/strategy-report.json', 'data/scenario-continuity.json', 'data/report-slot.json', 'data/task-report.json'):
+                 'data/strategy-report.json', 'data/scenario-continuity.json', 'data/report-slot.json',
+                 'data/task-report.json', 'data/delivery-report.json'):
         path = root/name
         if path.is_symlink() or not path.resolve().is_relative_to(root):
             raise ValueError('private derived file path invalid')
@@ -193,7 +194,7 @@ def save_snapshot(root, run_id, source_commit):
         continuity['previous_data_commit']=git(root,'rev-parse','HEAD')
     (root/'data/scenario-continuity.json').write_text(json.dumps(continuity,ensure_ascii=False,sort_keys=True)+'\n')
     (root/'data/scenario-continuity.json').chmod(0o600)
-    from .task_report import build_task_report
+    from .task_report import build_delivery_report, build_task_report
     task_report = build_task_report(strategy_report, compact, slot, continuity)
     if (task_report['status'] == 'saved' and strategy_report.get('research_digest')
             and isinstance(snapshot.get('scheduled_outlook'), dict)):
@@ -231,6 +232,10 @@ def save_snapshot(root, run_id, source_commit):
                                    returncode=returncode, env=os.environ)
     (root/'data/run-diagnostics.json').write_bytes(diagnostic)
     (root/'data/run-diagnostics.json').chmod(0o600)
+    delivery = build_delivery_report(task_report, json.loads(diagnostic))
+    delivery_path = root/'data/delivery-report.json'
+    delivery_path.write_text(json.dumps(delivery, ensure_ascii=False, sort_keys=True) + '\n')
+    delivery_path.chmod(0o600)
     (root/'data/source.json').write_text(json.dumps(source, sort_keys=True) + '\n')
     (root/'data/currency-strength.json').write_text(json.dumps(compact, ensure_ascii=False, sort_keys=True,
                                                            allow_nan=False) + '\n')
@@ -255,7 +260,7 @@ def save_snapshot(root, run_id, source_commit):
     staged_paths = ['data/cache.json', 'data/latest.json', 'data/source.json',
                     'data/currency-strength.json', 'data/run-diagnostics.json',
                     'data/strategy-report.json', 'data/scenario-continuity.json',
-                    'data/report-slot.json', 'data/task-report.json']
+                    'data/report-slot.json', 'data/task-report.json', 'data/delivery-report.json']
     if history_path.exists():
         staged_paths.append('data/time-history.json')
     git(root, 'add', '--', *staged_paths)
