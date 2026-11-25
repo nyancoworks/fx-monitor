@@ -1,6 +1,6 @@
 import unittest
 from copy import deepcopy
-from fx_system.task_report import build_task_report
+from fx_system.task_report import build_delivery_report, build_task_report
 
 
 def inputs():
@@ -16,6 +16,21 @@ def inputs():
 
 
 class TaskReportTests(unittest.TestCase):
+    def test_delivery_omits_ledger_and_requires_matching_validation(self):
+        task = build_task_report(*inputs())
+        task['research_followup'] = 'x' * 300_000
+        diag = {**{k: task[k] for k in ('source', 'snapshot_git_blob_sha')},
+                'validation': {'passed': True}, 'pairs': dict.fromkeys(range(16))}
+        result = build_delivery_report(task, diag)
+        self.assertEqual(result['status'], 'saved')
+        self.assertEqual(result['report_text'], task['report_text'])
+        self.assertNotIn('research_followup', result)
+        for changed in ({'snapshot_git_blob_sha': 'c' * 40},
+                        {'validation': {'passed': False}}, {'pairs': {}}):
+            rejected = build_delivery_report(task, {**diag, **changed})
+            self.assertEqual(rejected['status'], 'unavailable')
+            self.assertIsNone(rejected['report_text'])
+
     def test_price_path_keeps_nearest_obstacle_caution_in_compact_format(self):
         r,s,slot,c=inputs()
         r['report_text']=r['report_text'].replace(

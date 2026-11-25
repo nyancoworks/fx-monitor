@@ -193,3 +193,25 @@ def build_task_report(report, strength, slot, continuity):
         return {'schema':'saved_task_report_v1', 'source':deepcopy(report.get('source')),
                 'snapshot_git_blob_sha':report.get('snapshot_git_blob_sha'),
                 'status':'unavailable', 'report_text':None, 'sections':{}}
+
+
+def build_delivery_report(task_report, diagnostic):
+    """Keep the notification input small and bind it to validated storage."""
+    source = task_report.get('source')
+    blob = task_report.get('snapshot_git_blob_sha')
+    target = task_report.get('target_scheduled_for')
+    text = task_report.get('report_text')
+    ready = (
+        task_report.get('status') == 'saved'
+        and type(target) is int and target > 0
+        and isinstance(text, str) and bool(text.strip())
+        and len(text.encode('utf-8')) <= 16_000
+        and diagnostic.get('source') == source
+        and diagnostic.get('snapshot_git_blob_sha') == blob
+        and diagnostic.get('validation', {}).get('passed') is True
+        and len(diagnostic.get('pairs', {})) == 16
+    )
+    return {'schema': 'saved_delivery_report_v1', 'source': source,
+            'snapshot_git_blob_sha': blob, 'target_scheduled_for': target,
+            'status': 'saved' if ready else 'unavailable',
+            'report_text': text if ready else None}
