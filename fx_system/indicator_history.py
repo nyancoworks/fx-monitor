@@ -70,8 +70,10 @@ def extend_from_archive(frames, checkpoint, pair, context, quality, now):
 def indicator_health(frames):
     """Counts and availability only; missing auxiliaries never veto a scenario."""
     result = {}
-    for tf in ('h4', 'm15', 'h1', 'm5'):
-        value = frames.get(tf, {})
+    for tf in ('w1', 'd1', 'h4', 'm15', 'h1', 'm5'):
+        if tf not in frames:
+            continue
+        value = frames[tf]
         count = len(value.get('bars', []))
         sma = value.get('sma', {}).get('200', {})
         result[tf] = {'input_count': count, 'sma200_required': 200,

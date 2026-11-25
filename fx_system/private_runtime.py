@@ -258,16 +258,6 @@ def save_snapshot(root, run_id, source_commit):
                     'data/report-slot.json', 'data/task-report.json']
     if history_path.exists():
         staged_paths.append('data/time-history.json')
-    research_audit = root/'data/research-gap-audit.json'
-    if research_audit.is_symlink() or not research_audit.resolve().is_relative_to(root):
-        raise ValueError('private research audit path invalid')
-    if research_audit.exists():
-        staged_paths.append('data/research-gap-audit.json')
-    backup_audit = root/'data/research-backup-audit.json'
-    if backup_audit.is_symlink() or not backup_audit.resolve().is_relative_to(root):
-        raise ValueError('private backup audit path invalid')
-    if backup_audit.exists():
-        staged_paths.append('data/research-backup-audit.json')
     git(root, 'add', '--', *staged_paths)
     staged = git(root, 'diff', '--cached', '--name-only').splitlines()
     if not set(staged) <= set(staged_paths):
