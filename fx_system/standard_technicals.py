@@ -335,7 +335,9 @@ def assess(pair,strategy,track,clock):
        'macro_context':deepcopy(track.get('macro_context',{})),
        'execution_authority':'none','advisory_only':True,'reference_timeframe':track['base_timeframe'],
        'trigger_timeframe':track['trigger_timeframe']}
-    if track['trigger_timeframe'] in ('m15', 'm5'):
+    if strategy == 'swing' and track['base_timeframe'] == 'd1':
+        r['daily_swing_version'] = 1
+    if track['trigger_timeframe'] in ('m15', 'm5') or 'daily_swing_version' in r:
         r['multi_timing_version'] = 3
         r['murphy_timing_context_version'] = 1
         r['scenario_completion_version'] = 1
@@ -378,9 +380,15 @@ def refresh(r):
     if 'technical_entry_version' in r and (type(r['technical_entry_version']) is not int or r['technical_entry_version']!=1):
         raise ValueError('unsupported technical entry interpretation')
     i=r['standard_inputs'];base=i['base'];trigger=i['trigger'];clock=r['evaluated_at'];tf=r['reference_timeframe'];tt=r['trigger_timeframe']
+    daily_swing = 'daily_swing_version' in r
+    if daily_swing and (type(r['daily_swing_version']) is not int
+                        or r['daily_swing_version'] != 1
+                        or (r['strategy'], tf, tt) != ('swing', 'd1', 'h1')
+                        or not three_indicators):
+        raise ValueError('unsupported daily swing interpretation')
     if i['evaluated_at']!=clock or base['evaluated_at']!=clock or trigger['evaluated_at']!=clock:raise ValueError('standard input clocks mismatch')
     if 'multi_timing_version' in r and (type(r['multi_timing_version']) is not int
-            or r['multi_timing_version'] not in (1, 2, 3) or tt not in ('m15', 'm5')):
+            or r['multi_timing_version'] not in (1, 2, 3) or (tt not in ('m15', 'm5') and not daily_swing)):
         raise ValueError('unsupported multi-technical timing version')
     setup = i.get('h1_setup')
     timing = i.get('m5_timing')
@@ -519,8 +527,11 @@ def refresh(r):
         active = False
     target=(p['retest_objective']['price'] if p.get('retest_objective') and sign*(p['retest_objective']['price']-p['reference_close'])>0 else
             p['extension_zone']['near'] if active and sign*(p['extension_zone']['near']-p['reference_close'])>0 else p['extension_zone']['far'] if active else None)
-    if 'swing_objective_version' in r:
-        if (type(r['swing_objective_version']) is not int
+    if daily_swing:
+        local_plan = wave(recent, direction, local_stop_version=2) if trigger.get('verified') is True else {}
+        p['local_setup_failure'] = local_plan.get('local_setup_failure')
+    if daily_swing or 'swing_objective_version' in r:
+        if not daily_swing and (type(r['swing_objective_version']) is not int
                 or r['swing_objective_version'] != 1 or not h1_primary):
             raise ValueError('unsupported swing objective interpretation')
         objective = p.get('retest_objective')
@@ -647,9 +658,10 @@ def refresh(r):
     return r
 
 
-def pair_row(pair,data,source_quality,clock):
+def pair_row(pair,data,source_quality,clock, *, daily_swing=False):
     frames=data['standard_technical_frames'];tracks={}
-    for strategy,base,trigger in (('swing','h4','m15'),('daytrade','h1','m5')):
+    swing_frames = ('d1', 'h1') if daily_swing else ('h4', 'm15')
+    for strategy,base,trigger in (('swing', *swing_frames), ('daytrade','h1','m5')):
         b=deepcopy(frames[base]);t=deepcopy(frames[trigger])
         for name,entry in ((base,b),(trigger,t)):
             if source_quality.get('timeframes',{}).get(name,{}).get('ok') is not True:
@@ -663,7 +675,7 @@ def pair_row(pair,data,source_quality,clock):
             'trigger_status':'candle_current','standard_inputs':{'evaluated_at':clock,'base':deepcopy(b),'trigger':deepcopy(t),'structure':structure},
             'reference_plan':{},'reference_levels':{},'scenario_explanation':{},'rci_observation':{},'indicator_context':{},
             'macro_context':{tf:{'verified':frames[tf]['verified'],'super_bollinger':frames[tf].get('super_bollinger'),'sma':frames[tf].get('sma')} for tf in ('w1','d1')}}
-        if strategy == 'swing':
+        if strategy == 'swing' and not daily_swing:
             for key, name in (('h1_setup', 'h1'), ('m5_timing', 'm5')):
                 extra = deepcopy(frames[name])
                 if source_quality.get('timeframes', {}).get(name, {}).get('ok') is not True:
@@ -761,7 +773,7 @@ def render_lines(r, *, presentation_version=1):
                  '局所停止：水準未確認')
     stop_line += '。仕掛けを再評価する水準で、大局撤回と別。成立価格・損失幅・費用は未確定'
     background = []
-    if r['strategy'] == 'swing' and r['trigger_timeframe'] == 'h1':
+    if r['strategy'] == 'swing' and r['trigger_timeframe'] == 'h1' and not r.get('daily_swing_version'):
         d1 = r.get('macro_context', {}).get('d1', {})
         sb = d1.get('super_bollinger') or {}
         slope = sb.get('centerline_direction') if d1.get('verified') and sb.get('status') == 'calculated' else None
@@ -796,7 +808,7 @@ def pair_context(records,clock, *, version=3):
         plans={k:{'direction':r['direction'],'grade':r['grade'],'phase':r['technical_outlook']['forecast']['phase'],
                   'condition_status':r['scenario_conditions']['status'],'wait':r['scenario_conditions']['summary'],
                   'withdrawal':r['invalidation'],'timeframe':r['reference_timeframe'],'target':r['reference_levels']['scenario_target']} for k,r in tracks.items()}
-        resolution=fs.get('timeframe','h4').upper()+'（スイング）：'+fs['primary_path']+'／H1（デイトレ）：'+fd['primary_path']+'。' if 'swing_setup_version' in s else 'H4：'+fs['primary_path']+'／H1：'+fd['primary_path']+'。'
+        resolution=fs.get('timeframe','h4').upper()+'（スイング）：'+fs['primary_path']+'／H1（デイトレ）：'+fd['primary_path']+'。' if 'swing_setup_version' in s or s.get('daily_swing_version') == 1 else 'H4：'+fs['primary_path']+'／H1：'+fd['primary_path']+'。'
         for key in ('swing','daytrade'):
             p=plans[key];x=p['withdrawal']['price'];price=f'{x:.8f}'.rstrip('0').rstrip('.') if x else '未確認'
             if version == 4:

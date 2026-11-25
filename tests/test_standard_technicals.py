@@ -197,6 +197,7 @@ class StandardTechnicalTests(unittest.TestCase):
     def test_32_new_records_export_restore_and_no_legacy_generation(self):
         for sign in (1,-1):
             d,q,_=inputs(sign)
+            d['daily_swing_version'] = 1
             o=build_scheduled_outlook({p:deepcopy(d) for p in __import__('fx_system.monitor_pairs',fromlist=['PAIR_KEYS']).PAIR_KEYS},
                 {p:q for p in __import__('fx_system.monitor_pairs',fromlist=['PAIR_KEYS']).PAIR_KEYS},evaluated_at=CLOCK)
             self.assertEqual(validate_strategy_snapshot({'evaluated_at':CLOCK,'scheduled_outlook':o}),[])
@@ -208,9 +209,13 @@ class StandardTechnicalTests(unittest.TestCase):
             from fx_system.strategy_report import report_records
             self.assertEqual(report_records(o),report_records(without_time))
             swing = next(r for r in o['strategy_assessments'] if r['strategy'] == 'swing')
-            self.assertEqual(swing['trigger_timeframe'], 'm15')
-            self.assertEqual(swing['standard_inputs']['h1_setup']['timeframe'], 'h1')
-            self.assertEqual(swing['standard_inputs']['m5_timing']['timeframe'], 'm5')
+            self.assertEqual(swing['daily_swing_version'], 1)
+            self.assertEqual(swing['reference_timeframe'], 'd1')
+            self.assertEqual(swing['trigger_timeframe'], 'h1')
+            self.assertEqual(swing['standard_inputs']['base']['timeframe'], 'd1')
+            self.assertEqual(swing['standard_inputs']['trigger']['timeframe'], 'h1')
+            self.assertNotIn('h1_setup', swing['standard_inputs'])
+            self.assertNotIn('m5_timing', swing['standard_inputs'])
             for r in o['strategy_assessments']:
                 self.assertEqual(r['method_version'],METHOD);self.assertEqual(r['three_indicator_version'],1);self.assertEqual(r['technical_profile'],{k:v for k,v in {**NY_CLOSE_PROFILE,'span_model':{'periods':[9,26,52],'lag_intervals':26,'cloud_shift':0}}.items() if k not in ('sma','rci','fibonacci')})
                 self.assertNotIn('span_model_version',r);self.assertNotIn('forecast_wave_version',r)
