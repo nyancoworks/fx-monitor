@@ -53,8 +53,8 @@ def _price_path(width, levels):
 def _price_and_caution(value):
     if not value:
         return None, None
-    for suffix, caution in (('｜手前余地に注意', '手前の節目が近い'),
-                            ('｜目標余地に注意', '波の目標までの余地に注意')):
+    for suffix, caution in (('｜手前余地に注意', '手前の節目までの距離は大局撤回までの距離以下'),
+                            ('｜目標余地に注意', '波の目標までの距離は大局撤回までの距離以下')):
         if value.endswith(suffix):
             return value[:-len(suffix)], caution
     return value, None

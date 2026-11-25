@@ -86,6 +86,17 @@ def _price(value):
     return type(value) in (int, float) and math.isfinite(value) and value > 0
 
 
+def _scenario_key(record):
+    plan = record['wave_price_plan']
+    identity = [record['pair'], record['strategy'], record['direction'],
+                plan.get('start_pivot'), plan.get('end_pivot')]
+    if record.get('daily_swing_version') == 1:
+        identity.append({'daily_swing_version': 1})
+    if not isinstance(plan.get('start_pivot'), dict) or not isinstance(plan.get('end_pivot'), dict):
+        identity.append(plan.get('reference_close_timestamp'))
+    return hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
 def _anchor(record, digest):
     strategy = record.get('strategy')
     if (strategy not in HORIZON or record.get('assessment') != 'review'
@@ -116,14 +127,7 @@ def _anchor(record, digest):
     (_, seconds), _ = _timeframes(record)
     key = hashlib.sha256(json.dumps(identity, sort_keys=True,
                                     separators=(',', ':')).encode()).hexdigest()
-    scenario_identity = [record['pair'], strategy, record['direction'],
-                         plan.get('start_pivot'), plan.get('end_pivot')]
-    if timing_profile:
-        scenario_identity.append(timing_profile)
-    if not isinstance(plan.get('start_pivot'), dict) or not isinstance(plan.get('end_pivot'), dict):
-        scenario_identity.append(plan.get('reference_close_timestamp'))
-    scenario_key = hashlib.sha256(json.dumps(scenario_identity, sort_keys=True,
-                                             separators=(',', ':')).encode()).hexdigest()
+    scenario_key = _scenario_key(record)
     daily = next((item for item in digest['observations']
                   if item['pair'] == record['pair'] and item['timeframe'] == 'd1'), None)
     return {**timing_profile, 'key': key, 'scenario_key': scenario_key,
@@ -247,3 +251,56 @@ def build(outlook, digest, previous=None):
         return {'schema': SCHEMA, 'evaluated_at': clock,
                 'status': 'capacity_exceeded', 'anchors': []}
     return result
+
+
+TOP3_SCHEMA = 'private_top3_followup_v1'
+TOP3_MAX_GROUPS = 192
+TOP3_RETENTION = 7 * 86400
+
+
+def build_top3_trace(outlook, sections, plans, previous=None):
+    """Freeze the first published listing and link a subsequent fixed plan."""
+    clock = outlook['evaluated_at']
+    records = {(row['pair'], row['strategy']): row for row in outlook['strategy_assessments']}
+    entries = {}
+    if (isinstance(previous, dict) and previous.get('schema') == TOP3_SCHEMA
+            and type(previous.get('evaluated_at')) is int and previous['evaluated_at'] < clock):
+        entries = {entry['scenario_key']: deepcopy(entry) for entry in previous['entries']
+                   if 0 <= clock - entry['listed_at'] <= TOP3_RETENTION}
+    capacity_reached = False
+    for strategy in HORIZON:
+        for rank, listed in enumerate(sections.get(strategy, [])[:3], 1):
+            if listed.get('excluded_target_reached'):
+                continue
+            record = records.get((listed['pair'], strategy))
+            if (record is None or record.get('assessment') != 'review'
+                    or record.get('direction') not in ('long', 'short')
+                    or record.get('wave_price_plan', {}).get('status') != 'available'):
+                continue
+            key = _scenario_key(record)
+            if key in entries:
+                continue
+            if len(entries) >= TOP3_MAX_GROUPS:
+                capacity_reached = True
+                continue
+            close = record.get('trigger_price_review', {}).get('saved_close')
+            obstacle = record.get('reference_levels', {}).get('structural_target')
+            distance = None
+            if _price(close) and _price(obstacle):
+                sign = 1 if record['direction'] == 'long' else -1
+                ahead = sign * (obstacle - close)
+                if ahead > 0:
+                    pip = .01 if record['pair'].endswith('JPY') else .0001
+                    distance = round(ahead / pip, 3)
+            entries[key] = {'scenario_key': key, 'pair': record['pair'],
+                            'strategy': strategy, 'listed_at': clock, 'rank': rank,
+                            'condition_at_listing': record['scenario_conditions']['status'],
+                            'first_obstacle_pips_at_listing': distance}
+    if plans.get('status') == 'saved':
+        for plan in sorted(plans['anchors'], key=lambda item: item['start_at']):
+            entry = entries.get(plan['scenario_key'])
+            if (entry is not None and 'fixed_plan_key' not in entry
+                    and plan['start_at'] >= entry['listed_at']):
+                entry.update(fixed_plan_key=plan['key'], fixed_plan_at=plan['start_at'])
+    return {'schema': TOP3_SCHEMA, 'evaluated_at': clock,
+            'capacity_reached': capacity_reached, 'entries': list(entries.values())}
