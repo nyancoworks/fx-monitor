@@ -40,13 +40,19 @@ def _bytes(value):
     return json.dumps(value,sort_keys=True,separators=(',', ':'),allow_nan=False).encode()
 
 
-def read_remote_history(repo):
+def _remote_head(repo):
     listing = _git(repo,'ls-remote','--heads','origin',REF)
     if not listing:
-        return {'head':None,'history':[],'provenance':{}}
-    lines = listing.splitlines()
-    if len(lines)!=1 or lines[0].split()[1]!=REF:
+        return None
+    fields = listing.split()
+    if len(fields) != 2 or fields[1] != REF or not re.fullmatch(r'[a-f0-9]{40}', fields[0]):
         raise ValueError('unexpected history ref')
+    return fields[0]
+
+
+def read_remote_history(repo):
+    if _remote_head(repo) is None:
+        return {'head':None,'history':[],'provenance':{}}
     # A fresh runner needs the current tree and two canonical blobs, not all
     # ancestor commits or the retained legacy research blobs. Promisor reads
     # hydrate history/provenance on demand; untouched followup objects stay on
@@ -76,8 +82,23 @@ def read_remote_history(repo):
     return {'head':head,'history':history,'provenance':provenance}
 
 
+def _push_history(repo, commit, parent):
+    for attempt in range(2):
+        try:
+            _git(repo, 'push', 'origin', commit + ':' + REF)
+            return
+        except HistoryGitError as error:
+            if error.reason not in ('git_rejected', 'git_timeout'):
+                raise
+            remote = _remote_head(repo)
+            if remote == commit:
+                return
+            if attempt or remote != parent:
+                raise
+
+
 def publish_results(repo, rows, *, evaluated_at, source_run_id, source_commit, allow_create=False, snapshot=None, input_identity=None, source_repository=None):
-    """Publish via a parented, non-forced push; conflicts stop without retries."""
+    """Publish a parented commit, reconciling ambiguous push results."""
     if type(source_run_id) is not int or source_run_id<=0 or not isinstance(source_commit,str) or not re.fullmatch('[0-9a-f]{40}',source_commit):
         raise ValueError('source run identity required')
     if snapshot is not None:
@@ -125,8 +146,7 @@ def publish_results(repo, rows, *, evaluated_at, source_run_id, source_commit, a
     commit=_git(repo,'-c','user.name=github-actions[bot]',
                 '-c','user.email=41898286+github-actions[bot]@users.noreply.github.com',
                 'commit-tree',tree,*parent,stdin=b'Persist monitoring result references\n')
-    # No force, reset, checkout, history rewrite, remote branch deletion or retry.
-    _git(repo,'push','origin',commit+':'+REF)
+    _push_history(repo, commit, previous['head'])
     return {'status':'persisted','head':commit,'generations':len(history),
             'saved_evaluated_at':latest_restorable(history)['saved_evaluated_at'],
             'snapshot_identity_recorded': identity is not None}
