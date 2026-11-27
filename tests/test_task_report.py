@@ -16,6 +16,23 @@ def inputs():
 
 
 class TaskReportTests(unittest.TestCase):
+    def test_swing_h4_uses_two_completed_server_candles(self):
+        from fx_system.mt4_calendar import expected_h4
+        report, strength, slot, continuity = inputs()
+        clock = report['source']['evaluated_at']
+        start = expected_h4(clock)
+        bars = [{'timestamp': start + i * 3600, 'open': 20+i, 'high': 21+i,
+                 'low': 19+i, 'close': 20+i} for i in range(-4, 4)]
+        frame = {'timeframe': 'h1', 'verified': True, 'evaluated_at': clock, 'bars': bars}
+        records = {'EURUSD': {'direction': 'short', 'standard_inputs': {'trigger': frame}}}
+        def render():
+            return build_task_report(report, strength, slot, continuity, records)['sections']
+        sections = render()
+        self.assertIn('高値・安値を切り上げ。日足の想定方向と逆行', sections['swing'][0]['text'])
+        self.assertNotIn('4時間足', sections['daytrade'][0]['text'])
+        bars.pop()
+        self.assertIn('確定4時間足を確認できず', render()['swing'][0]['text'])
+
     def test_swing_early_reaction_is_visible_in_delivery(self):
         report, strength, slot, continuity = inputs()
         report['report_text'] = report['report_text'].replace(

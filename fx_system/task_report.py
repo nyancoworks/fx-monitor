@@ -79,7 +79,38 @@ def _plain_heading(heading, plan_wait=False, early_reaction=False):
     return (symbol+' ' if symbol else '')+parts[0]+'｜'+match[1]+'方向の監視候補（'+match[2]+'）｜'+state
 
 
-def _build_task_report(report, strength, slot, continuity):
+def _swing_h4_context(record, clock):
+    from .mt4_calendar import aggregate_h4, expected_h4, next_complete_start
+
+    missing = '連続する確定4時間足を確認できず'
+    trigger = record.get('standard_inputs', {}).get('trigger', {})
+    direction = record.get('direction')
+    if (direction not in ('long', 'short') or trigger.get('timeframe') != 'h1'
+            or trigger.get('verified') is not True or trigger.get('evaluated_at') != clock):
+        return missing
+    try:
+        bars = aggregate_h4(trigger.get('bars', [])[-16:])
+        if len(bars) < 2:
+            return missing
+        previous, current = bars[-2:]
+        if (current['timestamp'] != expected_h4(clock)
+                or next_complete_start(previous['timestamp']) != current['timestamp']):
+            return missing
+        if current['high'] > previous['high'] and current['low'] > previous['low']:
+            move, structure = 'long', '高値・安値を切り上げ'
+        elif current['high'] < previous['high'] and current['low'] < previous['low']:
+            move, structure = 'short', '高値・安値を切り下げ'
+        else:
+            move, structure = None, '高値・安値の更新方向が揃わず'
+        relation = ('日足の想定方向と一致' if move == direction else
+                    '日足の想定方向と逆行' if move else '方向確認待ち')
+        closed = datetime.fromtimestamp(current['timestamp'] + 14400, JST)
+        return f'{closed:%m/%d %H:%M} JST確定｜{structure}。{relation}'
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return missing
+
+
+def _build_task_report(report, strength, slot, continuity, swing_records=None):
     source = report['source']
     blob = report['snapshot_git_blob_sha']
     out = {'schema':'saved_task_report_v1', 'source':deepcopy(source),
@@ -145,6 +176,9 @@ def _build_task_report(report, strength, slot, continuity):
             if early_reaction:
                 condition = '／'.join(filter(None, (condition, early_reaction)))
             parts = [('見る', condition)]
+            if strategy == 'swing' and swing_records is not None:
+                parts.append(('4時間足', _swing_h4_context(
+                    swing_records.get(pair, {}), source['evaluated_at'])))
             evidence = field('根拠：') or ''
             changes = re.findall(r'(H[14])スパン：[^\n]*?確定足の変化：([^／\n]+)', evidence)
             if changes:
@@ -187,10 +221,10 @@ def _build_task_report(report, strength, slot, continuity):
     return out
 
 
-def build_task_report(report, strength, slot, continuity):
+def build_task_report(report, strength, slot, continuity, swing_records=None):
     # This optional projection must not prevent saving the original judgment.
     try:
-        result = _build_task_report(report, strength, slot, continuity)
+        result = _build_task_report(report, strength, slot, continuity, swing_records)
         if result['status'] == 'saved' and 'research_digest' in report:
             result['research_digest'] = deepcopy(report['research_digest'])
         return result

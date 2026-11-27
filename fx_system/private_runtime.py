@@ -195,7 +195,10 @@ def save_snapshot(root, run_id, source_commit):
     (root/'data/scenario-continuity.json').write_text(json.dumps(continuity,ensure_ascii=False,sort_keys=True)+'\n')
     (root/'data/scenario-continuity.json').chmod(0o600)
     from .task_report import build_delivery_report, build_task_report
-    task_report = build_task_report(strategy_report, compact, slot, continuity)
+    swing_records = {row['pair']: row for row in
+                    (snapshot.get('scheduled_outlook') or {}).get('strategy_assessments', [])
+                    if row.get('strategy') == 'swing' and row.get('daily_swing_version') == 1}
+    task_report = build_task_report(strategy_report, compact, slot, continuity, swing_records)
     if (task_report['status'] == 'saved' and strategy_report.get('research_digest')
             and isinstance(snapshot.get('scheduled_outlook'), dict)):
         previous_ledger = None
