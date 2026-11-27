@@ -8,7 +8,7 @@ import time
 import requests
 import lzma
 from .dukascopy_ticks import tick_url, decode_ticks, ticks_to_m5
-from .core import PAIRS, INTERVALS, aggregate, assess, parse_row, technical, expected_closed_timestamp
+from .core import PAIRS, INTERVALS, aggregate, assess, parse_row, expected_closed_timestamp
 from .strength import compute_strength
 from .yahoo_provider import fetch_yahoo
 from .provenance import record, reconcile_existing, assess_feed_consistency, key as provenance_key
@@ -16,8 +16,6 @@ from .data_quality import evaluate_pair
 from .acquisition import request_plan, h1_recovery_needed, rebuild_verified_h1, retry_after_seconds
 from .catchup import needs_m5_catchup
 from .minute_quota import MinuteQuota
-from .watchlist import build_watchlist
-from .monitoring_scenarios import build_monitoring_scenarios
 from .saved_economic_calendar import build_outlook_with_saved_calendar
 from .indicator_inputs import contiguous_indicator_frames
 from .indicator_refresh import refresh_strategy_indicators
@@ -320,10 +318,9 @@ def _refresh(ny=None):
         frames={"m5":raw["m5"],"m15":aggregate(raw["m5"],300,900),"h1":raw["h1"],"h4":aggregate_h4(raw["h1"]),"d1":[],"w1":[]}
         result["pairs"][name]={tf:{"candles":rows[-100:],"quality":assess(rows,tf,evaluation_now)} for tf,rows in frames.items()}
         result["pairs"][name]["decision_data"]={"raw":{tf:raw[tf] for tf in ("m5","h1","d1")},"provenance":cached['bar_provenance']}
-        decision_frames,decision_quality=evaluate_pair(result["pairs"][name],int(time.time()))
+        _,decision_quality=evaluate_pair(result["pairs"][name],int(time.time()))
         result["pairs"][name]["decision_quality"]=decision_quality
         result["pairs"][name]["acquisition"]=acquisition
-        result["pairs"][name]["technical"]={tf:technical(rows) for tf,rows in decision_frames.items() if tf in ("h1","h4","d1","w1")}
 
         checks={tf:assess(rows,tf,evaluation_now) for tf,rows in frames.items()}
         # Retained-data checks are combined with verified decision-data readiness.
@@ -341,7 +338,7 @@ def _refresh(ny=None):
         feed_quality=assess_feed_consistency(provenance,raw)
         mixed_sources=feed_quality["mixed_source_warning"]
         feed_consistent=feed_quality["execution_feed_consistent"]
-        result["quality"][name]={"ok":ok,"required_timeframes":list(required),"timeframes":checks,"provider_errors":errors,"closed_candle_freshness":freshness,"mixed_source_warning":mixed_sources,"execution_feed_consistent":feed_consistent,"requires_single_feed_confirmation":not feed_consistent,"signal_eligible":False,"screening_data_ready":ok,"signal_quality_note":"Mixed provider prices: confirm swing and trigger against one consistent feed" if mixed_sources else "Freshness and required history passed"}
+        result["quality"][name]={"ok":ok,"required_timeframes":list(required),"timeframes":checks,"provider_errors":errors,"closed_candle_freshness":freshness,"mixed_source_warning":mixed_sources,"execution_feed_consistent":feed_consistent,"requires_single_feed_confirmation":not feed_consistent,"screening_data_ready":ok,"signal_quality_note":"Mixed provider prices: confirm swing and trigger against one consistent feed" if mixed_sources else "Freshness and required history passed"}
         if ok:result["ready_pairs"].append(name)
         result["quality"][name].update({"decision_data_ready":decision_quality["ready"],
             "data_quality_reasons":decision_quality["reasons"],
@@ -430,7 +427,6 @@ def _refresh(ny=None):
         for macro_tf in ("d1","w1"):
             data[macro_tf]={"candles":verified[macro_tf][-100:],
                             "quality":quality["timeframes"][macro_tf]}
-        data["technical"]={tf:technical(indicator_frames[tf]) for tf in ("m5","m15","h1","h4","d1","w1")}
         # Current standard-only profile from verified retained candles.
         # No new provider requests or changes to the collection budget.
         data['murphy_profile_version'] = 1
@@ -476,75 +472,15 @@ def _refresh(ny=None):
               "ready":q["ok"],"intraday_monitoring_ready":quality["intraday_monitoring_ready"],
               "reasons":quality["reasons"],"m5_publication":quality["m5_publication"]}),flush=True)
     result['refresh_elapsed_seconds']=round(time.monotonic()-refresh_started,2)
-    result["signal_eligible_pairs"]=[name for name,q in result["quality"].items() if q.get("signal_eligible")]
-    result["signal_eligible_count"]=len(result["signal_eligible_pairs"])
-    result["watchlist"]=build_watchlist(result["pairs"],result["quality"])
-    # Independent H4/H1 saved-candle research; does not reuse M5 gate.
+    # Evaluate the two Murphy strategies directly from verified indicator frames.
     result["scheduled_outlook"]=build_outlook_with_saved_calendar(
         result["pairs"],result["quality"],evaluated_at=final_now)
-    from .strategy_report import render_strategy_report, report_records
-    report_keys={(r['pair'],r['strategy']) for r in report_records(result['scheduled_outlook'])}
-    print("SCHEDULED_CANDIDATES",json.dumps({
-        "evaluated_at":result["scheduled_outlook"]["evaluated_at"],
-        "grade_counts":result["scheduled_outlook"]["grade_counts"],
-        "strategy_candidate_count":result["scheduled_outlook"]["strategy_candidate_count"],
-        "candidates":[{
-            "pair":c["pair"],"strategy":c["strategy"],"direction":c["direction"],
-            "priority":c["priority"],"timing":c["timing_assessment"],"macro":c["macro_context"],
-            "rci9":c["rci9_context"].get("movement","unverified"),
-            "next_check":c["next_check"]
-        } for c in result["scheduled_outlook"]["strategy_candidates"] if (c['pair'],c['strategy']) in report_keys],
-        
-    },ensure_ascii=False),flush=True)
     assessments=result["scheduled_outlook"]["strategy_assessments"]
     print("SCHEDULED_STRATEGY_SUMMARY",json.dumps({
         "evaluated_at":final_now,"assessment_count":len(assessments),
         "assessment_counts":result["scheduled_outlook"]["assessment_counts"],
         "canonical_assessment_field":"strategy_assessments","advisory_only":True
     },ensure_ascii=False),flush=True)
-    for assessment in assessments:
-        print("SCHEDULED_STRATEGY_ASSESSMENT",json.dumps({
-            "evaluated_at":final_now,"assessment":assessment
-        },ensure_ascii=False),flush=True)
-    print('SCHEDULED_REPORT',json.dumps({'evaluated_at':final_now,'advisory_only':True,
-        'text':render_strategy_report(result)},ensure_ascii=False),flush=True)
-    # Publish every saved monitoring row for read-only acceptance, even when
-    # latest.json exceeds connector limits. These rows contain no raw candles.
-    # Logging must not re-evaluate freshness or change any decision/gate.
-    for row in result["scheduled_outlook"]["rows"]:
-        q=result["quality"].get(row["pair"],{})
-        print("SCHEDULED_PAIR",json.dumps({
-            "evaluated_at":final_now,
-            "quality":{"ok":q.get("ok"),"reasons":q.get("reasons",[])},
-            "outlook":row
-        },ensure_ascii=False),flush=True)
-    # Compact, audit-friendly W1 coverage summary from independently evaluated
-    # per-pair evidence. Never infer NY17 approval from candle count.
-    weekly_rows=[]
-    for row in result["scheduled_outlook"]["rows"]:
-        history=row.get("w1_history",{})
-        weekly_rows.append({"pair":row["pair"],"count":history.get("observed_count",0),
-            "shortfall":history.get("shortfall",35),
-            "verified":history.get("verified",False),
-            "d1_verified_source_count":history.get("d1_verified_source_count"),
-            "d1_retained_count":history.get("d1_retained_count"),
-            "ny17_count":history.get("ny17_observed_w1_count"),
-            "ny17_shortfall":history.get("ny17_shortfall"),
-            "ny17_independently_eligible":history.get("ny17_independently_eligible",False)})
-    result["weekly_coverage"]={"required":35,"rows":weekly_rows,
-        "verified_pairs":sum(x["verified"] for x in weekly_rows),
-        "complete_count_pairs":sum(x["shortfall"]==0 for x in weekly_rows),
-        "ny17_eligible_pairs":sum(x["ny17_independently_eligible"] for x in weekly_rows),
-        "ny17_session_certified_by_this_summary":False}
-    print("W1_COVERAGE",json.dumps(result["weekly_coverage"]),flush=True)
-    # Reporting-only scenarios; never change the watchlist or formal trade gates.
-    try:
-        result["monitoring_scenarios"]=build_monitoring_scenarios(
-            result["pairs"],result["quality"],evaluated_at=final_now)
-    except (ValueError,TypeError,KeyError,OverflowError) as exc:
-        result["monitoring_scenarios"]={"status":"unavailable","advisory_only":True,
-            "error_type":type(exc).__name__}
-    print("WATCHLIST",json.dumps({"candidate_count":result["watchlist"]["candidate_count"],"pairs":[x["pair"] for x in result["watchlist"]["candidates"]]}),flush=True)
     result["ready_count"]=len(result["ready_pairs"])
     result["intraday_monitoring"]={"ready_pairs":[name for name,q in result["quality"].items()
         if q.get("intraday_monitoring_ready")],
@@ -568,8 +504,6 @@ def _refresh(ny=None):
         target.write_text(json.dumps(result,separators=(",",":")))
         print("ON_DEMAND_OUTPUT",target,flush=True)
     else:
-        from .historical_shape_reference import build_references
-        result['historical_shape_references'] = build_references(cache, result['scheduled_outlook'], final_now)
         CACHE.write_text(json.dumps(cache,separators=(",",":")))
         OUTPUT.write_text(json.dumps(result,separators=(",",":")))
     print("READY_PAIRS",len(result["ready_pairs"]),"/",len(PAIRS),flush=True)

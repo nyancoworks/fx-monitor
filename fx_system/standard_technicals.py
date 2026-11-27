@@ -35,9 +35,9 @@ def macd(closes):
 
 
 def _calculate_frame(rows,tf,clock,verified,calendar=None,calculation_version=1):
-    if type(calculation_version) is not int or calculation_version not in (1,2,3):raise ValueError("unsupported calculation version")
+    if type(calculation_version) is not int or calculation_version not in (1,2,3,4):raise ValueError("unsupported calculation version")
     out={'timeframe':tf,'evaluated_at':clock,'calendar':calendar,'verified':verified is True,'status':'unverified','bars':[]}
-    if calculation_version in (2,3):out['calculation_version']=calculation_version
+    if calculation_version in (2,3,4):out['calculation_version']=calculation_version
     if not isinstance(rows,list) or not rows:return out
     if any(not isinstance(b,dict) or type(b.get('timestamp')) is not int
            or not all(type(b.get(k)) in (int,float) and math.isfinite(b[k]) and b[k]>0 for k in ('open','high','low','close'))
@@ -45,12 +45,13 @@ def _calculate_frame(rows,tf,clock,verified,calendar=None,calculation_version=1)
     # Caller supplies a verified contiguous suffix (including NY17 session semantics).
     if any(b['timestamp']<=a['timestamp'] for a,b in zip(rows,rows[1:])):return out
     c=[b['close'] for b in rows];m=macd(c)
-    smas={str(p):{'value':sum(c[-p:])/p if len(c)>=p else None,
-                    'previous':sum(c[-p-1:-1])/p if len(c)>p else None} for p in (50,200)}
-    for v in smas.values():
-        v['slope']='up' if v['value'] is not None and v['previous'] is not None and v['value']>v['previous'] else 'down' if v['value'] is not None and v['previous'] is not None and v['value']<v['previous'] else 'flat' if v['previous'] is not None else 'unverified'
+    if calculation_version != 4:
+        out['sma']={str(p):{'value':sum(c[-p:])/p if len(c)>=p else None,
+                        'previous':sum(c[-p-1:-1])/p if len(c)>p else None} for p in (50,200)}
+        for v in out['sma'].values():
+            v['slope']='up' if v['value'] is not None and v['previous'] is not None and v['value']>v['previous'] else 'down' if v['value'] is not None and v['previous'] is not None and v['value']<v['previous'] else 'flat' if v['previous'] is not None else 'unverified'
     sb_calendar=calendar
-    if calculation_version==3 and tf=='h4' and calendar=='mt4_ny_close_h4_v1':
+    if calculation_version in (3,4) and tf=='h4' and calendar=='mt4_ny_close_h4_v1':
         from .mt4_calendar import CONTINUITY
         sb_calendar=CONTINUITY
     sb=super_bollinger_context(rows,timeframe=tf,calendar=sb_calendar)
@@ -60,7 +61,7 @@ def _calculate_frame(rows,tf,clock,verified,calendar=None,calculation_version=1)
         sb['bandwidth_state']='expanding' if delta>0 else 'contracting' if delta<0 else 'flat'
     out.update(status='available' if verified and len(c)>=35 else 'unverified',
         closed_at=rows[-1].get('session_end_utc',rows[-1]['timestamp']+SECONDS[tf]),bars=[{k:b[k] for k in ('timestamp','open','high','low','close','session_end_utc') if k in b} for b in rows],
-        super_bollinger=sb,sma=smas,
+        super_bollinger=sb,
         macd={'parameters':[12,26,9],'ema_seed':'full_verified_prefix_sma','observations':m[-3:]},
         rci={str(p):_rci_observation(rci_series(c,p)) for p in (9,26,52)})
     return out
@@ -79,9 +80,10 @@ def prepare(data,verified,indicator_frames,quality):
     clock=quality.get('evaluated_at')
     data['standard_technical_version']=1
     timeframes = ('w1', 'd1', 'h1', 'm5') if data.get('daily_swing_version') == 1 else SECONDS
+    calculation_version = 4 if data.get('murphy_profile_version') == 1 else 3
     data['standard_technical_frames']={tf:frame(indicator_frames[tf],tf,clock,
         quality.get('timeframes',{}).get(tf,{}).get('ok') is True,
-        quality.get('timeframes',{}).get(tf,{}).get('calendar'),calculation_version=3) for tf in timeframes}
+        quality.get('timeframes',{}).get(tf,{}).get('calendar'),calculation_version=calculation_version) for tf in timeframes}
     # No retired indicator observations survive in a newly generated market view.
     for key in ('advisory_indicators','indicator_research','dinapoli_research','dinapoli_indicator_reference',
                 'span_model_version','span_model_inputs','forecast_wave_inputs','base_evolution_inputs',

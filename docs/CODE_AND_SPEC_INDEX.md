@@ -1,16 +1,13 @@
 # コードと仕様の参照先
 
-新規の判断指標は [3指標版](THREE_INDICATOR_PROFILE.md) に固定する。旧版の技術文書は保存判断の復元仕様として読む。
-
-現行の新規判断は[標準テクニカル構成](STANDARD_TECHNICAL_PROFILE.md)を使用する。実装・本番反映・自然実行の状態は[管理Issue #1](https://github.com/nyancoworks/fx-monitor/issues/1)で管理する。
+現在の32評価と定時報告には[マーフィー流判断と定時表示](MURPHY_PROFILE.md)を使用する。実装・本番反映・自然実行の状態は[管理Issue #1](https://github.com/nyancoworks/fx-monitor/issues/1)で管理する。
 
 | 役割 | コード・文書 |
 | --- | --- |
 | 取得・確定足品質・指標準備 | `main.py`、`data_quality.py`、`indicator_inputs.py`、`indicator_history.py`、`indicator_refresh.py` |
-| 現行指標・予測・価格計画・32評価 | `standard_technicals.py`、`technical_entry.py`、`scheduled_outlook.py` |
-| 同ペアの戦略関係・掲載・本文 | `pair_market_context.py`、`strategy_report.py`、`REPORT_SELECTION.md` |
+| 現行指標・価格計画・32評価 | `murphy_profile.py`、`span_special.py`、`standard_technicals.py`、`scheduled_outlook.py` |
+| 定時TOP3・カード表示 | `murphy_report.py`、`task_report.py`、`MURPHY_PROFILE.md` |
 | 保存・完全復元・履歴・前回条件 | `strategy_report_export.py`、`saved_standard_inputs.py`、`scenario_continuity.py`、`scenario_followthrough.py`、`diagnostics/monitoring_result_history.py`、`PRIVATE_REPORT_READING.md` |
-| 候補の条件・停止・目標と経済指標の情報品質表示 | `REPORT_PRESENTATION.md`、`economic_calendar_report.py` |
 | 保存通貨強弱・経済指標・政策資料 | `strategy_strength.py`、`economic_calendar_context.py`、`ECONOMIC_CALENDAR.md`、`POLICY_REFERENCE.md` |
 | NY17確定足・既存保管 | `ny_archive_transport.py`、`ny_archive_status.py`などの保管/復元処理、`ARCHIVE_INVENTORY.md` |
 
@@ -20,4 +17,4 @@
 
 参照・復元用途のない旧PA/RCI shadow、旧H4セットアップと近傍目標提案、H1/H4比較、参考ゾーン、観測H1からの旧マクロ参考生成、旧screeningラッパーと入力層診断、未使用のEMA10/20/30等の一括診断は撤去した。履歴原本・非公開証跡は削除しない。
 
-現行スパンモデル仕様: [SPAN_MODEL_SPECIAL.md](SPAN_MODEL_SPECIAL.md)。旧 `span_model.py` の一律雲判定は復元専用、新規は `span_special.py` でSBと併用する。
+現在の評価には `span_special.py` のスパン観測を使う。旧スパン解釈と計算の経緯は[過去のスパンモデル資料](SPAN_MODEL_SPECIAL.md)を参照。
