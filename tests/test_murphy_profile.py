@@ -6,7 +6,8 @@ import unittest
 from fx_system.monitor_pairs import PAIR_KEYS
 from fx_system.murphy_report import _card
 from fx_system.murphy_profile import TIMEFRAMES, assess, capture, refresh, selected
-from fx_system.scheduled_outlook import build_scheduled_outlook
+from fx_system.saved_economic_calendar import build_outlook_with_saved_calendar
+from fx_system.scheduled_outlook import build_murphy_outlook
 from fx_system.standard_technicals import SECONDS, prepare
 from fx_system.strategy_report_export import build_strategy_report_export, restore_strategy_report_export
 from fx_system.task_report import build_delivery_report, build_task_report
@@ -36,8 +37,19 @@ class MurphyProfileTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.pair, cls.quality = inputs()
-        cls.outlook = build_scheduled_outlook(dict.fromkeys(PAIR_KEYS, cls.pair),
+        cls.outlook = build_murphy_outlook(dict.fromkeys(PAIR_KEYS, cls.pair),
             dict.fromkeys(PAIR_KEYS, cls.quality), evaluated_at=CLOCK)
+
+    def test_production_without_pair_inputs_stays_on_murphy_profile(self):
+        from unittest.mock import patch
+
+        with patch('fx_system.saved_economic_calendar.configured_calendar', return_value=None):
+            outlook = build_outlook_with_saved_calendar({}, {}, evaluated_at=CLOCK)
+        self.assertEqual(outlook['murphy_profile_version'], 1)
+        self.assertEqual(outlook['assessment_counts'],
+                         {'evaluation_pending': 32, 'skip': 0, 'review': 0})
+        self.assertEqual(validate_strategy_snapshot({'scheduled_outlook': outlook,
+                                                     'evaluated_at': CLOCK}), [])
 
     def test_live_frames_omit_retired_sma(self):
         from fx_system.indicator_history import indicator_health

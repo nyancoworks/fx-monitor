@@ -14,7 +14,7 @@ from fx_system.economic_calendar_collection import (ALLOWED_CONFIG, BASE_URL, CO
     COLLECTION_PATH, collection_enabled, prepare_calendar, _get)
 from fx_system.private_runtime import prepare_optional_calendar
 from fx_system.saved_economic_calendar import RELATIVE_PATH, load_saved_calendar, build_outlook_with_saved_calendar
-from fx_system.scheduled_outlook import build_scheduled_outlook
+from fx_system.scheduled_outlook import build_murphy_outlook
 from fx_system.validate_strategy_snapshot import validate_strategy_snapshot
 from diagnostics.monitoring_result_history import pack_generation, restore_generation
 
@@ -159,7 +159,7 @@ class CollectionTests(unittest.TestCase):
                 outlook=build_outlook_with_saved_calendar({}, {}, evaluated_at=CLOCK)
             self.assertEqual(validate_strategy_snapshot({'evaluated_at':CLOCK,'scheduled_outlook':outlook}),[])
             self.assertEqual(restore_generation(pack_generation(outlook['rows'],evaluated_at=CLOCK))['rows'],outlook['rows'])
-            old=build_scheduled_outlook({}, {}, evaluated_at=CLOCK)
+            old=build_murphy_outlook({}, {}, evaluated_at=CLOCK)
             for a,b in zip(old['strategy_assessments'],outlook['strategy_assessments']):
                 b=dict(b); context=b.pop('economic_calendar_context');self.assertEqual(a,b)
                 self.assertEqual(context['collection_status'],'saved')
