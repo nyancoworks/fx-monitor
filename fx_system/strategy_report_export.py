@@ -12,7 +12,8 @@ import lzma
 import re
 import zlib
 
-from .strategy_report import conflict_role_lines, render_strategy_report
+from .strategy_report import (CURRENT_SELECTION_VERSION, SELECTION_VERSIONS,
+                              conflict_role_lines, render_strategy_report)
 from .validate_strategy_snapshot import validate_strategy_snapshot
 
 
@@ -91,7 +92,7 @@ def build_strategy_report_export(snapshot_bytes, source):
         saved = {**bundle, 'status': 'saved', 'error': None,
             'assessment_summaries': _summaries(view),
             'assessment_counts': deepcopy(projected['assessment_counts']),
-            'selection_version': 6,
+            'selection_version': CURRENT_SELECTION_VERSION,
             'comparison_explanation_version': 2,
             'presentation_version': 3,
             'report_text': render_strategy_report(view, comparison_explanation_version=2,
@@ -171,7 +172,7 @@ def restore_strategy_report_export(bundle, source, snapshot_blob_sha):
             if len(_json(view))>MAX_PAYLOAD_BYTES:
                 raise ValueError
         selection_version = bundle.get('selection_version', 1)
-        if type(selection_version) is not int or selection_version not in (1, 2, 3, 4, 5, 6):
+        if type(selection_version) is not int or selection_version not in SELECTION_VERSIONS:
             raise ValueError
         comparison_version = bundle.get('comparison_explanation_version', 1)
         if type(comparison_version) is not int or comparison_version not in (1, 2):
@@ -206,7 +207,8 @@ def restore_strategy_report_export(bundle, source, snapshot_blob_sha):
             raise ValueError
         if 'research_digest' in bundle:
             from .research_digest import build as build_research_digest
-            if bundle['research_digest'] != build_research_digest(view['scheduled_outlook']):
+            if bundle['research_digest'] != build_research_digest(
+                    view['scheduled_outlook'], selection_version=selection_version):
                 raise ValueError
         return view
     except Exception:

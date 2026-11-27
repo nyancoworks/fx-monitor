@@ -324,23 +324,23 @@ def _plan_outcome(plan):
     return 'same_candle'
 
 
-def compare_daytrade_top3(outlook, plans, previous=None):
+def compare_top3(outlook, plans, previous=None, *, strategy, versions):
     """Follow both rankings from the same saved assessments before continuity."""
     from .strategy_report import report_records
 
-    schema = 'private_daytrade_top3_comparison_v1'
+    schema = f'private_{strategy}_top3_comparison_v1'
     prior = previous if isinstance(previous, dict) and previous.get('schema') == schema else {}
     anchors = {plan['key']: plan for plan in plans['anchors']}
     rankings = {}
-    for version in (5, 6):
+    for version in versions:
         selected = [record for record in report_records(outlook, selection_version=version)
-                    if record['strategy'] == 'daytrade']
+                    if record['strategy'] == strategy]
         key = str(version)
-        trace = build_top3_trace(outlook, {'daytrade': selected}, plans,
+        trace = build_top3_trace(outlook, {strategy: selected}, plans,
                                  prior.get('rankings', {}).get(key))
         rankings[key] = trace
-    for key, trace in rankings.items():
-        other = rankings['6' if key == '5' else '5']
+    old, new = rankings.values()
+    for trace, other in ((old, new), (new, old)):
         shared = {entry['scenario_key'] for entry in other['entries']}
         counts = {'shared': Counter(), 'exclusive': Counter()}
         for entry in trace['entries']:
@@ -351,4 +351,4 @@ def compare_daytrade_top3(outlook, plans, previous=None):
             counts[group][outcome] += 1
         trace['outcomes'] = counts
     return {'schema': schema, 'evaluated_at': outlook['evaluated_at'],
-            'status': 'saved', 'scope': 'daytrade_before_continuity', 'rankings': rankings}
+            'status': 'saved', 'scope': f'{strategy}_before_continuity', 'rankings': rankings}

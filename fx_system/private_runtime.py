@@ -200,16 +200,17 @@ def save_snapshot(root, run_id, source_commit):
             and isinstance(snapshot.get('scheduled_outlook'), dict)):
         previous_ledger = None
         previous_top3 = None
-        previous_comparison = None
+        previous_task = {}
         try:
             previous_task = json.loads(git(root, 'show', 'HEAD:data/task-report.json'))
             if (previous_task.get('source') == previous_source
                     and previous_task.get('snapshot_git_blob_sha') == previous_blob):
                 previous_ledger = previous_task.get('research_followup')
                 previous_top3 = previous_task.get('research_top3')
-                previous_comparison = previous_task.get('research_daytrade_comparison')
-        except (ValueError, OSError, TypeError):
-            pass
+            else:
+                previous_task = {}
+        except (ValueError, OSError, TypeError, AttributeError):
+            previous_task = {}
         try:
             from .research_followup import build as build_research_followup
             task_report['research_followup'] = build_research_followup(
@@ -225,12 +226,15 @@ def save_snapshot(root, run_id, source_commit):
                 task_report['research_followup'], previous_top3)
         except (KeyError, ValueError, TypeError, AttributeError, OverflowError):
             task_report['research_top3'] = {'status': 'unavailable', 'entries': []}
-        try:
-            from .research_followup import compare_daytrade_top3
-            task_report['research_daytrade_comparison'] = compare_daytrade_top3(
-                snapshot['scheduled_outlook'], task_report['research_followup'], previous_comparison)
-        except (KeyError, ValueError, TypeError, AttributeError, OverflowError):
-            task_report['research_daytrade_comparison'] = {'status': 'unavailable'}
+        from .research_followup import compare_top3
+        for strategy, versions in (('swing', (6, 7)), ('daytrade', (5, 6))):
+            field = f'research_{strategy}_comparison'
+            try:
+                task_report[field] = compare_top3(
+                    snapshot['scheduled_outlook'], task_report['research_followup'],
+                    previous_task.get(field), strategy=strategy, versions=versions)
+            except (KeyError, ValueError, TypeError, AttributeError, OverflowError):
+                task_report[field] = {'status': 'unavailable'}
     (root/'data/task-report.json').write_text(json.dumps(task_report,ensure_ascii=False,sort_keys=True,allow_nan=False)+'\n')
     (root/'data/task-report.json').chmod(0o600)
     # Save a bounded diagnostic view in the same private Git push.

@@ -3,7 +3,7 @@ from copy import deepcopy
 import unittest
 from unittest.mock import patch
 
-from fx_system.research_followup import build, build_top3_trace, compare_daytrade_top3
+from fx_system.research_followup import build, build_top3_trace, compare_top3
 
 START = 360001
 
@@ -79,8 +79,8 @@ class ResearchFollowupTests(unittest.TestCase):
         plan.update(status='complete', events={'obstacle': later + 300, 'local_stop': later + 600})
         with patch('fx_system.strategy_report.report_records', side_effect=[
                 rows[:2], [rows[0], rows[2]], [], []]):
-            first = compare_daytrade_top3(opening, build(opening, DIGEST))
-            result = compare_daytrade_top3(following, plans, first)
+            first = compare_top3(opening, build(opening, DIGEST), strategy='daytrade', versions=(5, 6))
+            result = compare_top3(following, plans, first, strategy='daytrade', versions=(5, 6))
         old, new = result['rankings']['5'], result['rankings']['6']
         self.assertEqual(old['outcomes']['shared'], {'waiting_for_plan': 1})
         self.assertEqual(old['outcomes']['exclusive'], {'obstacle_first': 1})

@@ -18,6 +18,22 @@ def candidate(pair, phase, condition, room, *, profile=1):
 
 
 class MurphyPriorityTests(unittest.TestCase):
+    def test_daily_swing_prefers_hourly_trend_reaction_over_early_reaction(self):
+        early = candidate('EURUSD', 'continuation', 'conditions_observed', .004)
+        trend = candidate('GBPUSD', 'continuation', 'conditions_observed', .002)
+        waiting = candidate('AUDUSD', 'continuation', 'waiting', .003)
+        for row in (early, trend, waiting):
+            row.update(strategy='swing', daily_swing_version=1)
+        for row, regime in ((early, 'correction'), (trend, 'trend')):
+            row['scenario_conditions']['evidence'] = {'murphy_context': {
+                'timeframe': 'h1', 'observations': {'sb_regime': regime, 'sb_movement': 'long'},
+            }}
+        outlook = {'strategy_assessments': [early, trend, waiting]}
+        self.assertEqual(report_records(outlook, selection_version=6), [early, waiting, trend])
+        self.assertEqual(report_records(outlook, selection_version=7), [trend, waiting, early])
+        early['grade'] = 'A'
+        self.assertEqual(report_records(outlook), [early, trend, waiting])
+
     def test_daytrade_can_promote_recovery_with_room_in_both_measures(self):
         rows = [candidate('EURUSD', 'continuation', 'conditions_observed', .0002),
                 candidate('GBPUSD', 'continuation', 'waiting', .0001),

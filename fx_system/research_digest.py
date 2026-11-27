@@ -7,10 +7,10 @@ import hashlib
 import json
 
 from .monitor_pairs import PAIR_KEYS
-from .strategy_report import report_records
+from .strategy_report import CURRENT_SELECTION_VERSION, report_records
 
 
-def build(outlook):
+def build(outlook, *, selection_version=CURRENT_SELECTION_VERSION):
     if outlook.get('activate_time_version') != 1:
         return None
     context = outlook['activate_time_context']
@@ -34,7 +34,7 @@ def build(outlook):
                 'price_confirmation': observation['price_confirmation'],
             })
     selected = []
-    for record in report_records(outlook):
+    for record in report_records(outlook, selection_version=selection_version):
         recent = record.get('trigger_price_review', {})
         room = recent.get('first_obstacle_reward')
         pip = .01 if 'JPY' in record['pair'] else .0001

@@ -60,7 +60,7 @@ def _price_and_caution(value):
     return value, None
 
 
-def _plain_heading(heading, plan_wait=False):
+def _plain_heading(heading, plan_wait=False, early_reaction=False):
     parts = heading.split('｜')
     if len(parts) != 4:
         return heading
@@ -69,6 +69,8 @@ def _plain_heading(heading, plan_wait=False):
         return heading
     if plan_wait:
         symbol, state = '⚪', '新しい価格計画待ち'
+    elif early_reaction:
+        symbol, state = '🟡', '初動のみ・H1トレンド待ち'
     else:
         symbol, state = {
             '条件待ち':('🟡', '足の確認待ち'),
@@ -139,6 +141,9 @@ def _build_task_report(report, strength, slot, continuity):
             situation = (outlook or '方向の根拠は保存評価を参照')
             if concern and concern not in situation:
                 situation += '。ただし '+concern
+            early_reaction = field('スイング初動：') if strategy == 'swing' else None
+            if early_reaction:
+                condition = '／'.join(filter(None, (condition, early_reaction)))
             parts = [('見る', condition)]
             evidence = field('根拠：') or ''
             changes = re.findall(r'(H[14])スパン：[^\n]*?確定足の変化：([^／\n]+)', evidence)
@@ -158,7 +163,7 @@ def _build_task_report(report, strength, slot, continuity):
             parts.extend([('価格の流れ', price),
                           ('理由と注意', situation+('。'+caution if caution else '')),
                           ('見直す水準', withdrawal)])
-            candidate['text'] = '**'+_plain_heading(heading)+'**\n'+'\n'.join(
+            candidate['text'] = '**'+_plain_heading(heading, early_reaction=bool(early_reaction))+'**\n'+'\n'.join(
                 '- **'+label+'** '+value for label,value in parts if value)
         sections[strategy].append(candidate)
     clock = datetime.fromtimestamp(source['evaluated_at'], JST)

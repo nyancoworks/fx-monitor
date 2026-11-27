@@ -16,6 +16,16 @@ def inputs():
 
 
 class TaskReportTests(unittest.TestCase):
+    def test_swing_early_reaction_is_visible_in_delivery(self):
+        report, strength, slot, continuity = inputs()
+        report['report_text'] = report['report_text'].replace(
+            '売りB｜条件待ち', '売りB｜局所条件観測済み', 1).replace(
+            '局所停止：', 'スイング初動：H1のSBで方向側トレンドへの復帰待ち\n局所停止：', 1)
+        result = build_task_report(report, strength, slot, continuity)
+        self.assertIn('初動のみ・H1トレンド待ち', result['sections']['swing'][0]['text'])
+        self.assertIn('H1のSBで方向側トレンドへの復帰待ち', result['report_text'])
+        self.assertNotIn('初動のみ', result['sections']['daytrade'][0]['text'])
+
     def test_delivery_omits_ledger_and_requires_matching_validation(self):
         task = build_task_report(*inputs())
         task['research_followup'] = 'x' * 300_000
