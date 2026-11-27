@@ -75,8 +75,6 @@ def configured_calendar(*, evaluated_at):
 
 
 def build_outlook_with_saved_calendar(pairs, quality, *, evaluated_at):
-    from .scheduled_outlook import build_scheduled_outlook
-    calendar = configured_calendar(evaluated_at=evaluated_at)
-    if calendar is None:
-        return build_scheduled_outlook(pairs, quality, evaluated_at=evaluated_at)
-    return build_scheduled_outlook(pairs, quality, evaluated_at=evaluated_at, economic_calendar=calendar)
+    from .scheduled_outlook import build_murphy_outlook
+    return build_murphy_outlook(pairs, quality, evaluated_at=evaluated_at,
+                                economic_calendar=configured_calendar(evaluated_at=evaluated_at))

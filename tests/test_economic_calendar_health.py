@@ -12,7 +12,7 @@ from fx_system.economic_calendar_report import calendar_lines
 from fx_system.economic_calendar_context import enrich_outlook
 from fx_system.saved_economic_calendar import (load_saved_calendar, configured_calendar,
     build_outlook_with_saved_calendar, RELATIVE_PATH, CODE_ROOT)
-from fx_system.scheduled_outlook import build_scheduled_outlook
+from fx_system.scheduled_outlook import build_murphy_outlook, build_scheduled_outlook
 from fx_system.strategy_report import _clock
 from fx_system.validate_strategy_snapshot import validate_strategy_snapshot
 from diagnostics.monitoring_result_history import pack_generation, restore_generation
@@ -92,11 +92,11 @@ class SavedCalendarTests(unittest.TestCase):
         target.write_text(json.dumps(value))
         return target
 
-    def test_default_does_not_open_any_file_and_matches_old_pipeline(self):
+    def test_default_does_not_open_any_file_and_matches_live_pipeline(self):
         with patch.dict(os.environ,{},clear=True), patch('pathlib.Path.open',side_effect=AssertionError('disabled')):
             self.assertIsNone(configured_calendar(evaluated_at=CLOCK))
             actual=build_outlook_with_saved_calendar({}, {}, evaluated_at=CLOCK)
-        self.assertEqual(actual,build_scheduled_outlook({}, {}, evaluated_at=CLOCK))
+        self.assertEqual(actual,build_murphy_outlook({}, {}, evaluated_at=CLOCK))
 
     def test_explicit_private_saved_input_passes_32_snapshot_and_history(self):
         with tempfile.TemporaryDirectory() as root:
@@ -128,7 +128,7 @@ class SavedCalendarTests(unittest.TestCase):
                      patch('fx_system.saved_economic_calendar.MAX_BYTES',50 if mode=='oversize' else 4*1024*1024):
                     actual=build_outlook_with_saved_calendar({}, {}, evaluated_at=CLOCK)
                 self.assertEqual(validate_strategy_snapshot({'evaluated_at':CLOCK,'scheduled_outlook':actual}),[])
-                for old,new in zip(build_scheduled_outlook({}, {}, evaluated_at=CLOCK)['strategy_assessments'],actual['strategy_assessments']):
+                for old,new in zip(build_murphy_outlook({}, {}, evaluated_at=CLOCK)['strategy_assessments'],actual['strategy_assessments']):
                     stripped=deepcopy(new); context=stripped.pop('economic_calendar_context')
                     self.assertEqual(context['status'],'unavailable',mode)
                     self.assertEqual(old,stripped)

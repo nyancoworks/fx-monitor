@@ -388,7 +388,10 @@ def _one(pair, data, source_quality, evaluated_at, assessment_method=None):
                        "正式A/B判定・entry許可は変更しない"]
     }
 
-def _build_murphy_outlook(pairs, quality, clock, calendar):
+def build_murphy_outlook(pairs, quality, *, evaluated_at, economic_calendar=None):
+    """Build the live outlook even when all market inputs are missing."""
+    pairs, quality = _dict(pairs), _dict(quality)
+    clock = evaluated_at
     from collections import Counter
     from .activate_time import observe_pair
     from .economic_calendar_context import enrich_outlook
@@ -425,9 +428,9 @@ def _build_murphy_outlook(pairs, quality, clock, calendar):
                   for row in selected(outlook)]
     outlook.update(strategy_candidates=candidates, strategy_candidate_count=len(candidates),
                    candidates=[], candidate_count=0)
-    if calendar is not None:
+    if economic_calendar is not None:
         try:
-            return enrich_outlook(outlook, calendar)
+            return enrich_outlook(outlook, economic_calendar)
         except (ValueError, TypeError, KeyError):
             pass
     return outlook
@@ -435,9 +438,8 @@ def _build_murphy_outlook(pairs, quality, clock, calendar):
 
 def build_scheduled_outlook(pairs, quality, *, evaluated_at, economic_calendar=None,
                             assessment_method='contextual_scenario_review_v12_technical_forecast'):
+    """Build historical assessments for offline replay and regression fixtures."""
     pairs,quality=_dict(pairs),_dict(quality)
-    if any(_dict(value).get('murphy_profile_version') == 1 for value in pairs.values()):
-        return _build_murphy_outlook(pairs, quality, evaluated_at, economic_calendar)
     rows=[]
     for pair in PAIR_KEYS:
         try: rows.append(_one(pair,pairs.get(pair),quality.get(pair),evaluated_at,assessment_method))
