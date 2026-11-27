@@ -44,13 +44,27 @@ def validate_strategy_snapshot(snapshot):
         if (type(outlook['pair_context_version']) is not int or outlook['pair_context_version'] not in (1,2,3,4)
                 or outlook.get('pair_market_context')!=build(records,clock,version=outlook['pair_context_version'])):
             failures.append('scheduled pair market context mismatch')
+    from .murphy_profile import METHOD as MURPHY_METHOD, refresh as murphy_refresh
+    murphy_version = outlook.get('murphy_profile_version')
+    if ('murphy_profile_version' in outlook and
+            (type(murphy_version) is not int or murphy_version != 1)):
+        failures.append('Murphy outlook version invalid')
     counts = Counter()
     for r in records:
         from .technical_scenario import METHOD as TECHNICAL_METHOD, refresh
         from .technical_forecast import METHOD as FORECAST_METHOD
         from .technical_evolution import METHOD as EVOLUTION_METHOD
         from .standard_technicals import METHOD as STANDARD_METHOD, refresh as standard_refresh
-        if r.get('method_version')==STANDARD_METHOD:
+        if (r.get('method_version') == MURPHY_METHOD) != (murphy_version == 1):
+            failures.append('Murphy outlook and record methods differ')
+        if r.get('method_version') == MURPHY_METHOD:
+            from copy import deepcopy
+            try:
+                if murphy_refresh(deepcopy(r)) != r:
+                    failures.append('Murphy assessment mismatch')
+            except (KeyError, TypeError, ValueError, AttributeError, ZeroDivisionError):
+                failures.append('Murphy inputs invalid')
+        elif r.get('method_version')==STANDARD_METHOD:
             from copy import deepcopy
             try:
                 if standard_refresh(deepcopy(r))!=r:failures.append('standard technical assessment mismatch')

@@ -64,6 +64,8 @@ def build_strategy_report_export(snapshot_bytes, source):
                 'canonical_assessment_field', 'strategy_assessment_count',
                 'assessment_counts', 'strategy_assessments')}}
         projected = view['scheduled_outlook']
+        if 'murphy_profile_version' in outlook:
+            projected['murphy_profile_version'] = outlook['murphy_profile_version']
         if 'pair_context_version' in outlook:
             for key in ('pair_context_version','pair_market_context'):projected[key]=deepcopy(outlook[key])
         if 'activate_time_version' in outlook:
@@ -75,7 +77,7 @@ def build_strategy_report_export(snapshot_bytes, source):
         projected['strategy_candidates'] = [{key: row[key] for key in ('pair', 'strategy')}
                                              for row in outlook.get('strategy_candidates', [])]
         packed_view = view
-        compact_rows = any('technical_context' in r or r.get('standard_technical_version') in (1,2) for r in projected['strategy_assessments'])
+        compact_rows = 'murphy_profile_version' in outlook or any('technical_context' in r or r.get('standard_technical_version') in (1,2) for r in projected['strategy_assessments'])
         if compact_rows:
             # Original canonical/row equality has already been validated. Save
             # each assessment once; reconstruct the identical projected rows on

@@ -221,10 +221,14 @@ def _build_task_report(report, strength, slot, continuity, swing_records=None):
     return out
 
 
-def build_task_report(report, strength, slot, continuity, swing_records=None):
+def build_task_report(report, strength, slot, continuity, swing_records=None, *, outlook=None):
     # This optional projection must not prevent saving the original judgment.
     try:
-        result = _build_task_report(report, strength, slot, continuity, swing_records)
+        if outlook and outlook.get('murphy_profile_version') == 1 and report.get('status') == 'saved':
+            from .murphy_report import task_report
+            result = task_report(report, strength, slot, continuity, outlook)
+        else:
+            result = _build_task_report(report, strength, slot, continuity, swing_records)
         if result['status'] == 'saved' and 'research_digest' in report:
             result['research_digest'] = deepcopy(report['research_digest'])
         return result

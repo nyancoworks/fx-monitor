@@ -388,9 +388,56 @@ def _one(pair, data, source_quality, evaluated_at, assessment_method=None):
                        "正式A/B判定・entry許可は変更しない"]
     }
 
+def _build_murphy_outlook(pairs, quality, clock, calendar):
+    from collections import Counter
+    from .activate_time import observe_pair
+    from .economic_calendar_context import enrich_outlook
+    from .murphy_profile import assess, capture, selected
+
+    strength = build_contexts(pairs, clock, include_display_scores=True)
+    rows, records, time_context = [], [], {}
+    for pair in PAIR_KEYS:
+        data = _dict(pairs.get(pair))
+        inputs = capture(data, _dict(quality.get(pair)), clock)
+        assessments = {strategy: assess(pair, strategy, clock, inputs,
+                          strength.get(pair, {}).get(strategy))
+                       for strategy in ('swing', 'daytrade')}
+        records.extend(assessments.values())
+        frames = _dict(data.get('standard_technical_frames'))
+        weekly = _dict(frames.get('w1'))
+        rows.append({'pair': pair, 'strategy_assessments': assessments,
+                     'w1_history': {'verified': weekly.get('verified') is True,
+                                    'observed_count': len(weekly.get('bars', []))}})
+        time_context[pair] = observe_pair(frames, clock)
+    counts = Counter(record['assessment'] for record in records)
+    outlook = {'schema': 'scheduled_outlook_v1', 'evaluated_at': clock,
+               'murphy_profile_version': 1, 'advisory_only': True,
+               'canonical_assessment_field': 'strategy_assessments',
+               'strategy_assessments': records, 'strategy_assessment_count': len(records),
+               'assessment_counts': {status: counts[status]
+                                     for status in ('evaluation_pending', 'skip', 'review')},
+               'grade_counts': {grade: sum(row['grade'] == grade for row in records)
+                                for grade in ('A', 'B', 'C', 'D')},
+               'rows': rows, 'activate_time_version': 1, 'activate_time_context': time_context}
+    candidates = [{'pair': row['pair'], 'strategy': row['strategy'], 'direction': row['direction'],
+                   'priority': row['price_plan']['status'], 'timing_assessment': row['price_plan']['status'],
+                   'macro_context': {}, 'rci9_context': {}, 'next_check': row['entry_condition']}
+                  for row in selected(outlook)]
+    outlook.update(strategy_candidates=candidates, strategy_candidate_count=len(candidates),
+                   candidates=[], candidate_count=0)
+    if calendar is not None:
+        try:
+            return enrich_outlook(outlook, calendar)
+        except (ValueError, TypeError, KeyError):
+            pass
+    return outlook
+
+
 def build_scheduled_outlook(pairs, quality, *, evaluated_at, economic_calendar=None,
                             assessment_method='contextual_scenario_review_v12_technical_forecast'):
     pairs,quality=_dict(pairs),_dict(quality)
+    if any(_dict(value).get('murphy_profile_version') == 1 for value in pairs.values()):
+        return _build_murphy_outlook(pairs, quality, evaluated_at, economic_calendar)
     rows=[]
     for pair in PAIR_KEYS:
         try: rows.append(_one(pair,pairs.get(pair),quality.get(pair),evaluated_at,assessment_method))

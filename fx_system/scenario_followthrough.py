@@ -37,7 +37,16 @@ def observe_frozen_condition(record, pair, through):
            'base_close_withdrawal': None, 'trigger_close_withdrawal': None, 'target_touch': None,
            'invalidation_touch': None, 'trade_performance': 'not_measured',
            'is_current_scenario_validity': False, 'is_entry_or_fill': False}
+    from .murphy_profile import METHOD as MURPHY_METHOD
+    murphy = record.get('method_version') == MURPHY_METHOD
     plan = record.get('scenario_conditions', {})
+    if murphy:
+        prices = record['price_plan']
+        if prices['status'] != 'ready':
+            return out
+        plan = {'status': 'conditions_observed', 'basis': MURPHY_METHOD,
+                'route': 'sb_span_observed', 'level': prices['entry']}
+
     supported = ('waiting', 'awaiting_breakout', 'awaiting_retest', 'conditions_observed')
     if (record.get('assessment') != 'review' or plan.get('status') not in supported
             or record.get('expiry', {}).get('status') == 'withdrawn'):
@@ -55,6 +64,8 @@ def observe_frozen_condition(record, pair, through):
     rci_timing=plan.get('basis')=='rci9_turn_v1'
     indicator_timing = rci_timing or multi_timing
     stop, target, level = levels.get('invalidation'), levels.get('scenario_target',levels.get('structural_target')), plan.get('level')
+    if murphy:
+        stop, target = prices['stop'], prices['target']
     sign = 1 if record.get('direction') == 'long' else -1 if record.get('direction') == 'short' else 0
     if (not seconds or not base_seconds or not sign or type(through) is not int
             or not 0 < through-clock <= 31*86400 or not all(positive(v) for v in (stop, target))
@@ -114,6 +125,9 @@ def observe_frozen_condition(record, pair, through):
             if reached and out[name] is None:
                 out[name] = {'bar_opened_at': bar['timestamp'], 'bar_closed_at': bar['timestamp']+300,
                              'level': price, 'is_close_based_withdrawal': False}
+    if murphy:
+        out['status'] = 'observed_saved_candles'
+        return out
     # Production H4 is derived from verified H1, not from potentially different
     # M5 closes. Retain that distinction when checking the original base plan.
     hourly = {}; hourly_stamps = []

@@ -10,12 +10,12 @@ from .strategy_report import report_records
 SCHEMA = 'saved_scenario_continuity_v1'
 FIELDS = ('direction','grade','reference_levels','invalidation','waiting_conditions',
           'formation_conditions','scenario_conditions','opposing_evidence','reasons','swing_context',
-          'technical_outlook','wave_price_plan')
+          'technical_outlook','wave_price_plan','price_plan')
 LABELS = {'direction':'方向','grade':'評価','reference_levels':'構造水準',
           'invalidation':'撤回水準','waiting_conditions':'待つ条件',
           'formation_conditions':'成立条件','scenario_conditions':'確認段階',
           'opposing_evidence':'反対根拠','reasons':'主根拠','swing_context':'スイング大局と仕掛け',
-          'technical_outlook':'テクニカル見通し','wave_price_plan':'波の価格計画'}
+          'price_plan':'SB・スパン価格計画','technical_outlook':'テクニカル見通し','wave_price_plan':'波の価格計画'}
 
 
 def _brief(record):
@@ -23,6 +23,9 @@ def _brief(record):
             ('assessment','direction','grade','grade_reason','skip_reason','expiry',
              'reference_levels','invalidation','waiting_conditions','formation_conditions',
              'scenario_conditions','reasons','opposing_evidence')}
+    if 'price_plan' in record:
+        plan = record['price_plan']
+        result['price_plan'] = {k: plan.get(k) for k in ('entry','stop','target','status')}
     if 'swing_context' in record:
         result['swing_context'] = deepcopy(record['swing_context'])
     for field in ('technical_outlook','wave_price_plan'):
@@ -86,6 +89,8 @@ def compare_views(current, previous, *, current_selection_version=2, previous_se
         key=(record['pair'],record['strategy']); prior=old[key]
         def evidence(value, field):
             item=value.get(field)
+            if field == 'price_plan' and isinstance(item, dict):
+                return {k:item.get(k) for k in ('entry','stop','target','status')}
             if field=='scenario_conditions' and isinstance(item,dict):
                 return {k:item.get(k) for k in ('status','route','conditions','reason')}
             if field=='swing_context' and isinstance(item,dict):

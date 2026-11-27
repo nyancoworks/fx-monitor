@@ -138,6 +138,9 @@ def _ordered_reviews(outlook, *, selection_version=CURRENT_SELECTION_VERSION):
 
 def report_records(outlook, *, selection_version=CURRENT_SELECTION_VERSION):
     """Up to three per strategy; do not change any saved assessment."""
+    if outlook.get('murphy_profile_version') == 1:
+        from .murphy_profile import selected
+        return selected(outlook)
     ordered = _ordered_reviews(outlook, selection_version=selection_version)
     if selection_version>=3:
         ordered=[r for r in ordered if 'practical_review' not in r or r['practical_review'].get('status') in ('technical_watch','reaction_confirmed','confirmation_wait','planned_price_wait')]
@@ -196,6 +199,9 @@ def render_strategy_report(snapshot, *, include_all_reviews=False, complete_evid
     if failures:
         raise ValueError('; '.join(failures))
     outlook = snapshot['scheduled_outlook']; rows = outlook['strategy_assessments']
+    if outlook.get('murphy_profile_version') == 1:
+        from .murphy_report import render
+        return render(outlook, include_all=include_all_reviews)[0]
     comparison_notes = comparison_explanations(rows) if comparison_explanation_version == 2 else {}
     shown = ([r for strategy in ('swing', 'daytrade') for r in _ordered_reviews(
                 outlook, selection_version=selection_version)
