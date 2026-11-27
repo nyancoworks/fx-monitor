@@ -33,7 +33,7 @@ def _comparison(contributions, pair):
     selected, currencies = _component(contributions, pair)
     if not selected: return None
     scores = _fit(selected, currencies)
-    return {'difference': scores[pair[:3]]-scores[pair[3:]],
+    return {'difference': scores[pair[:3]]-scores[pair[3:]], 'scores': scores,
             'currencies': list(currencies), 'pairs': sorted(selected),
             'fit_rmse_log_pct': math.sqrt(sum((v['_return']-scores[p[:3]]+scores[p[3:]])**2
                                             for p, v in selected.items())/len(selected))}
@@ -62,7 +62,7 @@ def temporal_reference(frames, edges, pair, end, hours, difference):
         'scope':'descriptive_recent_scale_not_significance_or_profitability'}
 
 
-def build_contexts(pairs, evaluated_at):
+def build_contexts(pairs, evaluated_at, *, include_display_scores=False):
     frames = {}; historical_frames = {}
     for pair in PAIR_KEYS:
         data = pairs.get(pair)
@@ -138,6 +138,12 @@ def build_contexts(pairs, evaluated_at):
                     'previous_start_closed_at': start-hours*3600+3600,
                     'previous_end_closed_at': start+3600,
                     'same_pair_set': now_fit['pairs'] == old_fit['pairs']}
+            if include_display_scores and fit:
+                currencies = (pair[:3], pair[3:])
+                context['display_scores'] = {c: fit['scores'][c] for c in currencies}
+                if now_fit and old_fit and now_fit['pairs'] == old_fit['pairs']:
+                    context['display_changes'] = {
+                        c: now_fit['scores'][c] - old_fit['scores'][c] for c in currencies}
             context['temporal_reference'] = (temporal_reference(historical_frames, fit['pairs'], pair, end, hours, fit['difference'])
                 if fit else {'status':'unavailable'})
             result[pair][strategy] = context

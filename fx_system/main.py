@@ -433,7 +433,7 @@ def _refresh(ny=None):
         data["technical"]={tf:technical(indicator_frames[tf]) for tf in ("m5","m15","h1","h4","d1","w1")}
         # Current standard-only profile from verified retained candles.
         # No new provider requests or changes to the collection budget.
-        data['daily_swing_version'] = 1
+        data['murphy_profile_version'] = 1
         refresh_strategy_indicators(data,verified,indicator_frames,quality,{})
         data['standard_technical_health'] = indicator_health(data['standard_technical_frames'])
         q=result["quality"][name]
