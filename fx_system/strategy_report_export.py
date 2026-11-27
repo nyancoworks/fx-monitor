@@ -109,7 +109,7 @@ def build_strategy_report_export(snapshot_bytes, source):
             'payload_base64': base64.b64encode(gzip.compress(raw, mtime=0)).decode('ascii')}
         if projected.get('pair_context_version') == 4:
             saved['conflict_role_lines'] = conflict_role_lines(projected)
-        if projected.get('activate_time_version') == 1:
+        if projected.get('activate_time_version') == 1 and 'murphy_profile_version' not in projected:
             from .research_digest import build as build_research_digest
             saved['research_digest'] = build_research_digest(projected)
         if compact_rows:

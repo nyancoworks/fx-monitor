@@ -5,7 +5,7 @@
 - Preserve discretionary analysis for 16 pairs x swing/daytrade. No orders, permissions or position management. A/B/C is scenario assessment, not proven profitability.
 - Issue #124 defines the live judgment profile (`murphy_sb_span_v1`). Follow `docs/MURPHY_PROFILE.md`. SB and Span Model Special drive decisions. MACD and RCI are supplementary. Keep legacy profile reproduction versioned and preserve past saved bodies.
 
-- For current specifications, use this repository and `docs/SPAN_MODEL_SPECIAL.md`. The archived `fx-trading-system` handoff is historical and must not override the current profile.
+- Use the current code and `docs/MURPHY_PROFILE.md` for live behavior. Use the archived `fx-trading-system` handoff and old technical documents for historical behavior.
 - Do not enable collection, manually dispatch Actions, add market requests or increase schedules without owner authorization. Preserve the accepted READY state and existing collection schedule.
 - Validate code locally first. Distinguish local tests, CI, data transfer verification and natural scheduled operation.
 - Keep full historical originals and private research evidence in their original private source; never rewrite a frozen detection or source identity.

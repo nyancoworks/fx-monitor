@@ -421,7 +421,7 @@ def _build_murphy_outlook(pairs, quality, clock, calendar):
                'rows': rows, 'activate_time_version': 1, 'activate_time_context': time_context}
     candidates = [{'pair': row['pair'], 'strategy': row['strategy'], 'direction': row['direction'],
                    'priority': row['price_plan']['status'], 'timing_assessment': row['price_plan']['status'],
-                   'macro_context': {}, 'rci9_context': {}, 'next_check': row['entry_condition']}
+                   'next_check': row['entry_condition']}
                   for row in selected(outlook)]
     outlook.update(strategy_candidates=candidates, strategy_candidate_count=len(candidates),
                    candidates=[], candidate_count=0)

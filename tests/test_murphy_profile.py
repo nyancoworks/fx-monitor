@@ -7,7 +7,7 @@ from fx_system.monitor_pairs import PAIR_KEYS
 from fx_system.murphy_report import _card
 from fx_system.murphy_profile import TIMEFRAMES, assess, capture, refresh, selected
 from fx_system.scheduled_outlook import build_scheduled_outlook
-from fx_system.standard_technicals import SECONDS, frame
+from fx_system.standard_technicals import SECONDS, prepare
 from fx_system.strategy_report_export import build_strategy_report_export, restore_strategy_report_export
 from fx_system.task_report import build_delivery_report, build_task_report
 from fx_system.validate_strategy_snapshot import validate_strategy_snapshot
@@ -18,16 +18,17 @@ SOURCE = {'source_repository': 'nyancoworks/fx-monitor', 'source_commit': 'a' * 
 
 
 def inputs():
-    frames = {}
+    raw = {}
     for tf, step in SECONDS.items():
         candles = []
         for i in range(100):
             close = 1.2 + i * .0002
             candles.append({'timestamp': CLOCK - (100-i)*step, 'open': close,
                             'close': close, 'high': close+.00005, 'low': close-.00005})
-        frames[tf] = frame(candles, tf, CLOCK, True)
-    pair = {'murphy_profile_version': 1, 'standard_technical_frames': frames}
-    quality = {'timeframes': {tf: {'ok': True} for tf in frames}}
+        raw[tf] = candles
+    pair = {'murphy_profile_version': 1}
+    quality = {'evaluated_at': CLOCK, 'timeframes': {tf: {'ok': True} for tf in raw}}
+    prepare(pair, raw, raw, quality)
     return pair, quality
 
 
@@ -38,6 +39,18 @@ class MurphyProfileTest(unittest.TestCase):
         cls.outlook = build_scheduled_outlook(dict.fromkeys(PAIR_KEYS, cls.pair),
             dict.fromkeys(PAIR_KEYS, cls.quality), evaluated_at=CLOCK)
 
+    def test_live_frames_omit_retired_sma(self):
+        from fx_system.indicator_history import indicator_health
+
+        frames = self.pair['standard_technical_frames']
+        for frame in frames.values():
+            self.assertNotIn('sma', frame)
+            self.assertIn('macd', frame)
+            self.assertIn('rci', frame)
+        health = indicator_health(frames)
+        self.assertTrue(all(item['sb_available'] and 'sma200_required' not in item
+                            for item in health.values()))
+
     def test_full_saved_projection_and_delivery(self):
         outlook = self.outlook
         snapshot = {'scheduled_outlook': outlook, 'evaluated_at': CLOCK}
@@ -46,6 +59,7 @@ class MurphyProfileTest(unittest.TestCase):
         self.assertEqual(len(selected(outlook)), 6)
         bundle = build_strategy_report_export(json.dumps(snapshot).encode(), SOURCE)
         self.assertEqual(bundle['status'], 'saved')
+        self.assertNotIn('research_digest', bundle)
         blob = bundle['snapshot_git_blob_sha']
         restored = restore_strategy_report_export(bundle, SOURCE, blob)
         self.assertEqual(restored['scheduled_outlook']['strategy_assessments'], outlook['strategy_assessments'])

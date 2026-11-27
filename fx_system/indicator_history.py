@@ -75,6 +75,10 @@ def indicator_health(frames):
             continue
         value = frames[tf]
         count = len(value.get('bars', []))
+        if value.get('calculation_version') == 4:
+            result[tf] = {'input_count': count, 'verified': value.get('verified') is True,
+                          'sb_available': value.get('super_bollinger', {}).get('status') == 'calculated'}
+            continue
         sma = value.get('sma', {}).get('200', {})
         result[tf] = {'input_count': count, 'sma200_required': 200,
                       'slope_required': 201, 'shortfall': max(0, 201-count),
