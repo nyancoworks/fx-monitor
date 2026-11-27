@@ -3,7 +3,7 @@ from copy import deepcopy
 import unittest
 from unittest.mock import patch
 
-from fx_system.research_followup import build, build_top3_trace
+from fx_system.research_followup import build, build_top3_trace, compare_daytrade_top3
 
 START = 360001
 
@@ -64,6 +64,28 @@ class ResearchFollowupTests(unittest.TestCase):
         rows = {'daytrade': [{'pair': 'EURUSD'}]}
         trace = build_top3_trace(outlook(now, record(now, observed=False)), rows, past)
         self.assertNotIn('fixed_plan_key', trace['entries'][0])
+
+    def test_parallel_rankings_follow_observed_plans_and_separate_shared_candidates(self):
+        rows = [record(START, observed=False) for _ in range(3)]
+        for row, pair in zip(rows, ('EURUSD', 'GBPUSD', 'AUDUSD')):
+            row['pair'] = pair
+        opening = {'evaluated_at': START, 'strategy_assessments': rows}
+        later = START + 3600
+        observed = record(later)
+        observed['pair'] = 'GBPUSD'
+        following = {'evaluated_at': later, 'strategy_assessments': [observed]}
+        plans = build(following, DIGEST)
+        plan = plans['anchors'][0]
+        plan.update(status='complete', events={'obstacle': later + 300, 'local_stop': later + 600})
+        with patch('fx_system.strategy_report.report_records', side_effect=[
+                rows[:2], [rows[0], rows[2]], [], []]):
+            first = compare_daytrade_top3(opening, build(opening, DIGEST))
+            result = compare_daytrade_top3(following, plans, first)
+        old, new = result['rankings']['5'], result['rankings']['6']
+        self.assertEqual(old['outcomes']['shared'], {'waiting_for_plan': 1})
+        self.assertEqual(old['outcomes']['exclusive'], {'obstacle_first': 1})
+        self.assertEqual(new['outcomes']['exclusive'], {'waiting_for_plan': 1})
+        self.assertEqual(old['entries'][1]['listed_at'], START)
 
     def test_complete_candle_path_and_same_bar_order_unknown(self):
         with patch.dict('fx_system.research_followup.HORIZON', daytrade=3600):

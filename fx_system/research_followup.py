@@ -4,6 +4,7 @@ Only already saved, verified candles are considered. Touches use trigger-bar
 high/low; local and thesis withdrawals require their respective closes. This
 research ledger cannot establish an order within one candle or a trade fill.
 """
+from collections import Counter
 from copy import deepcopy
 import datetime as dt
 import hashlib
@@ -304,3 +305,50 @@ def build_top3_trace(outlook, sections, plans, previous=None):
                 entry.update(fixed_plan_key=plan['key'], fixed_plan_at=plan['start_at'])
     return {'schema': TOP3_SCHEMA, 'evaluated_at': clock,
             'capacity_reached': capacity_reached, 'entries': list(entries.values())}
+
+
+
+def _plan_outcome(plan):
+    if plan is None:
+        return 'waiting_for_plan'
+    if plan['status'] != 'complete':
+        return plan['status']
+    events = plan['events']
+    obstacle, stop = events.get('obstacle'), events.get('local_stop')
+    if obstacle is None and stop is None:
+        return 'neither_within_window'
+    if stop is None or (obstacle is not None and obstacle < stop):
+        return 'obstacle_first'
+    if obstacle is None or stop < obstacle:
+        return 'stop_first'
+    return 'same_candle'
+
+
+def compare_daytrade_top3(outlook, plans, previous=None):
+    """Follow both rankings from the same saved assessments before continuity."""
+    from .strategy_report import report_records
+
+    schema = 'private_daytrade_top3_comparison_v1'
+    prior = previous if isinstance(previous, dict) and previous.get('schema') == schema else {}
+    anchors = {plan['key']: plan for plan in plans['anchors']}
+    rankings = {}
+    for version in (5, 6):
+        selected = [record for record in report_records(outlook, selection_version=version)
+                    if record['strategy'] == 'daytrade']
+        key = str(version)
+        trace = build_top3_trace(outlook, {'daytrade': selected}, plans,
+                                 prior.get('rankings', {}).get(key))
+        rankings[key] = trace
+    for key, trace in rankings.items():
+        other = rankings['6' if key == '5' else '5']
+        shared = {entry['scenario_key'] for entry in other['entries']}
+        counts = {'shared': Counter(), 'exclusive': Counter()}
+        for entry in trace['entries']:
+            group = 'shared' if entry['scenario_key'] in shared else 'exclusive'
+            plan = anchors.get(entry.get('fixed_plan_key'))
+            outcome = ('plan_unavailable' if plan is None and 'fixed_plan_key' in entry
+                       else _plan_outcome(plan))
+            counts[group][outcome] += 1
+        trace['outcomes'] = counts
+    return {'schema': schema, 'evaluated_at': outlook['evaluated_at'],
+            'status': 'saved', 'scope': 'daytrade_before_continuity', 'rankings': rankings}
