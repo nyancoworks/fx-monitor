@@ -224,7 +224,7 @@ def _build_task_report(report, strength, slot, continuity, swing_records=None):
 def build_task_report(report, strength, slot, continuity, swing_records=None, *, outlook=None):
     # This optional projection must not prevent saving the original judgment.
     try:
-        if outlook and outlook.get('murphy_profile_version') == 1 and report.get('status') == 'saved':
+        if outlook and outlook.get('murphy_profile_version') in (1, 2) and report.get('status') == 'saved':
             from .murphy_report import task_report
             result = task_report(report, strength, slot, continuity, outlook)
         else:

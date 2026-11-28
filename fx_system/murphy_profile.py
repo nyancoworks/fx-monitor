@@ -6,7 +6,8 @@ from .span_special import observe
 from .standard_technicals import bollinger_regime
 from .strategy_strength import interpret
 
-METHOD = 'murphy_sb_span_v1'
+ARCHIVED_METHOD = 'murphy_sb_span_v1'
+METHOD = 'murphy_sb_span_v2'
 TIMEFRAMES = {
     'swing': ('w1', 'd1', 'h4', 'h1', 'm15'),
     'daytrade': ('d1', 'h4', 'h1', 'm15', 'm5'),
@@ -33,6 +34,7 @@ def observation(frame, tf, clock, quality):
         'status': 'available', 'closed_at': closed, 'close': bars[-1]['close'],
         'direction': direction if phase in TREND and direction == side else None,
         'sb_direction': direction, 'sb_phase': phase,
+        'reaction_low': bars[-1]['low'], 'reaction_high': bars[-1]['high'],
         'center': sb['centerline'], 'bands': deepcopy(sb['bands']),
         'span': span, 'macd': deepcopy(frame['macd']['observations'][-2:]),
         'rci': deepcopy(frame['rci']),
@@ -89,44 +91,63 @@ def refresh(record):
             'entry': None, 'stop': None, 'target': None, 'risk_pips': None,
             'reward_pips': None, 'rr': None, 'status': 'unavailable'}
     condition = '主軸のSBと青色スパンの方向を確認'
-    if direction:
-        sign = 1 if direction == 'long' else -1
-        side, opposite = ('upper', 'lower') if sign == 1 else ('lower', 'upper')
-        blue, red = (base['span']['last'][key] for key in ('blue', 'red'))
-        entry = max(base['center'], blue) if sign == 1 else min(base['center'], blue)
-        stop = min(base['bands']['1'][opposite], blue, red) if sign == 1 else max(
-            base['bands']['1'][opposite], blue, red)
-        target = base['bands']['3'][side]
-        condition = f'{setup_tf.upper()}または{timing_tf.upper()}でSB・青色スパンが方向側、価格が基準水準の方向側'
-        reaction = any(frames[tf].get('direction') == direction for tf in (setup_tf, timing_tf))
-        # A stop breach immediately invalidates the saved plan at the latest
-        # available observation. The reported stop itself is an intrabar level.
-        if sign * (price - stop) <= 0:
-            status = 'stopped'
-        elif sign * (target - price) <= 0:
-            status = 'target_reached'
-        elif reaction and sign * (price - entry) >= 0:
-            status = 'ready'
-        else:
-            status = 'waiting'
-        if sign * (entry - stop) > 0 and sign * (target - entry) > 0 and stop > 0 and target > 0:
-            ready = status == 'ready'
-            formation = price if ready else entry
-            pip = .01 if record['pair'].endswith('JPY') else .0001
-            risk = sign * (formation - stop)
-            reward = sign * (target - formation)
-            plan.update(entry=formation, trigger_level=entry, stop=stop, target=target,
-                        risk_pips=round(risk / pip, 2), reward_pips=round(reward / pip, 2),
-                        rr=round(reward / risk, 2), status=status)
-        if plan['status'] in ('stopped', 'target_reached', 'unavailable'):
-            ready = False
-        oppositions = [tf.upper() for tf in (higher, background)
+    if record['method_version'] == ARCHIVED_METHOD:
+        if direction:
+            from .murphy_archive import project
+            ready, grade, reason, condition = project(
+                record, frames, base, direction, price, plan, higher, background, setup_tf, timing_tf)
+    else:
+        correction = base.get('sb_phase') == 'correction'
+        if correction:
+            direction = {'short': 'long', 'long': 'short'}.get(base.get('sb_direction'))
+        if direction:
+            state = 'review'
+            sign = 1 if direction == 'long' else -1
+            own = 'above' if sign == 1 else 'below'
+            supported = any(frames[tf].get('direction') == direction for tf in (higher, background))
+            opposed = [tf.upper() for tf in (higher, background)
                        if frames[tf].get('direction') not in (None, direction)]
-        supported = any(frames[tf].get('direction') == direction for tf in (higher, background))
-        grade = 'C' if oppositions else 'A' if ready and supported else 'B'
-        reason = ('上位足に逆方向 '+ '・'.join(oppositions) if oppositions else
-                  '主軸のSBと青色スパンが方向側。上位足に同方向あり' if supported else
-                  '主軸のSBと青色スパンが方向側。上位足の支持は未確認')
+            condition = '下位足のSBと青色スパンの継続を確認'
+            if correction:
+                condition = '押し目・戻り：下位足のSBと青色スパンの回復を確認'
+            plan['status'] = 'waiting'
+            # Prefer the most recent confirmed timing observation.
+            candidates = sorted((frames[tf] for tf in (timing_tf, setup_tf)
+                                 if frames[tf].get('direction') == direction),
+                                key=lambda frame: frame['closed_at'], reverse=True)
+            for frame in candidates:
+                span = frame['span']
+                if correction and span['previous']['blue_position'] == own:
+                    continue
+                stop = span['last']['blue']
+                if correction:
+                    stop = frame['reaction_low' if sign == 1 else 'reaction_high']
+                entry = frame['close']
+                if sign * (entry - stop) <= 0:
+                    continue
+                source_tf = next(tf for tf in (timing_tf, setup_tf) if frames[tf] is frame)
+                basis = '回復足の安値' if sign == 1 else '回復足の高値'
+                condition += f'。{source_tf.upper()}の' + (basis if correction else '青色スパン') + 'を撤退目安とする'
+                plan.update(stop=stop, entry=entry, trigger_level=entry)
+                if sign * (price - stop) <= 0:
+                    plan['status'] = 'stopped'
+                    break
+                ready = True
+                pip = .01 if record['pair'].endswith('JPY') else .0001
+                risk = sign * (price - stop)
+                plan.update(status='ready', entry=price, risk_pips=round(risk / pip, 2))
+                # On a recovery toward the base centre, it is a visible objective.
+                if correction and sign * (base['center'] - price) > 0:
+                    reward = sign * (base['center'] - price)
+                    plan.update(target=base['center'], reward_pips=round(reward / pip, 2),
+                                rr=round(reward / risk, 2))
+                break
+            grade = 'A' if ready and supported and not opposed else 'B'
+            reason = '主軸は調整局面' if correction else '主軸SBと青色スパンが同方向'
+            if opposed:
+                reason += '。上位足逆行 ' + '・'.join(opposed)
+        elif base.get('sb_phase') == 'transition':
+            reason = condition = '転換の方向確認待ち'
 
     record.update(reference_timeframe=base_tf, trigger_timeframe=timing_tf,
                   assessment=state, grade=grade, direction=direction, grade_reason=reason,

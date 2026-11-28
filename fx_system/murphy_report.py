@@ -111,7 +111,16 @@ def _card(record, time_context, previous):
         DIRECTIONS[frame[tf].get('direction')] if frame[tf]['status'] == 'available' else '？')
         for tf in TIMEFRAMES[strategy])
     lines = [f'### {heading}', f'- **現在価格の参考** {price}']
-    if plan['entry'] is not None:
+    if record['method_version'] == 'murphy_sb_span_v2':
+        target = _number(plan['target']) if plan['target'] is not None else '未確定'
+        lines.append(f'- **価格計画** 🛑 損切り {_number(plan["stop"])} → ▶ エントリー目安 {_number(plan["entry"])} → 🎯 利確目安 {target}')
+        if plan['risk_pips'] is not None:
+            risk = f'リスク {plan["risk_pips"]} pips'
+            if plan['rr'] is not None:
+                risk += f'／リワード {plan["reward_pips"]} pips、RR 1:{plan["rr"]}・費用前'
+            lines.append('- ' + risk)
+        lines.append(f'- **条件** {record["entry_condition"]}')
+    elif plan['entry'] is not None:
         lines += [
             f'- **価格計画** 🛑 損切り {_number(plan["stop"])} → ▶ エントリー目安 {_number(plan["entry"])}'
             f' → 🎯 利確目安 {_number(plan["target"])}（リスク {_number(plan["risk_pips"])} pips'

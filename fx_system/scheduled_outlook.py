@@ -414,7 +414,7 @@ def build_murphy_outlook(pairs, quality, *, evaluated_at, economic_calendar=None
         time_context[pair] = observe_pair(frames, clock)
     counts = Counter(record['assessment'] for record in records)
     outlook = {'schema': 'scheduled_outlook_v1', 'evaluated_at': clock,
-               'murphy_profile_version': 1, 'advisory_only': True,
+               'murphy_profile_version': 2, 'advisory_only': True,
                'canonical_assessment_field': 'strategy_assessments',
                'strategy_assessments': records, 'strategy_assessment_count': len(records),
                'assessment_counts': {status: counts[status]

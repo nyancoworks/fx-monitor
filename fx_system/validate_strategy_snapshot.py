@@ -44,10 +44,10 @@ def validate_strategy_snapshot(snapshot):
         if (type(outlook['pair_context_version']) is not int or outlook['pair_context_version'] not in (1,2,3,4)
                 or outlook.get('pair_market_context')!=build(records,clock,version=outlook['pair_context_version'])):
             failures.append('scheduled pair market context mismatch')
-    from .murphy_profile import METHOD as MURPHY_METHOD, refresh as murphy_refresh
+    from .murphy_profile import ARCHIVED_METHOD, METHOD as MURPHY_METHOD, refresh as murphy_refresh
     murphy_version = outlook.get('murphy_profile_version')
     if ('murphy_profile_version' in outlook and
-            (type(murphy_version) is not int or murphy_version != 1)):
+            (type(murphy_version) is not int or murphy_version not in (1, 2))):
         failures.append('Murphy outlook version invalid')
     counts = Counter()
     for r in records:
@@ -55,9 +55,10 @@ def validate_strategy_snapshot(snapshot):
         from .technical_forecast import METHOD as FORECAST_METHOD
         from .technical_evolution import METHOD as EVOLUTION_METHOD
         from .standard_technicals import METHOD as STANDARD_METHOD, refresh as standard_refresh
-        if (r.get('method_version') == MURPHY_METHOD) != (murphy_version == 1):
+        methods = {1: ARCHIVED_METHOD, 2: MURPHY_METHOD}
+        if (murphy_version in methods or r.get('method_version') in methods.values()) and r.get('method_version') != methods.get(murphy_version):
             failures.append('Murphy outlook and record methods differ')
-        if r.get('method_version') == MURPHY_METHOD:
+        if r.get('method_version') in (ARCHIVED_METHOD, MURPHY_METHOD):
             from copy import deepcopy
             try:
                 if murphy_refresh(deepcopy(r)) != r:

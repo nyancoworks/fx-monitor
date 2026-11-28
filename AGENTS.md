@@ -3,7 +3,7 @@
 - This repository is public. Never commit market observations, saved assessments, captured responses, real-data fixtures, credentials, or private conversation records.
 - Keep private state in the separately configured data checkout. Public workflow output is limited to fixed status metadata; inspect failure paths and artifacts as well as stdout.
 - Preserve discretionary analysis for 16 pairs x swing/daytrade. No orders, permissions or position management. A/B/C is scenario assessment, not proven profitability.
-- Issue #124 defines the live judgment profile (`murphy_sb_span_v1`). Follow `docs/MURPHY_PROFILE.md`. SB and Span Model Special drive decisions. MACD and RCI are supplementary. Keep legacy profile reproduction versioned and preserve past saved bodies.
+- Issue #124 defines the live judgment profile (`murphy_sb_span_v2`). Follow `docs/MURPHY_PROFILE.md`. SB and Span Model Special drive decisions. MACD and RCI are supplementary. Keep legacy profile reproduction versioned and preserve past saved bodies.
 
 - Use the current code and `docs/MURPHY_PROFILE.md` for live behavior. Use the archived `fx-trading-system` handoff and old technical documents for historical behavior.
 - Do not enable collection, manually dispatch Actions, add market requests or increase schedules without owner authorization. Preserve the accepted READY state and existing collection schedule.

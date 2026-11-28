@@ -37,8 +37,8 @@ def observe_frozen_condition(record, pair, through):
            'base_close_withdrawal': None, 'trigger_close_withdrawal': None, 'target_touch': None,
            'invalidation_touch': None, 'trade_performance': 'not_measured',
            'is_current_scenario_validity': False, 'is_entry_or_fill': False}
-    from .murphy_profile import METHOD as MURPHY_METHOD
-    murphy = record.get('method_version') == MURPHY_METHOD
+    from .murphy_profile import ARCHIVED_METHOD, METHOD as MURPHY_METHOD
+    murphy = record.get('method_version') in (ARCHIVED_METHOD, MURPHY_METHOD)
     plan = record.get('scenario_conditions', {})
     if murphy:
         prices = record['price_plan']
@@ -68,8 +68,8 @@ def observe_frozen_condition(record, pair, through):
         stop, target = prices['stop'], prices['target']
     sign = 1 if record.get('direction') == 'long' else -1 if record.get('direction') == 'short' else 0
     if (not seconds or not base_seconds or not sign or type(through) is not int
-            or not 0 < through-clock <= 31*86400 or not all(positive(v) for v in (stop, target))
-            or not indicator_timing and (not positive(level) or not sign*(target-level)>0 or not sign*(level-stop)>0)):
+            or not 0 < through-clock <= 31*86400 or not positive(stop) or not (positive(target) or murphy and target is None)
+            or not indicator_timing and (not positive(level) or target is not None and not sign*(target-level)>0 or not sign*(level-stop)>0)):
         return {**out, 'status': 'saved_price_plan_unavailable'}
     out.update(original_level=level, original_target=target, original_invalidation=stop,
                confirmation_timeframe=record['trigger_timeframe'],
@@ -120,6 +120,8 @@ def observe_frozen_condition(record, pair, through):
     future = [rows[t] for t in expected] if not missing else []
     for bar in future:
         for name, price in (('target_touch', target), ('invalidation_touch', stop)):
+            if price is None:
+                continue
             reached = (sign*(bar['high' if sign == 1 else 'low']-price) >= 0 if name == 'target_touch'
                        else sign*(bar['low' if sign == 1 else 'high']-price) <= 0)
             if reached and out[name] is None:
