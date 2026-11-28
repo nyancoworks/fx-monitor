@@ -33,7 +33,9 @@ class GitGeneration:
     def fetch(self):
         head = self.remote_head()
         if head is not None:
-            self.git("fetch", "--no-tags", self.remote, head)
+            # The current tree contains the retained roots and their objects.
+            # A fresh runner does not need historical commit trees to restore.
+            self.git("fetch", "--no-tags", "--depth=1", self.remote, head)
         return head
 
     def publish(self, store, expected):
