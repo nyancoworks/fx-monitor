@@ -1,6 +1,11 @@
 name: FX Monitor initial NY17 history
 on:
   workflow_dispatch:
+    inputs:
+      repair:
+        description: Recheck the first unresolved NY17 session per pair
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -33,4 +38,8 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}/code
           TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
-        run: python -m fx_system.ny_history_backfill --state "$GITHUB_WORKSPACE/private-state"
+          FX_HISTORY_REPAIR: ${{ inputs.repair }}
+        run: |
+          args=()
+          if [[ "$FX_HISTORY_REPAIR" == true ]]; then args+=(--repair); fi
+          python -m fx_system.ny_history_backfill --state "$GITHUB_WORKSPACE/private-state" "${args[@]}"
