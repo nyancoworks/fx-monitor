@@ -44,6 +44,9 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--state',required=True)
     args=parser.parse_args()
+    from .acceptance_target import enabled
+    if enabled():
+        raise ValueError('offline Release adapter required')
     root=private_root(args.state);verify_ready(root)
     run=os.environ['GITHUB_RUN_ID'];commit=os.environ['GITHUB_SHA']
     if (not run.isdigit() or not re.fullmatch('[0-9a-f]{40}',commit) or

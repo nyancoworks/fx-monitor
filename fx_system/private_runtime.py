@@ -68,10 +68,14 @@ def push_snapshot(root):
 
 def verify_ready(root):
     # Fixed destination: a caller cannot route data to an arbitrary public repo.
-    remote = git(root, 'remote', 'get-url', 'origin')
-    if not re.fullmatch(r'(?:https://github\.com/|git@github\.com:)' +
-                        re.escape(DATA_REPOSITORY) + r'(?:\.git)?', remote):
-        raise ValueError('unexpected private data destination')
+    from .acceptance_target import enabled, verify_remote
+    if enabled():
+        verify_remote(root, git)
+    else:
+        remote = git(root, 'remote', 'get-url', 'origin')
+        if not re.fullmatch(r'(?:https://github\.com/|git@github\.com:)' +
+                            re.escape(DATA_REPOSITORY) + r'(?:\.git)?', remote):
+            raise ValueError('unexpected private data destination')
     marker = root / 'migration/READY.json'
     if marker.is_symlink():
         raise ValueError('migration marker must not be a symlink')
@@ -279,13 +283,16 @@ def main():
     try:
         run_id = os.environ['GITHUB_RUN_ID']
         commit = os.environ['GITHUB_SHA']
+        from .acceptance_target import enabled, offline_environment, verify_identity
         if (not run_id.isdigit() or not re.fullmatch('[0-9a-f]{40}', commit) or
-                os.environ.get('GITHUB_REPOSITORY') != CODE_REPOSITORY or
-                os.environ.get('GITHUB_REF') != 'refs/heads/main'):
+                not verify_identity(os.environ.get('GITHUB_REPOSITORY'), os.environ.get('GITHUB_REF'))):
             raise ValueError('trusted code run identity required')
         root = private_root(args.state)
         verify_ready(root)
-        env = {**os.environ, 'FX_DATA_ROOT': str(root), 'PYTHONPATH': str(CODE_ROOT),
+        if enabled() and args.stage in ('refresh', 'backtest'):
+            raise ValueError('offline provider and Release adapters required')
+        environment = offline_environment(os.environ) if enabled() else os.environ
+        env = {**environment, 'FX_DATA_ROOT': str(root), 'PYTHONPATH': str(CODE_ROOT),
                # Archive transport uses commit-tree, which needs both identities.
                # Checkout credentials do not configure Git author/committer data.
                'GIT_AUTHOR_NAME': 'github-actions[bot]',
