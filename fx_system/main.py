@@ -422,7 +422,7 @@ def _refresh(ny=None):
             verified, quality, ny_study=(ny_context or {}).get("study"))
         data["indicator_input_quality"] = input_quality
         indicator_frames, data['indicator_history'] = extend_from_archive(
-            indicator_frames, ny.value if ny is not None else None, name,
+            indicator_frames, ny.pair_checkpoint(name) if ny is not None else None, name,
             ny_context or {}, quality, final_now)
         # Publish the verified NY17 macro candles, not the retired native D1 placeholders.
         for macro_tf in ("d1","w1"):

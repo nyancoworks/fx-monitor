@@ -162,30 +162,38 @@ class NYIntegration:
         except Exception:self.value=None;self.failure='NY archive unavailable; manual recovery required'
         self.queue=[]
 
+    def pair_checkpoint(self, pair):
+        if self.value is None:
+            return None
+        if hasattr(self.sidecar, "load_pair"):
+            return self.sidecar.load_pair(pair)
+        return self.value
+
     def context(self,pair,now):
+        value = self.pair_checkpoint(pair)
         blockers=[];study=None;availability=None
-        if self.value is None:blockers.append(self.failure or 'NY archive not synchronized')
+        if value is None:blockers.append(self.failure or 'NY archive not synchronized')
         else:
-            if pair in self.value['blocked_pairs']:blockers.append('NY incoming source batch rejected')
+            if pair in value['blocked_pairs']:blockers.append('NY incoming source batch rejected')
             clock=dt.datetime.fromtimestamp(now,UTC)
             from .ny_availability import observed_availability
             try:
-                availability=observed_availability(self.value,pair,now)
+                availability=observed_availability(value,pair,now)
                 blockers.extend(availability['reasons'])
             except (ValueError,TypeError,KeyError,OverflowError):
                 blockers.append('NY source availability audit failed')
-            if any(r['pair']==pair and dt.datetime.fromisoformat(r['available_at_utc'])>clock for r in self.value['receipts']):blockers.append('NY H1 unavailable at evaluation clock')
-            try:study=snapshot(self.value['archive'],pair,clock,publication_lag_seconds=self.lag,closed_holidays=self.holidays,
+            if any(r['pair']==pair and dt.datetime.fromisoformat(r['available_at_utc'])>clock for r in value['receipts']):blockers.append('NY H1 unavailable at evaluation clock')
+            try:study=snapshot(value['archive'],pair,clock,publication_lag_seconds=self.lag,closed_holidays=self.holidays,
                                indicator_daily_limit=MACRO_TARGETS['d1'])
             except Exception:blockers.append('NY snapshot validation failed')
         context={'mode':self.mode,'evaluated_at':now,'study':study,'blockers':list(dict.fromkeys(blockers)),
                 'observed_availability':availability,
                 'source_contract_verified':self.source_verified,'publication_verified':self.publication_verified}
-        if self.evidence_profile is not None and self.value is not None:
+        if self.evidence_profile is not None and value is not None:
             from .ny_observed_policy import verify_originals,apply_observed_profile
             try:
                 if self.original_contracts is None:self.original_contracts=verify_originals(self.evidence_directory)
-                context=apply_observed_profile(context,self.value,pair,self.original_contracts)
+                context=apply_observed_profile(context,value,pair,self.original_contracts)
             except (ValueError,TypeError,KeyError,OverflowError,OSError):
                 context.update(source_contract_verified=False,publication_verified=False)
                 context['blockers'].append('NY immutable original evidence unavailable')
@@ -195,7 +203,7 @@ class NYIntegration:
             try:
                 context['study'] = extend_study(
                     self.sidecar.directory.parent / 'ny17-history', pair,
-                    self.value['archive']['pairs'][pair], study, clock)
+                    value['archive']['pairs'][pair], study, clock)
             except (ValueError, TypeError, KeyError, OSError, OverflowError):
                 context['indicator_archive_rejected'] = True
         return context
@@ -212,5 +220,10 @@ def configured(root,cache_path,output_path):
         if resolved==legacy or resolved in legacy.parents:raise ValueError('legacy destination forbidden')
     lag=os.getenv('FX_NY17_PUBLICATION_LAG_SECONDS')
     profile=os.getenv('FX_NY17_EVIDENCE_PROFILE') or None
-    return NYIntegration(mode=mode,directory=directory,source_contract_verified=os.getenv('FX_NY17_SOURCE_CONTRACT_VERIFIED')=='1',publication_verified=os.getenv('FX_NY17_PUBLICATION_VERIFIED')=='1',publication_lag_seconds=int(lag) if lag is not None else None,closed_holidays=json.loads(os.getenv('FX_NY17_CLOSED_HOLIDAYS','[]')),
+    integration = NYIntegration(mode=mode,directory=directory,source_contract_verified=os.getenv('FX_NY17_SOURCE_CONTRACT_VERIFIED')=='1',publication_verified=os.getenv('FX_NY17_PUBLICATION_VERIFIED')=='1',publication_lag_seconds=int(lag) if lag is not None else None,closed_holidays=json.loads(os.getenv('FX_NY17_CLOSED_HOLIDAYS','[]')),
                          evidence_profile=profile,evidence_directory=Path(root)/'evidence/issue43-h1-originals' if profile else None)
+
+    if os.getenv("FX_NY17_STORAGE_MODE") == "partitioned_candidate":
+        from .ny17_storage.sidecar import PartitionedSidecar
+        integration.sidecar = PartitionedSidecar(directory)
+    return integration

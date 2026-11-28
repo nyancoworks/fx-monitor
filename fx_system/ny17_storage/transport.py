@@ -1,13 +1,11 @@
-"""Compatibility bridge for the existing NY17 restore/refresh/archive stages."""
+"""Partitioned NY17 transport for the existing collection stages."""
 import argparse
 import json
 import os
 from pathlib import Path
 
 from .. import ny_archive_transport as legacy
-from ..ny_archive_journal import encode
-from .checkpoint import rebuild, save
-from .events import sha
+from .checkpoint import save
 from .git_generation import GitGeneration, GitReader
 from .partition_store import PartitionStore
 
@@ -38,70 +36,57 @@ def install(store, transport, head):
             store.advance(generation, key)
 
 
+def import_legacy(directory, store):
+    """One-time conversion of the pinned legacy current and previous checkpoints."""
+    previous = directory / PREVIOUS
+    with store.publish(None):
+        for source in (previous, directory / CURRENT):
+            if not source.exists():
+                continue
+            state = legacy.checked_json(source.read_bytes())
+            archive = state["archive"]
+            entries = {}
+            pairs = archive["pairs"].keys() | state["blocked_pairs"].keys() | {
+                r["pair"] for r in state["receipts"]}
+            for pair in sorted(pairs):
+                scoped = {**state,
+                          "archive": {**archive,
+                                      "pairs": {pair: archive["pairs"][pair]} if pair in archive["pairs"] else {},
+                                      "events": [e for e in archive["events"] if e["pair"] == pair]},
+                          "blocked_pairs": {pair: state["blocked_pairs"][pair]} if pair in state["blocked_pairs"] else {},
+                          "receipts": [r for r in state["receipts"] if r["pair"] == pair]}
+                entries[pair] = store.put(save(store, scoped))
+            store.advance(state["generation"], store.put({"schema": 2, "pairs": entries}))
+
+
 def restore(directory, store, transport):
     head = transport.fetch()
     if head is None:
         if os.getenv("FX_NY17_CANDIDATE_BOOTSTRAP") != "true":
             raise ValueError("missing candidate archive; explicit bootstrap required")
-        return legacy.restore(directory, None, continuous=True)
-    install(store, transport, head)
-    states = []
-    for generation, key in store.roots()[:2]:
-        raw = encode(rebuild(store, store.get(key)))
-        if legacy.checked_json(raw)["generation"] != generation:
-            raise ValueError("generation mismatch")
-        states.append(raw)
-    if not states or any((directory / name).exists() for name in (CURRENT, PREVIOUS)):
-        raise ValueError("expected an empty restore directory and a published head")
-    for name, raw in zip((CURRENT, PREVIOUS), states):
-        legacy.atomically_write(directory / name, raw)
-    legacy.atomically_write(directory / legacy.BASE, head.encode())
-    return receipt(store, "restored", head, states[0])
+        legacy.restore(directory, None, continuous=True)
+        import_legacy(directory, store)
+    else:
+        install(store, transport, head)
+    legacy.atomically_write(directory / ".partitioned-base", (head or "").encode())
+    return receipt(store, "restored", head)
 
 
-def receipt(store, status, head, raw):
-    generation = legacy.checked_json(raw)["generation"]
-    used = store.db.execute("SELECT max(used) FROM partitions").fetchone()[0]
-    return {"status": status, "generation": generation, "checkpoint_sha256": sha(raw),
+def receipt(store, status, head):
+    generation, root = store.roots()[0]
+    if store.get(root).get("schema") != 2:
+        raise ValueError("unsupported candidate format; bootstrap on a fresh validation ref")
+    used = store.db.execute("SELECT used FROM partitions WHERE used>0 ORDER BY id DESC LIMIT 1").fetchone()[0]
+    return {"status": status, "generation": generation, "generation_root_sha256": root,
             "restored_ref" if status == "restored" else "persisted_ref": head,
-            "checkpoint_bytes": len(raw), "retained_bytes": used,
-            "capacity_warning": used >= store.prepare}
+            "retained_bytes": used, "capacity_warning": used >= store.prepare}
 
 
 def publish(directory, store, transport):
-    raw = (directory / CURRENT).read_bytes()
-    state = legacy.checked_json(raw)
-    roots = store.roots()
-    expected = (directory / legacy.BASE).read_text().strip() if roots else None
-    prior = roots[0][0] if roots else None
-    with store.publish(prior):
-        backup = directory / PREVIOUS
-        if not roots and backup.exists():
-            previous = legacy.checked_json(backup.read_bytes())
-            store.advance(previous["generation"], store.put(save(store, previous)))
-            roots = store.roots()
-        if roots:
-            old_index = store.get(roots[0][1])
-            old = rebuild(store, old_index)
-            old_events = old["archive"]["events"]
-            events = state["archive"]["events"]
-            if events[:len(old_events)] != old_events:
-                raise ValueError("archive event prefix changed")
-            if state["generation"] == old["generation"]:
-                if state != old:
-                    raise ValueError("changed state under an existing generation")
-            elif state["generation"] == old["generation"] + 1:
-                root = save(store, state, old_index["refs"], len(old_events))
-                store.advance(state["generation"], store.put(root))
-            else:
-                raise ValueError("unexpected generation")
-        else:
-            store.advance(state["generation"], store.put(save(store, state)))
-        root = store.get(store.roots()[0][1])
-        if encode(rebuild(store, root)) != raw:
-            raise ValueError("candidate does not preserve checkpoint bytes")
+    expected = (directory / ".partitioned-base").read_text().strip() or None
+    receipt(store, "persisted", expected)
     head = transport.publish(store, expected)
-    return receipt(store, "unchanged" if expected == head else "persisted", head, raw)
+    return receipt(store, "unchanged" if expected == head else "persisted", head)
 
 
 def main():

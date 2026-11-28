@@ -11,6 +11,8 @@ jobs:
     if: github.repository == 'nyancoworks/fx-monitor' && vars.FX_COLLECTION_ENABLED == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      FX_NY17_STORAGE_MODE: ${{ vars.FX_NY17_STORAGE_MODE }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -32,7 +34,6 @@ jobs:
         continue-on-error: true
         env:
           FX_NY17_CANDIDATE_BOOTSTRAP: ${{ vars.FX_NY17_CANDIDATE_BOOTSTRAP }}
-          FX_NY17_STORAGE_MODE: ${{ vars.FX_NY17_STORAGE_MODE }}
           PYTHONPATH: ${{ github.workspace }}/code
         run: python -m fx_system.private_runtime restore --state "$GITHUB_WORKSPACE/private-state"
       - name: Collect and evaluate
@@ -49,7 +50,6 @@ jobs:
         if: always() && steps.restore.outcome == 'success' && (steps.refresh.outcome == 'success' || steps.refresh.outcome == 'failure')
         continue-on-error: true
         env:
-          FX_NY17_STORAGE_MODE: ${{ vars.FX_NY17_STORAGE_MODE }}
           PYTHONPATH: ${{ github.workspace }}/code
         run: python -m fx_system.private_runtime archive --state "$GITHUB_WORKSPACE/private-state"
       - name: Attach persistence evidence
