@@ -1,7 +1,9 @@
 """Bounded indicator history, reusing existing verified observations only."""
 from copy import deepcopy
 import math
+from .activate_time import MAX_BARS, observe_pair
 from .mt4_calendar import aggregate_h4
+from .span_special import observe
 
 # Enough for 201 complete H4/M15 candles, with aggregation alignment margin.
 # Request sizes and request planning remain unchanged.
@@ -67,7 +69,7 @@ def extend_from_archive(frames, checkpoint, pair, context, quality, now):
     return result, diagnostic
 
 
-def indicator_health(frames):
+def indicator_health(frames, quality=None):
     """Counts and availability only; missing auxiliaries never veto a scenario."""
     result = {}
     for tf in ('w1', 'd1', 'h4', 'm15', 'h1', 'm5'):
@@ -76,8 +78,25 @@ def indicator_health(frames):
         value = frames[tf]
         count = len(value.get('bars', []))
         if value.get('calculation_version') == 4:
-            result[tf] = {'input_count': count, 'verified': value.get('verified') is True,
-                          'sb_available': value.get('super_bollinger', {}).get('status') == 'calculated'}
+            bars = value.get('bars', [])
+            verified = value.get('verified') is True
+            span = observe(bars, tf) if verified else {}
+            macd = value.get('macd', {}).get('observations', [])[-2:]
+            rci = value.get('rci', {})
+            evidence = (quality or {}).get('timeframes', {}).get(tf, {})
+            result[tf] = {'input_count': count, 'verified': verified,
+                          'fresh': evidence.get('fresh') is True,
+                          'sb_available': verified and value.get('super_bollinger', {}).get('status') == 'calculated',
+                          'span_available': span.get('status') == 'available',
+                          'span_lag_zone_available': span.get('last', {}).get('lag_zone') in ('above', 'inside', 'below'),
+                          'macd_available': verified and len(macd) == 2 and all(
+                              point.get('histogram') is not None for point in macd),
+                          **{f'rci{period}_available': verified and rci.get(str(period), {}).get('value') is not None
+                             for period in (9, 26, 52)}}
+            if tf in MAX_BARS:
+                observed = observe_pair({tf: value}, value['evaluated_at'])['timeframes'][tf]
+                result[tf]['time_input_count'] = len(observed['source']['bars'])
+                result[tf]['time_available'] = observed['observation'].get('status') == 'observed'
             continue
         sma = value.get('sma', {}).get('200', {})
         result[tf] = {'input_count': count, 'sma200_required': 200,

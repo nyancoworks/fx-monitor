@@ -9,6 +9,7 @@ import zipfile
 from pathlib import Path
 from diagnostics.issue43_ny_incremental import PAIRS,UTC,digest,snapshot
 from diagnostics.issue43_ny_incremental_e2e import ZIP_HASHES
+from .indicator_inputs import MACRO_TARGETS
 from diagnostics.issue43_ny_runtime import NYSidecar,observation,validate_checkpoint,MAX_CHECKPOINT_BYTES
 from .monitor_pairs import PINNED_ORIGINAL_PAIRS
 
@@ -174,7 +175,8 @@ class NYIntegration:
             except (ValueError,TypeError,KeyError,OverflowError):
                 blockers.append('NY source availability audit failed')
             if any(r['pair']==pair and dt.datetime.fromisoformat(r['available_at_utc'])>clock for r in self.value['receipts']):blockers.append('NY H1 unavailable at evaluation clock')
-            try:study=snapshot(self.value['archive'],pair,clock,publication_lag_seconds=self.lag,closed_holidays=self.holidays)
+            try:study=snapshot(self.value['archive'],pair,clock,publication_lag_seconds=self.lag,closed_holidays=self.holidays,
+                               indicator_daily_limit=MACRO_TARGETS['d1'])
             except Exception:blockers.append('NY snapshot validation failed')
         context={'mode':self.mode,'evaluated_at':now,'study':study,'blockers':list(dict.fromkeys(blockers)),
                 'observed_availability':availability,
