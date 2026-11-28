@@ -189,6 +189,15 @@ class NYIntegration:
             except (ValueError,TypeError,KeyError,OverflowError,OSError):
                 context.update(source_contract_verified=False,publication_verified=False)
                 context['blockers'].append('NY immutable original evidence unavailable')
+        if (context.get('evidence_profile') and context['source_contract_verified']
+                and not context['blockers'] and study and study['calendar_ready']):
+            from .ny_history_segments import extend_study
+            try:
+                context['study'] = extend_study(
+                    self.sidecar.directory.parent / 'ny17-history', pair,
+                    self.value['archive']['pairs'][pair], study, clock)
+            except (ValueError, TypeError, KeyError, OSError, OverflowError):
+                context['indicator_archive_rejected'] = True
         return context
 
 

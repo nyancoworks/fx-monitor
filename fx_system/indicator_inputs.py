@@ -18,14 +18,16 @@ def contiguous_indicator_frames(frames, quality, *, ny_study=None):
         rows = frames.get(tf, [])
         evidence = timeframes.get(tf, {})
         retained = rows
-        if tf == 'd1' and ny_study and evidence.get('ok') is True and evidence.get('calendar') == NY17:
+        if ny_study and evidence.get('ok') is True and evidence.get('calendar') == NY17:
             try:
-                candidates = ny17_frames({'d1': ny_study.get('indicator_d1', []), 'w1': []},
-                                         quality['evaluated_at'])['d1']
+                candidates = ny17_frames({key: ny_study.get('indicator_' + tf, []) if key == tf else []
+                                          for key in MACRO_TARGETS}, quality['evaluated_at'])[tf]
             except (ValueError, TypeError, KeyError, OverflowError):
                 candidates = []
-            if retained and len(candidates) >= len(retained) and candidates[-len(retained):] == retained:
-                rows = candidates
+            if candidates and retained and candidates[-1] == retained[-1]:
+                original = {row['timestamp']: row for row in retained}
+                if all(original.get(row['timestamp'], row) == row for row in candidates):
+                    rows = candidates
         diagnostic = {'retained_count': len(retained), 'archive_candidates': len(rows),
                       'target_count': MACRO_TARGETS[tf], 'calendar': evidence.get('calendar'),
                       'source_quality_ok': evidence.get('ok') is True,
