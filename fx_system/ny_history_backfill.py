@@ -10,7 +10,7 @@ from diagnostics.issue43_ny_runtime import NYSidecar
 from diagnostics.issue43_ny_shadow import build_shadow, close_utc, latest_closed_date
 from .core import ny17_frames
 from .indicator_calendar import ny17_sequence_valid
-from .ny_history_segments import WEEKDAY_WINDOW, encode_segment, read_segment
+from .ny_history_segments import WEEKDAY_WINDOW, encode_segment, joined_hours, read_manifest, read_segment
 from .ny_observed_policy import supported_source, verify_originals
 from .private_runtime import CODE_REPOSITORY, git, private_root, push_snapshot, verify_ready
 
@@ -107,7 +107,28 @@ def macro_counts(rows, clock):
     return counts
 
 
-def run(root, key):
+def blocking_ranges(existing, clock):
+    """Only the first missing session that breaks the live D1 or W1 suffix."""
+    day = latest_closed_date(clock)
+    sessions = 0
+    while sessions < WEEKDAY_WINDOW:
+        if day.weekday() < 5:
+            sessions += 1
+            end = int(close_utc(day).timestamp())
+            ranges = []
+            for stamp in range(end - 24 * HOUR, end, HOUR):
+                if str(stamp) not in existing:
+                    if ranges and ranges[-1][1] + HOUR == stamp:
+                        ranges[-1][1] = stamp
+                    else:
+                        ranges.append([stamp, stamp])
+            if ranges:
+                return day.isoformat(), ranges
+        day -= dt.timedelta(days=1)
+    return None, []
+
+
+def run(root, key, *, repair=False):
     import requests
     from .main import DAILY_LIMIT, DAILY_RESERVE
 
@@ -115,16 +136,24 @@ def run(root, key):
     if directory.is_symlink():
         raise ValueError('unsafe history directory')
     manifest_path = directory / 'manifest.json'
-    if manifest_path.exists() or manifest_path.is_symlink():
-        raise ValueError('one-time history backfill already published')
+    manifest = read_manifest(directory)
+    if (repair and (not manifest or 'gap_repair' in manifest)) or (not repair and manifest):
+        raise ValueError('invalid history operation for existing manifest')
     archive = NYSidecar(root / '.private-ny17').load()
     originals = verify_originals(root / 'evidence' / 'issue43-h1-originals')
     clock = dt.datetime.now(dt.timezone.utc)
-    plan = []
+    plan, gaps, joined = [], {}, {}
     for pair, existing in sorted(archive['archive']['pairs'].items()):
         if not supported_source(archive, pair, originals) or pair in archive['blocked_pairs']:
             raise ValueError('unverified retained history')
-        plan.extend((pair, start, end) for start, end in missing_ranges(existing, clock))
+        if repair:
+            existing = joined_hours(directory, pair, existing, manifest, int(clock.timestamp()))
+            day, ranges = blocking_ranges(existing, clock)
+            gaps[pair] = {'ny_session': day, 'missing_h1': sum((end-start)//HOUR+1 for start, end in ranges)}
+        else:
+            ranges = missing_ranges(existing, clock)
+        joined[pair] = existing
+        plan.extend((pair, start, end) for start, end in ranges)
     if not plan or len(plan) > 250 or len(archive['archive']['pairs']) != 16:
         raise ValueError('history acquisition outside one-time request limit')
     with requests.Session() as session:
@@ -154,7 +183,7 @@ def run(root, key):
                 print(f'FX NY17 market request {index} stopped: invalid_series_row', flush=True)
                 raise
             for stamp, row in rows.items():
-                if str(stamp) not in archive['archive']['pairs'][pair]:
+                if str(stamp) not in joined[pair]:
                     if stamp in batches[pair]:
                         raise ValueError('overlapping acquisition results')
                     batches[pair][stamp] = row
@@ -170,33 +199,51 @@ def run(root, key):
             item, blob = encode_segment(pair, year, received_at, rows)
             entries[pair].append(item)
             blobs[f"{pair}-{year}-{item['sha256']}.json.gz"] = blob
-    if not blobs or sum(map(len, blobs.values())) > 16 * 1024 * 1024:
+    retained_size = sum(path.stat().st_size for path in directory.glob('*.json.gz')) if repair else 0
+    if (not blobs and not repair) or retained_size + sum(map(len, blobs.values())) > 16 * 1024 * 1024:
         raise ValueError('backfill capacity or availability unverified')
-    directory.mkdir(mode=0o700)
+    directory.mkdir(mode=0o700, exist_ok=repair)
     for name, blob in blobs.items():
         (directory / name).write_bytes(blob)
     for pair, items in entries.items():
         for item in items:
             read_segment(directory, pair, item, received_at)
     report = {}
-    for pair, existing in archive['archive']['pairs'].items():
+    for pair, existing in joined.items():
         new = batches.get(pair, {})
+        merged = {**existing, **{str(stamp): row for stamp, row in new.items()}}
         report[pair] = {'before': macro_counts(existing.values(), clock),
-                        'after': macro_counts([*existing.values(), *new.values()], clock)}
-    manifest_path.write_text(json.dumps({'schema': 1, 'pairs': entries, 'coverage': report,
-                                        'requests': len(plan)+1,
-                                        'received_counts': {pair: len(rows) for pair, rows in batches.items()}},
-                                       sort_keys=True))
+                        'after': macro_counts(merged.values(), clock)}
+        if repair:
+            next_day, next_ranges = blocking_ranges(merged, clock)
+            gaps[pair]['remaining_ny_session'] = next_day
+            gaps[pair]['remaining_missing_h1'] = sum(
+                (end-start)//HOUR+1 for start, end in next_ranges)
+    results = {'coverage': report, 'requests': len(plan)+1,
+               'received_counts': {pair: len(batches.get(pair, {})) for pair in joined}}
+    if repair:
+        for pair, items in entries.items():
+            manifest['pairs'].setdefault(pair, []).extend(items)
+        manifest['gap_repair'] = {**results, 'blocking_sessions': gaps}
+    else:
+        manifest = {'schema': 1, 'pairs': entries, **results}
+    if any(len(items) > 16 for items in manifest['pairs'].values()):
+        raise ValueError('history segment inventory would exceed reader limit')
+    packed_manifest = json.dumps(manifest, sort_keys=True)
+    if len(packed_manifest.encode()) > 65536:
+        raise ValueError('manifest would exceed reader limit')
+    manifest_path.write_text(packed_manifest)
     git(root, 'add', '--', 'ny17-history')
     git(root, '-c', 'user.name=github-actions[bot]', '-c',
         'user.email=41898286+github-actions[bot]@users.noreply.github.com',
-        'commit', '-m', 'Save verified initial NY17 history segments')
+        'commit', '-m', 'Save NY17 history gap verification' if repair else 'Save verified initial NY17 history segments')
     push_snapshot(root)
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--state', required=True)
+    parser.add_argument('--repair', action='store_true')
     args = parser.parse_args()
     try:
         if (os.getenv('GITHUB_REPOSITORY') != CODE_REPOSITORY
@@ -205,7 +252,7 @@ def main():
             raise ValueError('trusted manual dispatch required')
         root = private_root(args.state)
         verify_ready(root)
-        run(root, os.environ['TWELVE_DATA_API_KEY'])
+        run(root, os.environ['TWELVE_DATA_API_KEY'], repair=args.repair)
     except Exception as error:
         print(f'FX NY17 initial backfill failed ({type(error).__name__})')
         return 1

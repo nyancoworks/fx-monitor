@@ -67,31 +67,42 @@ def read_segment(directory, pair, item, now):
     return rows
 
 
-def extend_study(directory, pair, archived, study, clock):
-    """Extend analysis only; require exact agreement on existing NY17 candles."""
+def read_manifest(directory):
     if directory.is_symlink():
         raise ValueError('unsafe history directory')
     path = directory / 'manifest.json'
     if path.is_symlink():
         raise ValueError('unsafe history manifest')
     if not path.exists():
-        return study
+        return None
     if path.stat().st_size > 65536:
         raise ValueError('history manifest too large')
     manifest = json.loads(path.read_bytes())
     if manifest.get('schema') != 1 or not isinstance(manifest.get('pairs'), dict):
         raise ValueError('invalid history manifest')
+    return manifest
+
+
+def joined_hours(directory, pair, archived, manifest, now):
     entries = manifest['pairs'].get(pair, [])
-    if not entries:
-        return study
     if not isinstance(entries, list) or len(entries) > 16:
         raise ValueError('invalid history segment inventory')
     joined = dict(archived)
     for item in entries:
-        for row in read_segment(directory, pair, item, int(clock.timestamp())):
+        for row in read_segment(directory, pair, item, now):
             key = str(row['timestamp'])
             if joined.setdefault(key, row) != row:
                 raise ValueError('history conflicts with retained observation')
+
+    return joined
+
+
+def extend_study(directory, pair, archived, study, clock):
+    """Extend analysis only; require exact agreement on existing NY17 candles."""
+    manifest = read_manifest(directory)
+    if not manifest or not manifest['pairs'].get(pair):
+        return study
+    joined = joined_hours(directory, pair, archived, manifest, int(clock.timestamp()))
     combined = build_shadow(joined.values(), clock, minimum=WEEKDAY_WINDOW)
     extended = dict(study)
     for tf, key, limit in (('d1', 'indicator_d1', 250), ('w1', 'indicator_w1', 200)):

@@ -62,3 +62,18 @@ class SegmentTest(unittest.TestCase):
         response.json.return_value['message'] = 'Your plan does not permit historical data'
         with self.assertRaises(BackfillResponseError):
             response_data(response)
+
+    def test_repair_requests_only_missing_hours_in_latest_broken_session(self):
+        from datetime import date, timedelta
+        from diagnostics.issue43_ny_shadow import close_utc
+        from fx_system.ny_history_backfill import blocking_ranges
+
+        monday = date(2026, 3, 9)
+        monday_end = int(close_utc(monday).timestamp())
+        friday_end = int(close_utc(monday - timedelta(days=3)).timestamp())
+        self.assertEqual((monday_end % 86400, friday_end % 86400), (21*3600, 22*3600))
+        missing = friday_end - 3600
+        present = {str(stamp): {} for end in (friday_end, monday_end)
+                   for stamp in range(end - 86400, end, 3600) if stamp != missing}
+        self.assertEqual(blocking_ranges(present, close_utc(monday)),
+                         ('2026-03-06', [[missing, missing]]))
