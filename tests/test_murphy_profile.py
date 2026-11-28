@@ -27,7 +27,7 @@ def inputs():
             candles.append({'timestamp': CLOCK - (100-i)*step, 'open': close,
                             'close': close, 'high': close+.00005, 'low': close-.00005})
         raw[tf] = candles
-    pair = {'murphy_profile_version': 1}
+    pair = {'murphy_profile_version': 2}
     quality = {'evaluated_at': CLOCK, 'timeframes': {tf: {'ok': True} for tf in raw}}
     prepare(pair, raw, raw, quality)
     return pair, quality
@@ -45,7 +45,7 @@ class MurphyProfileTest(unittest.TestCase):
 
         with patch('fx_system.saved_economic_calendar.configured_calendar', return_value=None):
             outlook = build_outlook_with_saved_calendar({}, {}, evaluated_at=CLOCK)
-        self.assertEqual(outlook['murphy_profile_version'], 1)
+        self.assertEqual(outlook['murphy_profile_version'], 2)
         self.assertEqual(outlook['assessment_counts'],
                          {'evaluation_pending': 32, 'skip': 0, 'review': 0})
         self.assertEqual(validate_strategy_snapshot({'scheduled_outlook': outlook,
@@ -121,11 +121,41 @@ class MurphyProfileTest(unittest.TestCase):
         record = deepcopy(self.outlook['strategy_assessments'][0])
         plan = record['price_plan']
         self.assertLess(plan['stop'], plan['entry'])
-        self.assertLess(plan['entry'], plan['target'])
+        self.assertIsNone(plan['target'])
         record['murphy_inputs']['m5']['close'] = plan['stop']
         self.assertEqual(refresh(record)['price_plan']['status'], 'stopped')
         self.assertFalse(record['ready_to_consider'])
         self.assertEqual(record['direction'], 'long')
+
+    def test_background_conflict_and_three_sigma_do_not_withdraw(self):
+        row = deepcopy(self.outlook['strategy_assessments'][0])
+        frames = row['murphy_inputs']
+        frames['w1']['direction'] = 'short'
+        frames['m5']['close'] = frames['h4']['bands']['3']['upper']
+        refresh(row)
+        self.assertEqual(row['grade'], 'B')
+        self.assertEqual(row['price_plan']['status'], 'ready')
+        self.assertIsNone(row['price_plan']['target'])
+        self.assertIn('W1', row['grade_reason'])
+
+    def test_correction_requires_recovery_and_can_project_centre(self):
+        row = deepcopy(self.outlook['strategy_assessments'][0])
+        frames = row['murphy_inputs']
+        frames['h4'].update(direction=None, sb_phase='correction', sb_direction='short',
+                            center=frames['m5']['close'] + .002)
+        self.assertEqual(refresh(row)['price_plan']['status'], 'waiting')
+        frames['m15']['span']['previous']['blue_position'] = 'below'
+        self.assertEqual(refresh(row)['price_plan']['target'], frames['h4']['center'])
+
+    def test_saved_original_reproduces_original_plan(self):
+        outlook = deepcopy(self.outlook)
+        outlook['murphy_profile_version'] = 1
+        for row in outlook['strategy_assessments']:
+            row['method_version'] = 'murphy_sb_span_v1'
+            refresh(row)
+        row = outlook['strategy_assessments'][0]
+        self.assertEqual(row['price_plan']['target'], row['murphy_inputs']['h4']['bands']['3']['upper'])
+        self.assertEqual(validate_strategy_snapshot({'scheduled_outlook': outlook, 'evaluated_at': CLOCK}), [])
 
     def test_card_uses_saved_strength_and_calendar_details(self):
         row = deepcopy(self.outlook['strategy_assessments'][0])

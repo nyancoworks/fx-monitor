@@ -429,7 +429,7 @@ def _refresh(ny=None):
                             "quality":quality["timeframes"][macro_tf]}
         # Current standard-only profile from verified retained candles.
         # No new provider requests or changes to the collection budget.
-        data['murphy_profile_version'] = 1
+        data['murphy_profile_version'] = 2
         refresh_strategy_indicators(data,verified,indicator_frames,quality,{})
         data['standard_technical_health'] = indicator_health(data['standard_technical_frames'])
         q=result["quality"][name]

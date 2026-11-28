@@ -80,7 +80,7 @@ def prepare(data,verified,indicator_frames,quality):
     clock=quality.get('evaluated_at')
     data['standard_technical_version']=1
     timeframes = ('w1', 'd1', 'h1', 'm5') if data.get('daily_swing_version') == 1 else SECONDS
-    calculation_version = 4 if data.get('murphy_profile_version') == 1 else 3
+    calculation_version = 4 if data.get('murphy_profile_version') in (1, 2) else 3
     data['standard_technical_frames']={tf:frame(indicator_frames[tf],tf,clock,
         quality.get('timeframes',{}).get(tf,{}).get('ok') is True,
         quality.get('timeframes',{}).get(tf,{}).get('calendar'),calculation_version=calculation_version) for tf in timeframes}
