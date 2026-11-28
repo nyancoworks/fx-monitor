@@ -7,7 +7,9 @@ import os
 import time
 
 from diagnostics.issue43_ny_runtime import NYSidecar
-from diagnostics.issue43_ny_shadow import close_utc, latest_closed_date
+from diagnostics.issue43_ny_shadow import build_shadow, close_utc, latest_closed_date
+from .core import ny17_frames
+from .indicator_calendar import ny17_sequence_valid
 from .ny_history_segments import WEEKDAY_WINDOW, encode_segment, read_segment
 from .ny_observed_policy import supported_source, verify_originals
 from .private_runtime import CODE_REPOSITORY, git, private_root, push_snapshot, verify_ready
@@ -62,6 +64,18 @@ def request_rows(session, key, pair, first, last):
         rows[stamp] = {'timestamp': stamp, **{field: float(item[field])
                        for field in ('open', 'high', 'low', 'close')}}
     return rows
+
+
+def macro_counts(rows, clock):
+    study = build_shadow(rows, clock, minimum=WEEKDAY_WINDOW)
+    frames = ny17_frames(study, int(clock.timestamp()))
+    counts = {}
+    for tf, candles in frames.items():
+        index = max(0, len(candles) - 1)
+        while index > 0 and ny17_sequence_valid(candles[index-1:index+1], tf):
+            index -= 1
+        counts[tf] = {'complete': len(candles), 'latest_contiguous': len(candles) - index}
+    return counts
 
 
 def run(root, key):
@@ -123,7 +137,12 @@ def run(root, key):
     for pair, items in entries.items():
         for item in items:
             read_segment(directory, pair, item, received_at)
-    manifest_path.write_text(json.dumps({'schema': 1, 'pairs': entries,
+    report = {}
+    for pair, existing in archive['archive']['pairs'].items():
+        new = batches.get(pair, {})
+        report[pair] = {'before': macro_counts(existing.values(), clock),
+                        'after': macro_counts([*existing.values(), *new.values()], clock)}
+    manifest_path.write_text(json.dumps({'schema': 1, 'pairs': entries, 'coverage': report,
                                         'requests': len(plan)+1,
                                         'received_counts': {pair: len(rows) for pair, rows in batches.items()}},
                                        sort_keys=True))
