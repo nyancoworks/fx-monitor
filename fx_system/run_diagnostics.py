@@ -94,6 +94,14 @@ def build_diagnostics(snapshot_bytes, source, *, validation_log='', returncode=N
     result = {'schema': 'private_run_diagnostics_v1', 'source': dict(source),
         'snapshot_git_blob_sha': hashlib.sha1(b'blob '+str(len(snapshot_bytes)).encode()+b'\0'+snapshot_bytes).hexdigest(),
         'validation': validation, 'pairs': pairs, 'truncated': False}
+    transport = snapshot.get('ny17_transport')
+    if isinstance(transport, dict):
+        capacity = {key: transport[key] for key in (
+            'save_active_partition', 'save_partition_limit_bytes', 'save_remaining_partition_bytes',
+            'save_total_partition_bytes', 'save_prepared_next_partition', 'save_capacity_warning')
+            if type(transport.get(key)) in (int, bool)}
+        if capacity:
+            result['ny17_capacity'] = capacity
     budget = snapshot.get('api_budget')
     if isinstance(budget, dict):
         result['api_budget'] = {key: budget[key] for key in (

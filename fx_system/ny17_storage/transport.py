@@ -1,5 +1,6 @@
 """Partitioned NY17 transport for the existing collection stages."""
 import argparse
+from collections import Counter
 import json
 import os
 from pathlib import Path
@@ -8,6 +9,7 @@ from .. import ny_archive_transport as legacy
 from .checkpoint import save
 from .git_generation import GitGeneration, GitReader
 from .partition_store import PartitionStore
+from .partition_budget import OBJECT_RESERVE
 
 CURRENT = "ny17-checkpoint.json"
 PREVIOUS = "ny17-checkpoint.previous.json"
@@ -19,6 +21,7 @@ def install(store, transport, head):
     partitions = reader.receipt["partitions"]
     if reader.receipt.get("schema") != 1 or len(reader.receipt["roots"]) > 3:
         raise ValueError("invalid generation manifest")
+    observed = Counter()
     with store.publish(None):
         for number, usage in partitions:
             if type(number) is not int or number < 0 or not 0 <= usage <= store.limit:
@@ -30,8 +33,13 @@ def install(store, transport, head):
                 raise ValueError("invalid object identity")
             directory = store.root / str(partition)
             directory.mkdir(exist_ok=True)
-            (directory / key).write_bytes(transport.git("show", head + ":" + path))
+            payload = transport.git("show", head + ":" + path)
+            observed[partition] += len(payload) + OBJECT_RESERVE
+            (directory / key).write_bytes(payload)
+            store.read(directory / key, key)
             store.db.execute("INSERT INTO objects VALUES(?,?)", (key, partition))
+        if dict(observed) != {number: used for number, used in partitions if used}:
+            raise ValueError("partition accounting does not match stored objects")
         for generation, key in reversed(reader.receipt["roots"]):
             store.advance(generation, key)
 
@@ -76,10 +84,15 @@ def receipt(store, status, head):
     generation, root = store.roots()[0]
     if store.get(root).get("schema") != 2:
         raise ValueError("unsupported candidate format; bootstrap on a fresh validation ref")
-    used = store.db.execute("SELECT used FROM partitions WHERE used>0 ORDER BY id DESC LIMIT 1").fetchone()[0]
+    partitions = store.db.execute("SELECT id,used FROM partitions ORDER BY id").fetchall()
+    active, used = max((number, size) for number, size in partitions if size or number == 0)
     return {"status": status, "generation": generation, "generation_root_sha256": root,
             "restored_ref" if status == "restored" else "persisted_ref": head,
-            "retained_bytes": used, "capacity_warning": used >= store.prepare}
+            "retained_bytes": used, "capacity_warning": used >= store.prepare,
+            "active_partition": active, "partition_limit_bytes": store.limit,
+            "remaining_partition_bytes": store.limit - used,
+            "total_partition_bytes": sum(size for _, size in partitions),
+            "prepared_next_partition": (active + 1, 0) in partitions}
 
 
 def publish(directory, store, transport):

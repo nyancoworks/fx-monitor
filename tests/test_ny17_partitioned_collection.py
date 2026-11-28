@@ -48,3 +48,34 @@ class PartitionedCollectionTest(unittest.TestCase):
                 self.assertEqual(context.context("EURUSD", now)["observed_availability"]["covered_h1"], 1)
                 self.assertEqual(context.sidecar.read_window("EURUSD", stamp, now), {str(stamp): bar})
                 self.assertFalse((directory / "ny17-checkpoint.json").exists())
+
+    def test_restore_rejects_corrupt_object_and_preserves_remote(self):
+        from fx_system.ny17_storage import transport
+        from fx_system.ny17_storage.events import canonical, sha
+        import lzma
+
+        with TemporaryDirectory() as folder:
+            directory = Path(folder)
+            store = PartitionStore(directory)
+            root = {"schema": 2, "pairs": {}}
+            key = sha(canonical(root))
+            payload = lzma.compress(canonical(root), preset=1)
+
+            class ReaderTransport:
+                def inventory(self, commit):
+                    return {key: f"partitions/0/{key}"}
+
+                def git(self, *args):
+                    if args[-1].endswith("generation.json"):
+                        return canonical({"schema": 1, "roots": [[560, key]],
+                                          "partitions": [[0, len(payload) + 32768]]})
+                    return self.payload
+
+            remote = ReaderTransport()
+            remote.payload = payload[:-1]
+            with self.assertRaises(ValueError):
+                transport.install(store, remote, "candidate")
+            self.assertEqual(store.roots(), [])
+            remote.payload = payload
+            transport.install(store, remote, "candidate")
+            self.assertEqual(store.roots(), [(560, key)])

@@ -12,19 +12,36 @@ from .partition_budget import OBJECT_RESERVE, PARTITION_LIMIT, PLAN_NEXT_PARTITI
 
 
 class PartitionStore:
-    def __init__(self, root, *, prepare=PLAN_NEXT_PARTITION, limit=PARTITION_LIMIT):
-        if not OBJECT_RESERVE < prepare < limit <= PARTITION_LIMIT:
-            raise ValueError("invalid partition budget")
+    def __init__(self, root, *, prepare=None, limit=None):
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
-        self.prepare, self.limit = prepare, limit
         self.db = sqlite3.connect(self.root / "index.sqlite")
         self.db.executescript("""
+            CREATE TABLE IF NOT EXISTS budget(singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+                                                  prepare INTEGER NOT NULL, hard_limit INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS partitions(id INTEGER PRIMARY KEY, used INTEGER NOT NULL);
             INSERT OR IGNORE INTO partitions VALUES(0, 0);
             CREATE TABLE IF NOT EXISTS objects(key TEXT PRIMARY KEY, partition INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS generations(id INTEGER PRIMARY KEY, root TEXT NOT NULL);
         """)
+        stored = self.db.execute("SELECT prepare,hard_limit FROM budget WHERE singleton=1").fetchone()
+        defaults = stored or (PLAN_NEXT_PARTITION, PARTITION_LIMIT)
+        selected = (defaults[0] if prepare is None else prepare,
+                    defaults[1] if limit is None else limit)
+        if not OBJECT_RESERVE < selected[0] < selected[1] <= PARTITION_LIMIT:
+            self.db.close()
+            raise ValueError("invalid partition budget")
+        if stored and stored != selected:
+            self.db.close()
+            raise ValueError("partition budget changed across stages")
+        if not stored:
+            with self.db:
+                self.db.execute("INSERT OR IGNORE INTO budget VALUES(1,?,?)", selected)
+            if self.db.execute("SELECT prepare,hard_limit FROM budget WHERE singleton=1").fetchone() != selected:
+                self.db.close()
+                raise ValueError("partition budget changed concurrently")
+        self.prepare, self.limit = selected
+
 
     @contextmanager
     def publish(self, expected):

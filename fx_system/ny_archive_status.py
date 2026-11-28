@@ -9,7 +9,9 @@ def annotate(snapshot, restored, persisted, *, restore_ok, save_ok):
     for prefix, result in (("restore", restored), ("save", persisted)):
         for key in ("status", "generation", "checkpoint_sha256", "restored_ref", "persisted_ref",
                     "shadow_pilot_runs", "journal_entries", "consolidated", "new_compressed_bytes", "retained_bytes",
-                    "checkpoint_bytes", "generation_root_sha256", "capacity_warning"):
+                    "checkpoint_bytes", "generation_root_sha256", "capacity_warning",
+                    "active_partition", "partition_limit_bytes", "remaining_partition_bytes",
+                    "total_partition_bytes", "prepared_next_partition"):
             if key in result:
                 evidence[prefix + "_" + key] = result[key]
     snapshot["ny17_transport"] = evidence
