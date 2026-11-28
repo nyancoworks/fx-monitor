@@ -337,6 +337,8 @@ def main():
                                     partitioned=os.environ.get('FX_NY17_STORAGE_MODE') == 'partitioned_candidate')
             if enabled() and args.stage == 'refresh':
                 stage_command = [sys.executable, '-m', 'fx_system.acceptance_replay']
+            if enabled() and args.stage == 'history':
+                stage_command.append('--allow-create')
             rc = run_private(stage_command, root=root,
                              log=logs/(args.stage+'.log'), env=env)
         logs.mkdir(parents=True, exist_ok=True, mode=0o700)
