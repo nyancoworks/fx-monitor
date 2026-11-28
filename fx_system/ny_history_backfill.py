@@ -19,6 +19,32 @@ API = 'https://api.twelvedata.com'
 BATCH = 5000
 
 
+class BackfillResponseError(ValueError):
+    pass
+
+
+def response_data(response):
+    try:
+        payload = response.json()
+    except ValueError:
+        raise BackfillResponseError('response_not_json') from None
+    if not isinstance(payload, dict):
+        raise BackfillResponseError('response_not_object')
+    code = payload.get('code')
+    if response.status_code == 429 or code == 429:
+        raise BackfillResponseError('provider_quota')
+    if payload.get('status') == 'error' or response.status_code >= 400:
+        message = str(payload.get('message', '')).casefold()
+        if (response.status_code in (200, 400, 404) and code in (400, 404)
+                and any(phrase in message for phrase in (
+                    'no data is available on the specified dates',
+                    'no data available for the specified date range',
+                    'no data found for the specified date range'))):
+            return None
+        raise BackfillResponseError('provider_http_or_api_error')
+    return payload
+
+
 def missing_ranges(archived, clock):
     day = latest_closed_date(clock)
     missing = []
@@ -46,21 +72,24 @@ def request_rows(session, key, pair, first, last):
     symbol = pair[:3] + '/' + pair[3:]
     response = session.get(API + '/time_series', headers={'Authorization': 'apikey ' + key},
                            params={'symbol': symbol, 'interval': '1h', 'timezone': 'UTC',
-                                   'start_date': format_utc(first), 'end_date': format_utc(last),
+                                   'start_date': format_utc(first), 'end_date': format_utc(last + HOUR - 1),
                                    'outputsize': BATCH}, timeout=(5, 15))
-    response.raise_for_status()
-    payload = response.json()
-    meta = payload['meta']
+    payload = response_data(response)
+    if payload is None:
+        return {}
+    meta = payload.get('meta')
+    if not isinstance(meta, dict):
+        raise BackfillResponseError('missing_series_metadata')
     if (payload.get('status') != 'ok' or meta.get('symbol') != symbol
             or meta.get('interval') != '1h' or meta.get('exchange_timezone', 'UTC') != 'UTC'
             or int(response.headers.get('api-credits-request', '1')) != 1):
-        raise ValueError('unverified backfill response')
+        raise BackfillResponseError('series_contract_mismatch')
     rows = {}
     for item in payload['values']:
         stamp = int(dt.datetime.strptime(item['datetime'], '%Y-%m-%d %H:%M:%S')
                     .replace(tzinfo=dt.timezone.utc).timestamp())
         if not first <= stamp <= last or stamp in rows:
-            raise ValueError('unexpected timestamp in backfill response')
+            raise BackfillResponseError('series_timestamp_outside_request_or_duplicate')
         rows[stamp] = {'timestamp': stamp, **{field: float(item[field])
                        for field in ('open', 'high', 'low', 'close')}}
     return rows
@@ -110,9 +139,21 @@ def run(root, key):
             raise ValueError('insufficient verified credit budget')
         interval = max(10, 65 / usage['plan_limit'])
         batches = defaultdict(dict)
-        for pair, start, end in plan:
+        print(f'FX NY17 credit preflight passed; planned market requests={len(plan)}', flush=True)
+        for index, (pair, start, end) in enumerate(plan, 1):
             time.sleep(interval)
-            for stamp, row in request_rows(session, key, pair, start, end).items():
+            try:
+                rows = request_rows(session, key, pair, start, end)
+            except BackfillResponseError as error:
+                print(f'FX NY17 market request {index} stopped: {error}', flush=True)
+                raise
+            except requests.RequestException:
+                print(f'FX NY17 market request {index} stopped: transport_error', flush=True)
+                raise
+            except (ValueError, KeyError, TypeError, OverflowError):
+                print(f'FX NY17 market request {index} stopped: invalid_series_row', flush=True)
+                raise
+            for stamp, row in rows.items():
                 if str(stamp) not in archive['archive']['pairs'][pair]:
                     if stamp in batches[pair]:
                         raise ValueError('overlapping acquisition results')
@@ -165,8 +206,8 @@ def main():
         root = private_root(args.state)
         verify_ready(root)
         run(root, os.environ['TWELVE_DATA_API_KEY'])
-    except Exception:
-        print('FX NY17 initial backfill failed')
+    except Exception as error:
+        print(f'FX NY17 initial backfill failed ({type(error).__name__})')
         return 1
     print('FX NY17 initial backfill saved')
     return 0

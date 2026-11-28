@@ -33,3 +33,32 @@ class SegmentTest(unittest.TestCase):
         self.assertTrue(ranges)
         self.assertFalse(any(first <= retained <= last for first, last in ranges))
         self.assertTrue(all(last - first < 5000 * 3600 for first, last in ranges))
+
+    def test_single_hour_query_preserves_full_end_hour(self):
+        from unittest.mock import Mock
+        from fx_system.ny_history_backfill import request_rows
+
+        stamp = int(datetime(2026, 11, 27, 2, tzinfo=timezone.utc).timestamp())
+        session = Mock()
+        response = session.get.return_value
+        response.status_code = 200
+        response.headers = {}
+        response.json.return_value = {
+            'status': 'ok', 'meta': {'symbol': 'USD/JPY', 'interval': '1h'},
+            'values': [{'datetime': '2026-11-27 02:00:00', 'open': '1', 'high': '2',
+                        'low': '1', 'close': '2'}],
+        }
+        self.assertIn(stamp, request_rows(session, 'test', 'USDJPY', stamp, stamp))
+        self.assertEqual(session.get.call_args.kwargs['params']['end_date'], '2026-11-27 02:59:59')
+
+    def test_empty_response_and_plan_error_have_different_outcomes(self):
+        from unittest.mock import Mock
+        from fx_system.ny_history_backfill import BackfillResponseError, response_data
+
+        response = Mock(status_code=400)
+        response.json.return_value = {'status': 'error', 'code': 400,
+                                      'message': 'No data is available on the specified dates'}
+        self.assertIsNone(response_data(response))
+        response.json.return_value['message'] = 'Your plan does not permit historical data'
+        with self.assertRaises(BackfillResponseError):
+            response_data(response)
