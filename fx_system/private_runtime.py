@@ -274,6 +274,11 @@ def save_snapshot(root, run_id, source_commit):
     receipt.chmod(0o600)
 
 
+def read_offline_start(root):
+    from .acceptance_replay import read
+    return read(root, 'clock.json')['observed_started_at']
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('stage', choices=STAGES)
@@ -289,8 +294,6 @@ def main():
             raise ValueError('trusted code run identity required')
         root = private_root(args.state)
         verify_ready(root)
-        if enabled() and args.stage in ('refresh', 'backtest'):
-            raise ValueError('offline provider and Release adapters required')
         environment = offline_environment(os.environ) if enabled() else os.environ
         env = {**environment, 'FX_DATA_ROOT': str(root), 'PYTHONPATH': str(CODE_ROOT),
                # Archive transport uses commit-tree, which needs both identities.
@@ -314,17 +317,27 @@ def main():
             if not marker.exists():
                 with marker.open('x') as stream:
                     json.dump({'run_id':int(run_id),'source_commit':commit,
-                        'repository':CODE_REPOSITORY,'observed_started_at':int(time.time()),
+                        'repository':CODE_REPOSITORY,'observed_started_at':(read_offline_start(root) if enabled() else int(time.time())),
                         'run_attempt':int(os.environ.get('GITHUB_RUN_ATTEMPT','0')),
                         'event':os.environ.get('GITHUB_EVENT_NAME')},stream)
                 marker.chmod(0o600)
-        if args.stage == 'refresh':
+        if args.stage == 'refresh' and not enabled():
             env = prepare_optional_calendar(root, run_id, env)
+        if enabled():
+            from .acceptance_replay import read
+            clock = read(root, 'clock.json')
+            env.update(FX_ACCEPTANCE_CLOCK=str(clock['evaluated_at']),
+                       FX_ECONOMIC_CALENDAR_SAVED_ENABLED='true',
+                       FX_ECONOMIC_CALENDAR_COLLECTION_STATUS=clock['calendar_status'])
         if args.stage == 'snapshot':
             save_snapshot(root, run_id, commit)
             rc = 0
         else:
-            rc = run_private(command(args.stage, root, run_id, commit, partitioned=os.environ.get('FX_NY17_STORAGE_MODE') == 'partitioned_candidate'), root=root,
+            stage_command = command(args.stage, root, run_id, commit,
+                                    partitioned=os.environ.get('FX_NY17_STORAGE_MODE') == 'partitioned_candidate')
+            if enabled() and args.stage == 'refresh':
+                stage_command = [sys.executable, '-m', 'fx_system.acceptance_replay']
+            rc = run_private(stage_command, root=root,
                              log=logs/(args.stage+'.log'), env=env)
         logs.mkdir(parents=True, exist_ok=True, mode=0o700)
         (logs/(args.stage+'.status.json')).write_text(json.dumps({'returncode': rc}))

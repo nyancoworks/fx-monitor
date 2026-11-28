@@ -71,7 +71,10 @@ def main():
     if ny is not None:
         try:ny.value=ny.sidecar.load()
         except Exception:ny.failure="NY archive unavailable; manual recovery required"
-    failures=validate(data,ny=ny,require_strategies=True)
+    from .acceptance_target import enabled
+    import os
+    clock = int(os.environ["FX_ACCEPTANCE_CLOCK"]) if enabled() else None
+    failures=validate(data,now=clock,ny=ny,require_strategies=True)
     print("SNAPSHOT_VALIDATION",json.dumps({"passed":not failures,"failures":failures}))
     if failures:
         sys.exit(1)

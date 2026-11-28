@@ -407,6 +407,46 @@ def _refresh(ny=None):
     # Re-evaluate every pair at a single fresh clock; missing bars stay NOT_READY.
     final_now=int(time.time())
     result["evaluated_at"]=final_now
+    finalize_pairs(result, ny, final_now)
+    result['refresh_elapsed_seconds']=round(time.monotonic()-refresh_started,2)
+    # Evaluate the two Murphy strategies directly from verified indicator frames.
+    result["scheduled_outlook"]=build_outlook_with_saved_calendar(
+        result["pairs"],result["quality"],evaluated_at=final_now)
+    assessments=result["scheduled_outlook"]["strategy_assessments"]
+    print("SCHEDULED_STRATEGY_SUMMARY",json.dumps({
+        "evaluated_at":final_now,"assessment_count":len(assessments),
+        "assessment_counts":result["scheduled_outlook"]["assessment_counts"],
+        "canonical_assessment_field":"strategy_assessments","advisory_only":True
+    },ensure_ascii=False),flush=True)
+    result["ready_count"]=len(result["ready_pairs"])
+    result["intraday_monitoring"]={"ready_pairs":[name for name,q in result["quality"].items()
+        if q.get("intraday_monitoring_ready")],
+        "scope":"verified M5/H1/H4 observation only; not macro or trade clearance"}
+    print("INTRADAY_MONITORING",json.dumps(result["intraday_monitoring"]),flush=True)
+    from .h1_response_evidence import status as evidence_status
+    result["h1_response_evidence"]=evidence_status()
+    result["all_pairs_ready"]=len(result["ready_pairs"])==(1 if selected else len(PAIRS))
+    result["provider_metrics"]={"yahoo_attempts":yahoo_attempts,"dukascopy_circuit_open":dukascopy_blocked,"yahoo_circuit_open":yahoo_blocked}
+    result["currency_strength"]=compute_strength(result,now=final_now)
+    print("CURRENCY_STRENGTH",json.dumps({k:result["currency_strength"][k] for k in
+        ("algorithm","advisory_only","evaluated_at","status","universe","lookback_h1_bars",
+         "coverage_pairs","expected_pairs","start_closed_at","end_closed_at",
+         "scores","ranking","observations","fit_rmse_log_pct")},ensure_ascii=False),flush=True)
+    result["api_budget"]={**budget,"remaining_safe_requests":max(0,DAILY_LIMIT-DAILY_RESERVE-budget["credits"])}
+    print("API_BUDGET",json.dumps(result["api_budget"]),flush=True)
+    if selected:
+        result["on_demand_pair"]=selected
+        target=storage_root(ROOT)/"data"/"on_demand"/(selected+".json")
+        target.parent.mkdir(parents=True,exist_ok=True)
+        target.write_text(json.dumps(result,separators=(",",":")))
+        print("ON_DEMAND_OUTPUT",target,flush=True)
+    else:
+        CACHE.write_text(json.dumps(cache,separators=(",",":")))
+        OUTPUT.write_text(json.dumps(result,separators=(",",":")))
+    print("READY_PAIRS",len(result["ready_pairs"]),"/",len(PAIRS),flush=True)
+
+
+def finalize_pairs(result, ny, final_now):
     result["ready_pairs"]=[]
     if ny is not None:
         ny.synchronize(result)
@@ -472,42 +512,6 @@ def _refresh(ny=None):
         print("FINAL_QUALITY",json.dumps({"pair":name,"evaluated_at":final_now,
               "ready":q["ok"],"intraday_monitoring_ready":quality["intraday_monitoring_ready"],
               "reasons":quality["reasons"],"m5_publication":quality["m5_publication"]}),flush=True)
-    result['refresh_elapsed_seconds']=round(time.monotonic()-refresh_started,2)
-    # Evaluate the two Murphy strategies directly from verified indicator frames.
-    result["scheduled_outlook"]=build_outlook_with_saved_calendar(
-        result["pairs"],result["quality"],evaluated_at=final_now)
-    assessments=result["scheduled_outlook"]["strategy_assessments"]
-    print("SCHEDULED_STRATEGY_SUMMARY",json.dumps({
-        "evaluated_at":final_now,"assessment_count":len(assessments),
-        "assessment_counts":result["scheduled_outlook"]["assessment_counts"],
-        "canonical_assessment_field":"strategy_assessments","advisory_only":True
-    },ensure_ascii=False),flush=True)
-    result["ready_count"]=len(result["ready_pairs"])
-    result["intraday_monitoring"]={"ready_pairs":[name for name,q in result["quality"].items()
-        if q.get("intraday_monitoring_ready")],
-        "scope":"verified M5/H1/H4 observation only; not macro or trade clearance"}
-    print("INTRADAY_MONITORING",json.dumps(result["intraday_monitoring"]),flush=True)
-    from .h1_response_evidence import status as evidence_status
-    result["h1_response_evidence"]=evidence_status()
-    result["all_pairs_ready"]=len(result["ready_pairs"])==(1 if selected else len(PAIRS))
-    result["provider_metrics"]={"yahoo_attempts":yahoo_attempts,"dukascopy_circuit_open":dukascopy_blocked,"yahoo_circuit_open":yahoo_blocked}
-    result["currency_strength"]=compute_strength(result,now=final_now)
-    print("CURRENCY_STRENGTH",json.dumps({k:result["currency_strength"][k] for k in
-        ("algorithm","advisory_only","evaluated_at","status","universe","lookback_h1_bars",
-         "coverage_pairs","expected_pairs","start_closed_at","end_closed_at",
-         "scores","ranking","observations","fit_rmse_log_pct")},ensure_ascii=False),flush=True)
-    result["api_budget"]={**budget,"remaining_safe_requests":max(0,DAILY_LIMIT-DAILY_RESERVE-budget["credits"])}
-    print("API_BUDGET",json.dumps(result["api_budget"]),flush=True)
-    if selected:
-        result["on_demand_pair"]=selected
-        target=storage_root(ROOT)/"data"/"on_demand"/(selected+".json")
-        target.parent.mkdir(parents=True,exist_ok=True)
-        target.write_text(json.dumps(result,separators=(",",":")))
-        print("ON_DEMAND_OUTPUT",target,flush=True)
-    else:
-        CACHE.write_text(json.dumps(cache,separators=(",",":")))
-        OUTPUT.write_text(json.dumps(result,separators=(",",":")))
-    print("READY_PAIRS",len(result["ready_pairs"]),"/",len(PAIRS),flush=True)
 
 def main():
     """Default-off publisher; NY storage and selection are explicit opt-ins."""
