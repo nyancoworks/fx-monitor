@@ -74,8 +74,17 @@ def build_diagnostics(snapshot_bytes, source, *, validation_log='', returncode=N
             pairs[pair]['standard_technicals'] = {
                 tf: {k: v for k, v in health.get(tf, {}).items()
                      if k in ('input_count', 'sma200_required', 'slope_required', 'shortfall',
-                              'sma200_available', 'slope_available', 'verified', 'sb_available')
+                              'sma200_available', 'slope_available', 'verified', 'sb_available',
+                              'fresh', 'span_available', 'span_lag_zone_available', 'macd_available',
+                              'rci9_available', 'rci26_available', 'rci52_available',
+                              'time_input_count', 'time_available')
                      and type(v) in (int, bool)} for tf in ('w1', 'd1', 'h4', 'm15', 'h1', 'm5') if tf in health}
+        if data.get('murphy_profile_version') == 2:
+            pairs[pair]['macro_history'] = {
+                tf: {k: v for k, v in row.items() if k in (
+                    'retained_count', 'archive_candidates', 'target_count', 'input_count', 'prefix_excluded')
+                    and type(v) is int}
+                for tf, row in data.get('indicator_input_quality', {}).items() if tf in ('d1', 'w1')}
         reuse = data.get('indicator_history', {})
         if reuse:
             pairs[pair]['indicator_history'] = {
@@ -85,6 +94,11 @@ def build_diagnostics(snapshot_bytes, source, *, validation_log='', returncode=N
     result = {'schema': 'private_run_diagnostics_v1', 'source': dict(source),
         'snapshot_git_blob_sha': hashlib.sha1(b'blob '+str(len(snapshot_bytes)).encode()+b'\0'+snapshot_bytes).hexdigest(),
         'validation': validation, 'pairs': pairs, 'truncated': False}
+    budget = snapshot.get('api_budget')
+    if isinstance(budget, dict):
+        result['api_budget'] = {key: budget[key] for key in (
+            'requests', 'credits', 'daily_limit', 'reserve', 'remaining_safe_requests')
+            if type(budget.get(key)) is int}
     def encode(value):
         def scrub(item):
             if isinstance(item, str): return redact(item)

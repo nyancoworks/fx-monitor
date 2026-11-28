@@ -418,7 +418,8 @@ def _refresh(ny=None):
         ny_context=ny.context(name,final_now) if ny is not None else None
         verified,quality=evaluate_pair(data,final_now,ny_context=ny_context)
         data["decision_quality"]=quality
-        indicator_frames, input_quality = contiguous_indicator_frames(verified, quality)
+        indicator_frames, input_quality = contiguous_indicator_frames(
+            verified, quality, ny_study=(ny_context or {}).get("study"))
         data["indicator_input_quality"] = input_quality
         indicator_frames, data['indicator_history'] = extend_from_archive(
             indicator_frames, ny.value if ny is not None else None, name,
@@ -431,7 +432,7 @@ def _refresh(ny=None):
         # No new provider requests or changes to the collection budget.
         data['murphy_profile_version'] = 2
         refresh_strategy_indicators(data,verified,indicator_frames,quality,{})
-        data['standard_technical_health'] = indicator_health(data['standard_technical_frames'])
+        data['standard_technical_health'] = indicator_health(data['standard_technical_frames'], quality)
         q=result["quality"][name]
         q.update({"ok":quality["ready"] and all(quality["timeframes"][tf]["ok"] for tf in ("m5","h1","h4","d1")),"decision_data_ready":quality["ready"],
                   "intraday_monitoring_ready":quality["intraday_monitoring_ready"],

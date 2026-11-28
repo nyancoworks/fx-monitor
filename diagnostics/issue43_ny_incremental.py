@@ -102,7 +102,7 @@ def validate_state(state):
         raise ValueError('source event/materialization mismatch')
 
 
-def snapshot(state, pair, as_of, *, publication_lag_seconds=0, closed_holidays=()):
+def snapshot(state, pair, as_of, *, publication_lag_seconds=0, closed_holidays=(), indicator_daily_limit=None):
     validate_state(state)
     aware(as_of)
     if pair not in PAIRS or type(publication_lag_seconds) is not int or publication_lag_seconds < 0:
@@ -122,7 +122,9 @@ def snapshot(state, pair, as_of, *, publication_lag_seconds=0, closed_holidays=(
     d1 = study['d1'][-60:]
     trailing_errors = {d:e for d,e in study['errors'].items()
                        if d >= (d1[0]['trading_date_ny'] if d1 else latest.isoformat())}
-    return {'pair':pair,'d1':d1,'w1':study['w1'], 'd1_count':len(d1),
+    indicator_history = ({'indicator_d1': study['d1'][-indicator_daily_limit:]}
+                         if indicator_daily_limit else {})
+    return {**indicator_history, 'pair':pair,'d1':d1,'w1':study['w1'], 'd1_count':len(d1),
         'w1_count':len(study['w1']), 'errors':study['errors'],
         'latest_ny_date':latest.isoformat(), 'publication_buffer_elapsed':latest_closed,
         'holiday_blocked_dates':blocked,
