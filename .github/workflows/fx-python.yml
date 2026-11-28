@@ -31,6 +31,8 @@ jobs:
         id: restore
         continue-on-error: true
         env:
+          FX_NY17_CANDIDATE_BOOTSTRAP: ${{ vars.FX_NY17_CANDIDATE_BOOTSTRAP }}
+          FX_NY17_STORAGE_MODE: ${{ vars.FX_NY17_STORAGE_MODE }}
           PYTHONPATH: ${{ github.workspace }}/code
         run: python -m fx_system.private_runtime restore --state "$GITHUB_WORKSPACE/private-state"
       - name: Collect and evaluate
@@ -47,6 +49,7 @@ jobs:
         if: always() && steps.restore.outcome == 'success' && (steps.refresh.outcome == 'success' || steps.refresh.outcome == 'failure')
         continue-on-error: true
         env:
+          FX_NY17_STORAGE_MODE: ${{ vars.FX_NY17_STORAGE_MODE }}
           PYTHONPATH: ${{ github.workspace }}/code
         run: python -m fx_system.private_runtime archive --state "$GITHUB_WORKSPACE/private-state"
       - name: Attach persistence evidence

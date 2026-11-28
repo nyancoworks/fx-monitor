@@ -122,14 +122,15 @@ def prepare_optional_calendar(root, run_id, env):
     return env
 
 
-def command(stage, root, run_id, source_commit):
+def command(stage, root, run_id, source_commit, *, partitioned=False):
     base = [sys.executable, '-m']
     archive = root / '.private-ny17'
+    archive_module = 'fx_system.ny17_storage.transport' if partitioned else 'fx_system.ny_archive_transport'
     logs = root / '.private-run' / run_id
     commands = {
-        'restore': base + ['fx_system.ny_archive_transport', 'restore', '--directory', str(archive), '--continuous'],
+        'restore': base + [archive_module, 'restore', '--directory', str(archive), '--continuous'],
         'refresh': base + ['fx_system.main'],
-        'archive': base + ['fx_system.ny_archive_transport', 'publish', '--directory', str(archive), '--continuous'],
+        'archive': base + [archive_module, 'publish', '--directory', str(archive), '--continuous'],
         'validate': base + ['fx_system.validate_snapshot'],
         'backtest': base + ['fx_system.backtest_persistence', '--state', str(root)],
         'history': base + ['diagnostics.monitoring_result_git_store', '--repo', str(root),
@@ -316,7 +317,7 @@ def main():
             save_snapshot(root, run_id, commit)
             rc = 0
         else:
-            rc = run_private(command(args.stage, root, run_id, commit), root=root,
+            rc = run_private(command(args.stage, root, run_id, commit, partitioned=os.environ.get('FX_NY17_STORAGE_MODE') == 'partitioned_candidate'), root=root,
                              log=logs/(args.stage+'.log'), env=env)
         logs.mkdir(parents=True, exist_ok=True, mode=0o700)
         (logs/(args.stage+'.status.json')).write_text(json.dumps({'returncode': rc}))
